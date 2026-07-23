@@ -45,6 +45,27 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
         RateLimitMiddleware, requests_per_minute=container.settings.rate_limit_per_minute
     )
     app.add_middleware(RequestIdMiddleware)
+    # Browser clients (web on :3000) are cross-origin; production must list
+    # origins explicitly, local/test default to the dev web origin.
+    cors_origins = container.settings.cors_origins
+    if not cors_origins and container.settings.profile != "production":
+        cors_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    if cors_origins:
+        from starlette.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_methods=["GET", "POST", "PATCH", "DELETE"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "X-Tenant-Id",
+                "X-Workspace-Id",
+                "Idempotency-Key",
+            ],
+            expose_headers=["X-Request-ID", "Retry-After"],
+        )
     register_exception_handlers(app)
     app.include_router(build_health_router(container.health_service), prefix="/api/v1")
     app.include_router(me_router, prefix="/api/v1")
