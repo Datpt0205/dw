@@ -36,6 +36,8 @@ IMPORT_TO_DIST = {
     "opentelemetry": "opentelemetry-api",
     "langfuse": "langfuse",
     "jwt": "pyjwt",
+    "yaml": "pyyaml",
+    "langchain_core": "langchain-core",
     "dw_kernel": "dw-kernel",
     "dw_platform": "dw-platform",
     "dw_agent_runtime": "dw-agent-runtime",

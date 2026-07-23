@@ -1,0 +1,18 @@
+schema_version: "1.0"
+profile_id: balanced
+routing_policy_version: "1.0.0"
+structured_extraction:
+  provider: mock
+  model: extraction-mock-1
+  timeout_seconds: 45
+reasoning:
+  provider: mock
+  model: reasoning-mock-1
+  timeout_seconds: 90
+fallback:
+  provider: mock
+  model: fallback-mock-1
+  timeout_seconds: 60
+budgets:
+  max_input_tokens_per_run: 120000
+  max_cost_usd_per_run: 2.00

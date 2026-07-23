@@ -6,7 +6,9 @@ requires-python = ">=3.12"
 dependencies = [
     "dw-kernel",
     "dw-knowledge",
+    "dw-platform",
     "pydantic>=2.10,<3",
+    "sqlalchemy[asyncio]>=2.0.36,<2.1",
 ]
 
 [build-system]
