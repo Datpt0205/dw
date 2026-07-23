@@ -1,0 +1,28 @@
+{
+  "requirements": [
+    {
+      "code": "REQ-01",
+      "statement": "Nhà cung cấp phải có chứng nhận ISO 9001 còn hiệu lực.",
+      "kind": "mandatory",
+      "weight": 0
+    },
+    {
+      "code": "REQ-02",
+      "statement": "Thời gian giao hàng tối đa 30 ngày kể từ ngày đặt hàng.",
+      "kind": "mandatory",
+      "weight": 0
+    },
+    {
+      "code": "REQ-03",
+      "statement": "Tính cạnh tranh về giá.",
+      "kind": "weighted",
+      "weight": 0.6
+    },
+    {
+      "code": "REQ-04",
+      "statement": "Chính sách bảo hành và hỗ trợ kỹ thuật.",
+      "kind": "weighted",
+      "weight": 0.4
+    }
+  ]
+}

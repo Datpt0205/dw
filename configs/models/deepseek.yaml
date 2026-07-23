@@ -1,0 +1,20 @@
+schema_version: "1.0"
+profile_id: deepseek
+routing_policy_version: "1.0.0"
+# DeepSeek speaks the OpenAI-compatible dialect. Enable with:
+#   DW_MODEL_PROVIDER=openai_compatible
+#   OPENAI_BASE_URL=https://api.deepseek.com
+#   OPENAI_API_KEY=sk-...
+#   DW_API_OPENAI_STRUCTURED_MODE=json_object   (DeepSeek lacks json_schema)
+#   DW_API_MODEL_PROFILE=deepseek
+structured_extraction:
+  provider: openai_compatible
+  model: deepseek-chat
+  timeout_seconds: 60
+reasoning:
+  provider: openai_compatible
+  model: deepseek-chat
+  timeout_seconds: 120
+budgets:
+  max_input_tokens_per_run: 100000
+  max_cost_usd_per_run: 1.00

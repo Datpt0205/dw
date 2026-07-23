@@ -493,11 +493,13 @@ dependencies = [
     { name = "dw-knowledge" },
     { name = "dw-memory" },
     { name = "dw-platform" },
+    { name = "dw-tender" },
     { name = "dw-work-ops" },
     { name = "fastapi" },
     { name = "minio" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "qdrant-client" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -512,11 +514,13 @@ requires-dist = [
     { name = "dw-knowledge", editable = "packages/python/dw_knowledge" },
     { name = "dw-memory", editable = "packages/python/dw_memory" },
     { name = "dw-platform", editable = "packages/python/dw_platform" },
+    { name = "dw-tender", editable = "packages/python/dw_tender" },
     { name = "dw-work-ops", editable = "packages/python/dw_work_ops" },
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "minio", specifier = ">=7.2,<8" },
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pydantic-settings", specifier = ">=2.7,<3" },
+    { name = "qdrant-client", specifier = ">=1.12,<1.15" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36,<2.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34,<1" },
 ]
@@ -575,7 +579,7 @@ requires-dist = [
     { name = "dw-platform", editable = "packages/python/dw_platform" },
     { name = "minio", specifier = ">=7.2,<8" },
     { name = "pydantic", specifier = ">=2.10,<3" },
-    { name = "qdrant-client", specifier = ">=1.12,<2" },
+    { name = "qdrant-client", specifier = ">=1.12,<1.15" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36,<2.1" },
 ]
 
@@ -635,11 +639,33 @@ name = "dw-tender"
 version = "0.1.0"
 source = { editable = "packages/python/dw_tender" }
 dependencies = [
+    { name = "dw-agent-runtime" },
     { name = "dw-kernel" },
+    { name = "dw-knowledge" },
+    { name = "dw-memory" },
+    { name = "dw-platform" },
+    { name = "fastapi" },
+    { name = "langchain-core" },
+    { name = "langgraph" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "dw-kernel", editable = "packages/python/dw_kernel" }]
+requires-dist = [
+    { name = "dw-agent-runtime", editable = "packages/python/dw_agent_runtime" },
+    { name = "dw-kernel", editable = "packages/python/dw_kernel" },
+    { name = "dw-knowledge", editable = "packages/python/dw_knowledge" },
+    { name = "dw-memory", editable = "packages/python/dw_memory" },
+    { name = "dw-platform", editable = "packages/python/dw_platform" },
+    { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "langchain-core", specifier = ">=1,<2" },
+    { name = "langgraph", specifier = ">=0.6,<2" },
+    { name = "pydantic", specifier = ">=2.10,<3" },
+    { name = "pyyaml", specifier = ">=6.0,<7" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36,<2.1" },
+]
 
 [[package]]
 name = "dw-work-ops"
@@ -1592,14 +1618,14 @@ wheels = [
 
 [[package]]
 name = "portalocker"
-version = "3.2.0"
+version = "2.10.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pywin32", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5e/77/65b857a69ed876e1951e88aaba60f5ce6120c33703f7cb61a3c894b8c1b6/portalocker-3.2.0.tar.gz", hash = "sha256:1f3002956a54a8c3730586c5c77bf18fae4149e07eaf1c29fc3faf4d5a3f89ac", size = 95644, upload-time = "2025-06-14T13:20:40.03Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/d3/c6c64067759e87af98cc668c1cc75171347d0f1577fab7ca3749134e3cd4/portalocker-2.10.1.tar.gz", hash = "sha256:ef1bf844e878ab08aee7e40184156e1151f228f103aa5c6bd0724cc330960f8f", size = 40891, upload-time = "2024-07-13T23:15:34.86Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4b/a6/38c8e2f318bf67d338f4d629e93b0b4b9af331f455f0390ea8ce4a099b26/portalocker-3.2.0-py3-none-any.whl", hash = "sha256:3cdc5f565312224bc570c49337bd21428bba0ef363bbcf58b9ef4a9f11779968", size = 22424, upload-time = "2025-06-14T13:20:38.083Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/fb/a70a4214956182e0d7a9099ab17d50bfcba1056188e9b14f35b9e2b62a0d/portalocker-2.10.1-py3-none-any.whl", hash = "sha256:53a5984ebc86a025552264b459b46a2086e269b21823cb572f8f28ee759e45bf", size = 18423, upload-time = "2024-07-13T23:15:32.602Z" },
 ]
 
 [[package]]
@@ -1917,7 +1943,7 @@ wheels = [
 
 [[package]]
 name = "qdrant-client"
-version = "1.18.0"
+version = "1.14.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "grpcio" },
@@ -1928,9 +1954,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/65/45/5b1bdd15a3c7730eefb9c113600829e20d689b82b5a23f9e07d107094004/qdrant_client-1.18.0.tar.gz", hash = "sha256:52e8ece1a7d40519801bf0b70713bfa0f6b7ae28c7275bbe0b0286fbed7f6db4", size = 352580, upload-time = "2026-05-11T14:12:38.702Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1d/56/3f355f931c239c260b4fe3bd6433ec6c9e6185cd5ae0970fe89d0ca6daee/qdrant_client-1.14.3.tar.gz", hash = "sha256:bb899e3e065b79c04f5e47053d59176150c0a5dabc09d7f476c8ce8e52f4d281", size = 286766, upload-time = "2025-06-16T11:13:47.838Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d6/10/c437bd2ac41ef30d3019063e6ce537dc111e9214473b337ee88f7fa6359a/qdrant_client-1.18.0-py3-none-any.whl", hash = "sha256:093aa8cf8a420ee3ad2a68b007e1378d7992b2600e0b53c193fc172674f659cd", size = 398126, upload-time = "2026-05-11T14:12:36.998Z" },
+    { url = "https://files.pythonhosted.org/packages/35/5e/8174c845707e60b60b65c58f01e40bbc1d8181b5ff6463f25df470509917/qdrant_client-1.14.3-py3-none-any.whl", hash = "sha256:66faaeae00f9b5326946851fe4ca4ddb1ad226490712e2f05142266f68dfc04d", size = 328969, upload-time = "2025-06-16T11:13:46.636Z" },
 ]
 
 [[package]]

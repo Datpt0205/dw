@@ -8,12 +8,14 @@ import {
   readinessResponseSchema,
   runSchema,
   timelineEventSchema,
+  tenderCaseSchema,
   type Approval,
   type ErrorResponse,
   type HealthResponse,
   type Meeting,
   type ReadinessResponse,
   type Run,
+  type TenderCase,
   type TimelineEvent,
 } from "@dw/contracts";
 
@@ -157,7 +159,52 @@ export class ApiClient {
       z.array(timelineEventSchema),
     );
   }
+
+  // ---- procurement --------------------------------------------------------
+
+  listTenderCases(): Promise<TenderCase[]> {
+    return this.request(
+      "GET",
+      "/api/v1/procurement/cases",
+      z.array(tenderCaseSchema),
+    );
+  }
+
+  getTenderCase(caseId: string): Promise<TenderCase> {
+    return this.request(
+      "GET",
+      `/api/v1/procurement/cases/${caseId}`,
+      tenderCaseSchema,
+    );
+  }
+
+  createTenderCase(input: {
+    title: string;
+    description?: string;
+    documents: Array<{
+      kind: "rfq" | "supplier_submission" | "other";
+      title: string;
+      content: string;
+      supplier_name?: string | null;
+    }>;
+  }): Promise<{ case_id: string }> {
+    return this.request(
+      "POST",
+      "/api/v1/procurement/cases",
+      z.object({ case_id: z.string().uuid() }),
+      { body: input },
+    );
+  }
+
+  analyzeTenderCase(caseId: string): Promise<{ run_id: string }> {
+    return this.request(
+      "POST",
+      `/api/v1/procurement/cases/${caseId}/analyze`,
+      z.object({ run_id: z.string().uuid() }),
+      { body: {} },
+    );
+  }
 }
 
-export type { Approval, Meeting, Run, TimelineEvent };
+export type { Approval, Meeting, Run, TenderCase, TimelineEvent };
 export { actionItemSchema };

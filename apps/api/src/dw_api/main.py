@@ -57,6 +57,20 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
             ),
             prefix="/api/v1",
         )
+    if container.tender is not None:
+        from dw_api.dependencies.auth import get_access_context as get_ctx
+        from dw_tender.presentation.api import build_procurement_router
+
+        app.include_router(
+            build_procurement_router(
+                create_case=container.tender.create_case,
+                get_case=container.tender.get_case,
+                list_cases=container.tender.list_cases,
+                analyze_case=container.tender.analyze_case,
+                access_context_dependency=get_ctx,
+            ),
+            prefix="/api/v1",
+        )
     return app
 
 

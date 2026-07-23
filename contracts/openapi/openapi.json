@@ -112,6 +112,18 @@
         "title": "ActionItemView",
         "type": "object"
       },
+      "AnalyzeResponse": {
+        "properties": {
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": ["run_id"],
+        "title": "AnalyzeResponse",
+        "type": "object"
+      },
       "ApprovalView": {
         "properties": {
           "approval_type": {
@@ -245,6 +257,45 @@
         "title": "AuditEventView",
         "type": "object"
       },
+      "CreateCaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentUploadRequest"
+            },
+            "minItems": 1,
+            "title": "Documents",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": ["title", "documents"],
+        "title": "CreateCaseRequest",
+        "type": "object"
+      },
+      "CreateCaseResponse": {
+        "properties": {
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          }
+        },
+        "required": ["case_id"],
+        "title": "CreateCaseResponse",
+        "type": "object"
+      },
       "CreateMeetingRequest": {
         "additionalProperties": false,
         "properties": {
@@ -353,6 +404,94 @@
         },
         "required": ["id", "statement", "decided_by_name", "evidence_quote"],
         "title": "DecisionView",
+        "type": "object"
+      },
+      "DocumentKind": {
+        "enum": ["rfq", "supplier_submission", "other"],
+        "title": "DocumentKind",
+        "type": "string"
+      },
+      "DocumentUploadRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DocumentKind"
+          },
+          "supplier_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Name"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": ["kind", "title", "content"],
+        "title": "DocumentUploadRequest",
+        "type": "object"
+      },
+      "FindingView": {
+        "properties": {
+          "evidence_count": {
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote"
+          },
+          "raw_score": {
+            "title": "Raw Score",
+            "type": "string"
+          },
+          "requirement_code": {
+            "title": "Requirement Code",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "supplier_name": {
+            "title": "Supplier Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requirement_code",
+          "supplier_name",
+          "status",
+          "raw_score",
+          "note",
+          "evidence_count",
+          "quote"
+        ],
+        "title": "FindingView",
         "type": "object"
       },
       "GenerateActionsResponse": {
@@ -547,6 +686,104 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "RecommendationView": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "evidence_count": {
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "gate_passed": {
+            "title": "Gate Passed",
+            "type": "boolean"
+          },
+          "gate_violations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gate Violations",
+            "type": "array"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "recommended_supplier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Supplier"
+          },
+          "risks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Risks",
+            "type": "array"
+          },
+          "scoring_policy_version": {
+            "title": "Scoring Policy Version",
+            "type": "string"
+          },
+          "supplier_scores": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Supplier Scores",
+            "type": "array"
+          }
+        },
+        "required": [
+          "recommended_supplier",
+          "rationale",
+          "supplier_scores",
+          "risks",
+          "gate_passed",
+          "gate_violations",
+          "scoring_policy_version",
+          "confidence",
+          "evidence_count"
+        ],
+        "title": "RecommendationView",
+        "type": "object"
+      },
+      "RequirementView": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "string"
+          }
+        },
+        "required": ["id", "code", "statement", "kind", "weight"],
+        "title": "RequirementView",
+        "type": "object"
+      },
       "RunView": {
         "properties": {
           "approval_request_id": {
@@ -630,6 +867,84 @@
           "release_manifest_ref"
         ],
         "title": "RunView",
+        "type": "object"
+      },
+      "TenderCaseView": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "export_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Export Ref"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/FindingView"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run Id"
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendationView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementView"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "status",
+          "last_run_id",
+          "export_ref"
+        ],
+        "title": "TenderCaseView",
         "type": "object"
       },
       "TimelineEvent": {
@@ -921,6 +1236,148 @@
         },
         "summary": "Me",
         "tags": ["identity"]
+      }
+    },
+    "/api/v1/procurement/cases": {
+      "get": {
+        "operationId": "list_all_api_v1_procurement_cases_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TenderCaseView"
+                  },
+                  "title": "Response List All Api V1 Procurement Cases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List All",
+        "tags": ["procurement"]
+      },
+      "post": {
+        "operationId": "create_api_v1_procurement_cases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create",
+        "tags": ["procurement"]
+      }
+    },
+    "/api/v1/procurement/cases/{case_id}": {
+      "get": {
+        "operationId": "get_api_v1_procurement_cases__case_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenderCaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get",
+        "tags": ["procurement"]
+      }
+    },
+    "/api/v1/procurement/cases/{case_id}/analyze": {
+      "post": {
+        "operationId": "analyze_api_v1_procurement_cases__case_id__analyze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze",
+        "tags": ["procurement"]
       }
     },
     "/api/v1/ready": {

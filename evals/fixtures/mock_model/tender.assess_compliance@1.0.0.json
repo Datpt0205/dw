@@ -1,0 +1,68 @@
+{
+  "findings": [
+    {
+      "supplier_name": "Công ty TNHH Thiết bị Việt",
+      "requirement_code": "REQ-01",
+      "claimed_compliant": true,
+      "raw_score": 100,
+      "quote": "chứng nhận ISO 9001:2015 còn hiệu lực đến tháng 12/2027",
+      "note": "Chứng nhận ISO hợp lệ"
+    },
+    {
+      "supplier_name": "Công ty TNHH Thiết bị Việt",
+      "requirement_code": "REQ-02",
+      "claimed_compliant": true,
+      "raw_score": 100,
+      "quote": "cam kết giao hàng trong vòng 20 ngày kể từ ngày nhận đơn đặt hàng",
+      "note": "20 ngày, đạt yêu cầu ≤30 ngày"
+    },
+    {
+      "supplier_name": "Công ty TNHH Thiết bị Việt",
+      "requirement_code": "REQ-03",
+      "claimed_compliant": true,
+      "raw_score": 85,
+      "quote": "thấp hơn 8% so với giá thị trường tham chiếu",
+      "note": "Giá cạnh tranh tốt"
+    },
+    {
+      "supplier_name": "Công ty TNHH Thiết bị Việt",
+      "requirement_code": "REQ-04",
+      "claimed_compliant": true,
+      "raw_score": 90,
+      "quote": "bảo hành 24 tháng, hỗ trợ kỹ thuật tại chỗ trong 48 giờ",
+      "note": "Bảo hành vượt chuẩn"
+    },
+    {
+      "supplier_name": "Công ty CP Vật tư Miền Nam",
+      "requirement_code": "REQ-01",
+      "claimed_compliant": true,
+      "raw_score": 100,
+      "quote": "đạt chứng nhận ISO 9001 còn hiệu lực đến 06/2028",
+      "note": "Chứng nhận ISO hợp lệ"
+    },
+    {
+      "supplier_name": "Công ty CP Vật tư Miền Nam",
+      "requirement_code": "REQ-02",
+      "claimed_compliant": false,
+      "raw_score": 0,
+      "quote": "thời gian giao hàng dự kiến 45 ngày kể từ ngày đặt hàng",
+      "note": "45 ngày, vượt mức tối đa 30 ngày"
+    },
+    {
+      "supplier_name": "Công ty CP Vật tư Miền Nam",
+      "requirement_code": "REQ-03",
+      "claimed_compliant": true,
+      "raw_score": 90,
+      "quote": "đơn giá trọn gói 455 triệu đồng chưa gồm vận chuyển nội thành",
+      "note": "Giá thấp hơn nhưng chưa gồm vận chuyển"
+    },
+    {
+      "supplier_name": "Công ty CP Vật tư Miền Nam",
+      "requirement_code": "REQ-04",
+      "claimed_compliant": true,
+      "raw_score": 60,
+      "quote": "bảo hành 12 tháng theo tiêu chuẩn nhà sản xuất",
+      "note": "Bảo hành mức tối thiểu"
+    }
+  ]
+}

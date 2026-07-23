@@ -5,6 +5,16 @@ description = "Tender bounded context: procurement tender analysis Digital Worke
 requires-python = ">=3.12"
 dependencies = [
     "dw-kernel",
+    "dw-platform",
+    "dw-agent-runtime",
+    "dw-knowledge",
+    "dw-memory",
+    "pydantic>=2.10,<3",
+    "sqlalchemy[asyncio]>=2.0.36,<2.1",
+    "langgraph>=0.6,<2",
+    "langchain-core>=1,<2",
+    "fastapi>=0.115,<1",
+    "pyyaml>=6.0,<7",
 ]
 
 [build-system]

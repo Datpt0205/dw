@@ -20,11 +20,18 @@ from dw_kernel.errors import InfrastructureError
 
 @dataclass
 class OpenAICompatibleAdapter:
-    """Implements ``ModelProviderAdapter`` over HTTP."""
+    """Implements ``ModelProviderAdapter`` over HTTP.
+
+    ``structured_mode``:
+    - "json_schema": native structured output (OpenAI, vLLM >= 0.6, ...)
+    - "json_object": JSON mode + schema embedded in the prompt (DeepSeek, older
+      providers). Output is still validated against the schema by the gateway.
+    """
 
     base_url: str
     api_key: str
     provider: str = "openai_compatible"
+    structured_mode: str = "json_schema"
 
     @property
     def provider_name(self) -> str:
@@ -38,16 +45,29 @@ class OpenAICompatibleAdapter:
         *,
         max_output_tokens: int | None,
     ) -> tuple[dict[str, object], ModelUsage]:
-        body: dict[str, object] = {
-            "model": route.model,
-            "messages": [
+        if self.structured_mode == "json_object":
+            schema_hint = (
+                "\n\nTrả về DUY NHẤT một JSON object hợp lệ đúng schema sau, "
+                "không kèm giải thích:\n" + json.dumps(json_schema, ensure_ascii=False)
+            )
+            messages = [
+                {"role": "system", "content": prompt.system + schema_hint},
+                {"role": "user", "content": prompt.user},
+            ]
+            response_format: dict[str, object] = {"type": "json_object"}
+        else:
+            messages = [
                 {"role": "system", "content": prompt.system},
                 {"role": "user", "content": prompt.user},
-            ],
-            "response_format": {
+            ]
+            response_format = {
                 "type": "json_schema",
                 "json_schema": {"name": "structured_output", "schema": json_schema},
-            },
+            }
+        body: dict[str, object] = {
+            "model": route.model,
+            "messages": messages,
+            "response_format": response_format,
         }
         if max_output_tokens:
             body["max_tokens"] = max_output_tokens

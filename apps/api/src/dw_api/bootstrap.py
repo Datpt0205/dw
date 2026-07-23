@@ -53,6 +53,17 @@ from dw_platform.application.ports import (
     PlatformUnitOfWorkFactory,
     TokenVerifierPort,
 )
+from dw_tender.adapters.persistence.repositories import SqlTenderUnitOfWorkFactory
+from dw_tender.adapters.policy_loader import load_scoring_policy
+from dw_tender.application.handlers import (
+    AnalyzeCaseHandler,
+    CreateTenderCaseHandler,
+    GetTenderCaseHandler,
+    ListTenderCasesHandler,
+)
+from dw_tender.domain.services.scoring_engine import ScoringEngine
+from dw_tender.workflows.registry import register_tender_graphs
+from dw_tender.workflows.v1.services import TenderWorkflowServices
 from dw_work_ops.adapters.dispatch.tool import DispatchToolFactory
 from dw_work_ops.adapters.organization.directory import SqlOrganizationDirectory
 from dw_work_ops.adapters.persistence.repositories import SqlWorkOpsUnitOfWorkFactory
@@ -78,6 +89,14 @@ class WorkOpsHandlers:
 
 
 @dataclass
+class TenderHandlers:
+    create_case: CreateTenderCaseHandler
+    get_case: GetTenderCaseHandler
+    list_cases: ListTenderCasesHandler
+    analyze_case: AnalyzeCaseHandler
+
+
+@dataclass
 class ApiContainer:
     """Wired dependencies for the API process."""
 
@@ -92,6 +111,7 @@ class ApiContainer:
     run_store: SqlWorkerRunStore | None = None
     approval_flow: ApproveAndResumeService | None = None
     work_ops: WorkOpsHandlers | None = None
+    tender: TenderHandlers | None = None
 
     def run_context_for(self, context: AccessContext, run_id: uuid.UUID) -> RunContext:
         return RunContext(
@@ -132,7 +152,9 @@ def _build_model_adapters(settings: ApiSettings) -> dict[str, ModelProviderAdapt
         )
     if settings.openai_api_key and settings.openai_base_url:
         adapters["openai_compatible"] = OpenAICompatibleAdapter(
-            base_url=settings.openai_base_url, api_key=settings.openai_api_key
+            base_url=settings.openai_base_url,
+            api_key=settings.openai_api_key,
+            structured_mode=settings.openai_structured_mode,
         )
     if settings.profile == "production" and "openai_compatible" not in adapters:
         raise RuntimeError("production requires a real model provider")
@@ -171,6 +193,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
     run_store: SqlWorkerRunStore | None = None
     approval_flow: ApproveAndResumeService | None = None
     work_ops: WorkOpsHandlers | None = None
+    tender: TenderHandlers | None = None
 
     if settings.database_url:
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
@@ -224,9 +247,61 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 dispatch_policy=CanAutoDispatchAction(),
                 clock=clock,
                 id_generator=id_generator,
+                model_profile=settings.model_profile,
             )
+            # ---- knowledge gateway (tender evidence retrieval) ------------
+            from dw_knowledge.adapters.hash_embedding import HashEmbeddingAdapter
+            from dw_knowledge.gateway import KnowledgeGateway
+            from dw_knowledge.ports import VectorIndexPort
+
+            vector_index: VectorIndexPort
+            if settings.qdrant_url:
+                from qdrant_client import AsyncQdrantClient
+
+                from dw_knowledge.adapters.qdrant_index import QdrantVectorIndexAdapter
+
+                vector_index = QdrantVectorIndexAdapter(
+                    client=AsyncQdrantClient(url=settings.qdrant_url)
+                )
+            else:
+                # Working in-memory fallback (never production — no durability).
+                from dw_knowledge.adapters.memory_index import InMemoryVectorIndexAdapter
+
+                vector_index = InMemoryVectorIndexAdapter()
+            knowledge_gateway = KnowledgeGateway(
+                session_factory=session_factory,
+                vector_index=vector_index,
+                embeddings=HashEmbeddingAdapter(),
+                object_storage=storage,  # type: ignore[arg-type]
+                clock=clock,
+                id_generator=id_generator,
+            )
+
+            # ---- tender workflow -----------------------------------------
+            tender_uow_factory = SqlTenderUnitOfWorkFactory(session_factory)
+            scoring_engine = ScoringEngine(
+                load_scoring_policy(REPO_ROOT / "configs" / "policies" / "tender_scoring_v1.yaml")
+            )
+            tender_services = TenderWorkflowServices(
+                uow_factory=tender_uow_factory,
+                storage=storage,  # type: ignore[arg-type]
+                knowledge=knowledge_gateway,
+                model_gateway=gateway,
+                memory_service=MemoryService(
+                    session_factory=session_factory,
+                    policy=MemoryWritePolicy(),
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
+                scoring_engine=scoring_engine,
+                clock=clock,
+                id_generator=id_generator,
+                model_profile=settings.model_profile,
+            )
+
             graph_registry = GraphRegistry()
             register_work_ops_graphs(graph_registry, services)
+            register_tender_graphs(graph_registry, tender_services)
             worker_registry = WorkerRegistry(graph_registry=graph_registry)
             worker_registry.load_directory(REPO_ROOT / "configs" / "workers")
 
@@ -271,6 +346,28 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     id_generator=id_generator,
                 ),
             )
+            tender = TenderHandlers(
+                create_case=CreateTenderCaseHandler(
+                    uow_factory=tender_uow_factory,
+                    storage=storage,  # type: ignore[arg-type]
+                    authorization=authorization,
+                    entitlement=entitlement,
+                    id_generator=id_generator,
+                ),
+                get_case=GetTenderCaseHandler(
+                    uow_factory=tender_uow_factory, authorization=authorization
+                ),
+                list_cases=ListTenderCasesHandler(
+                    uow_factory=tender_uow_factory, authorization=authorization
+                ),
+                analyze_case=AnalyzeCaseHandler(
+                    uow_factory=tender_uow_factory,
+                    workflow_runner=runner,
+                    authorization=authorization,
+                    entitlement=entitlement,
+                    id_generator=id_generator,
+                ),
+            )
     elif settings.profile == "production":
         settings.require_database_url()
 
@@ -286,4 +383,5 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         run_store=run_store,
         approval_flow=approval_flow,
         work_ops=work_ops,
+        tender=tender,
     )

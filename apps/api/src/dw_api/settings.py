@@ -48,7 +48,20 @@ class ApiSettings(BaseSettings):
         validation_alias=AliasChoices("DW_API_S3_BUCKET", "S3_BUCKET_ARTIFACTS"),
     )
 
+    # --- vector store ---
+    qdrant_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_QDRANT_URL", "QDRANT_URL")
+    )
+
     # --- model provider (ADR-012) ---
+    model_profile: str = Field(
+        default="balanced",
+        validation_alias=AliasChoices("DW_API_MODEL_PROFILE", "DW_MODEL_PROFILE_ID"),
+    )
+    openai_structured_mode: str = Field(
+        default="json_schema",
+        validation_alias=AliasChoices("DW_API_OPENAI_STRUCTURED_MODE"),
+    )
     model_provider: str = Field(
         default="mock", validation_alias=AliasChoices("DW_API_MODEL_PROVIDER", "DW_MODEL_PROVIDER")
     )

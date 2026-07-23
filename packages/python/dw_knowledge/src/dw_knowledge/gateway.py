@@ -8,7 +8,7 @@ search → evidence pack with provenance.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import sqlalchemy as sa
 from pydantic import BaseModel, ConfigDict, Field
@@ -82,14 +82,18 @@ class KnowledgeGateway:
     object_storage: ObjectStoragePort
     clock: UtcClock
     id_generator: IdGenerator
+    _ready: bool = field(default=False, init=False)
 
     async def ensure_ready(self) -> None:
-        await self.vector_index.ensure_ready(self.embeddings.dimension)
+        if not self._ready:
+            await self.vector_index.ensure_ready(self.embeddings.dimension)
+            self._ready = True
 
     # ------------------------------------------------------------ ingestion --
     async def ingest_document(
         self, command: IngestDocumentCommand, context: AccessContext
     ) -> IngestedDocument:
+        await self.ensure_ready()
         document_id = self.id_generator.new_uuid()
         storage_key = f"{context.tenant_id}/{context.workspace_id}/documents/{document_id}"
         source_uri = await self.object_storage.put_object(

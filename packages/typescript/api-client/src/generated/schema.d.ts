@@ -106,6 +106,58 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/procurement/cases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List All */
+    get: operations["list_all_api_v1_procurement_cases_get"];
+    put?: never;
+    /** Create */
+    post: operations["create_api_v1_procurement_cases_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/procurement/cases/{case_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get */
+    get: operations["get_api_v1_procurement_cases__case_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/procurement/cases/{case_id}/analyze": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Analyze */
+    post: operations["analyze_api_v1_procurement_cases__case_id__analyze_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/ready": {
     parameters: {
       query?: never;
@@ -245,6 +297,14 @@ export interface components {
       /** Title */
       title: string;
     };
+    /** AnalyzeResponse */
+    AnalyzeResponse: {
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+    };
     /** ApprovalView */
     ApprovalView: {
       /** Approval Type */
@@ -290,6 +350,26 @@ export interface components {
       resource_type: string;
       /** Trace Id */
       trace_id: string | null;
+    };
+    /** CreateCaseRequest */
+    CreateCaseRequest: {
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /** Documents */
+      documents: components["schemas"]["DocumentUploadRequest"][];
+      /** Title */
+      title: string;
+    };
+    /** CreateCaseResponse */
+    CreateCaseResponse: {
+      /**
+       * Case Id
+       * Format: uuid
+       */
+      case_id: string;
     };
     /** CreateMeetingRequest */
     CreateMeetingRequest: {
@@ -341,6 +421,38 @@ export interface components {
       id: string;
       /** Statement */
       statement: string;
+    };
+    /**
+     * DocumentKind
+     * @enum {string}
+     */
+    DocumentKind: "rfq" | "supplier_submission" | "other";
+    /** DocumentUploadRequest */
+    DocumentUploadRequest: {
+      /** Content */
+      content: string;
+      kind: components["schemas"]["DocumentKind"];
+      /** Supplier Name */
+      supplier_name?: string | null;
+      /** Title */
+      title: string;
+    };
+    /** FindingView */
+    FindingView: {
+      /** Evidence Count */
+      evidence_count: number;
+      /** Note */
+      note: string;
+      /** Quote */
+      quote: string | null;
+      /** Raw Score */
+      raw_score: string;
+      /** Requirement Code */
+      requirement_code: string;
+      /** Status */
+      status: string;
+      /** Supplier Name */
+      supplier_name: string;
     };
     /** GenerateActionsResponse */
     GenerateActionsResponse: {
@@ -428,6 +540,45 @@ export interface components {
       /** Status */
       status: string;
     };
+    /** RecommendationView */
+    RecommendationView: {
+      /** Confidence */
+      confidence: number;
+      /** Evidence Count */
+      evidence_count: number;
+      /** Gate Passed */
+      gate_passed: boolean;
+      /** Gate Violations */
+      gate_violations: string[];
+      /** Rationale */
+      rationale: string;
+      /** Recommended Supplier */
+      recommended_supplier: string | null;
+      /** Risks */
+      risks: string[];
+      /** Scoring Policy Version */
+      scoring_policy_version: string;
+      /** Supplier Scores */
+      supplier_scores: {
+        [key: string]: unknown;
+      }[];
+    };
+    /** RequirementView */
+    RequirementView: {
+      /** Code */
+      code: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Kind */
+      kind: string;
+      /** Statement */
+      statement: string;
+      /** Weight */
+      weight: string;
+    };
     /** RunView */
     RunView: {
       /** Approval Request Id */
@@ -455,6 +606,29 @@ export interface components {
       worker_id: string;
       /** Worker Version */
       worker_version: string;
+    };
+    /** TenderCaseView */
+    TenderCaseView: {
+      /** Description */
+      description: string;
+      /** Export Ref */
+      export_ref: string | null;
+      /** Findings */
+      findings?: components["schemas"]["FindingView"][];
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Last Run Id */
+      last_run_id: string | null;
+      recommendation?: components["schemas"]["RecommendationView"] | null;
+      /** Requirements */
+      requirements?: components["schemas"]["RequirementView"][];
+      /** Status */
+      status: string;
+      /** Title */
+      title: string;
     };
     /** TimelineEvent */
     TimelineEvent: {
@@ -651,6 +825,121 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["MeResponse"];
+        };
+      };
+    };
+  };
+  list_all_api_v1_procurement_cases_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TenderCaseView"][];
+        };
+      };
+    };
+  };
+  create_api_v1_procurement_cases_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateCaseRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreateCaseResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_api_v1_procurement_cases__case_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        case_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TenderCaseView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  analyze_api_v1_procurement_cases__case_id__analyze_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        case_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AnalyzeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };
