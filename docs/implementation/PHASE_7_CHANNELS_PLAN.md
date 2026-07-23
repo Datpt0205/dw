@@ -9,10 +9,10 @@
 
 ## Mục tiêu end-to-end
 
-> Quăng transcript vào bot Zalo → BE chạy luồng work_ops: tóm tắt, phân tích
-> (điểm tốt / chưa tốt / khuyến nghị), action items có người phụ trách →
-> approval (human-in-command, giữ nguyên A2) → dispatch task qua Slack thật →
-> bot Zalo trả về tóm tắt + link phê duyệt.
+> Quăng transcript vào bot Telegram (hoặc khung chat trên web) → BE chạy luồng
+> work_ops: tóm tắt, phân tích (điểm tốt / chưa tốt / khuyến nghị), action
+> items có người phụ trách → approval (human-in-command, giữ nguyên A2) →
+> dispatch task qua Slack thật → bot trả về tóm tắt + link phê duyệt.
 
 ## Phase 7A — Slack connector thật (thay Mock, config-switch)
 
@@ -66,28 +66,16 @@
 - Unit schema + node routing; integration E2E work_ops assert analysis có mặt
   và quote grounded; contract regen OpenAPI.
 
-## Phase 7C — Telegram bot intake (đã code: apps/api/src/dw_api/channels/telegram.py)
+## Phase 7C — Telegram bot intake (DONE)
 
-### Scope
-
-- Route `POST /api/v1/channels/zalo/webhook` (public, verify chữ ký
-  `X-ZEvent-Signature` bằng `ZALO_OA_SECRET` — fail closed nếu thiếu).
-- Bảng `platform.channel_identities` (tenant_id, channel='zalo', external_user_id,
-  user_id, RLS như thường) + seed mapping demo.
-- Luồng: nhận message text/file → resolve identity (không map được → trả hướng dẫn,
-  không tạo gì) → tạo meeting + start run (context từ user đã map, KHÔNG phải
-  service account ẩn danh — giữ audit đúng người) → khi run pause ở approval →
-  gọi Zalo OA API gửi lại: headline tóm tắt + số action + link `/approvals`.
-- Zalo adapter trong `dw_connectors` (gửi message qua OA API, token trong env,
-  SSRF allowlist `openapi.zalo.me`).
-- Webhook exempt rate-limit riêng? Không — giữ limit theo IP, Zalo gọi ít.
-- Lưu ý: webhook cần URL public — local dev dùng tunnel (cloudflared/ngrok),
-  ghi vào runbook.
-
-### Chuẩn bị từ phía người dùng
-
-- Zalo OA (Official Account) + app trên developers.zalo.me, lấy OA access token
-    - secret; cấu hình webhook URL.
+- `apps/api/src/dw_api/channels/telegram.py`: long-polling `getUpdates`
+  (không cần webhook/tunnel); transcript trong chat → tạo meeting → chạy graph
+  → trả về điểm chất lượng họp + điểm tốt/chưa tốt + link phê duyệt.
+- Identity: Telegram user id → subject qua `configs/demo/channel_identities.yaml`;
+  membership vẫn verify trong DB — chat không bao giờ là authorization.
+- Khung chat native trên web (`apps/web/components/assistant-chat.tsx`) dùng
+  cùng luồng, không phụ thuộc nền tảng ngoài.
+- Env: `TELEGRAM_BOT_TOKEN` (BotFather).
 
 ## Phase 7D (sau, tuỳ chọn)
 

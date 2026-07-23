@@ -125,19 +125,22 @@ Keycloak (OIDC mode): realm `dw` được import từ [infra/keycloak/dw-realm.j
 
 ## Luồng demo end-to-end
 
-1. **Work Ops**: Web → Work Ops → tạo meeting (dùng fixture
-   `db/fixtures/transcripts/hop_giao_ban_q3.txt`) → "Sinh action items" → run
-   pause tại approval → Approvals inbox (đăng nhập `dev|binh.tran`) → Approve
-   → action được dispatch qua MockTaskConnector, external ref + audit timeline
-   hiển thị trên trang meeting.
-2. **Tender**: Web → Procurement → tạo case với 3 tài liệu fixture
-   (`db/fixtures/tender/`) → "Phân tích hồ sơ" → ma trận tuân thủ + điểm
-   deterministic (Thiết bị Việt 87.00 thắng; Vật tư Miền Nam bị loại vì giao
-   hàng 45>30 ngày) → Approve → evaluation pack xuất vào MinIO, case
-   completed.
-3. Kiểm chứng nền tảng: `/audit` (chuỗi sự kiện), `/knowledge` (tài liệu đã
-   ingest), `/memory` (fact có provenance), `/integrations` (tool + approval
-   policy), run detail có `release_manifest_ref`.
+Mở web → **Trang chủ** → bấm «Vào với vai An» (đăng nhập 1-click).
+
+1. **Đấu thầu** (`/tender`): «Tạo hồ sơ mẫu» → «Phân tích hồ sơ» → ma trận
+   tuân thủ + điểm deterministic (Thiết bị Việt 87.00 thắng; Vật tư Miền Nam
+   bị loại vì giao hàng 45>30 ngày) → Phê duyệt (đổi vai `Trần Thanh Bình`)
+   → evaluation pack xuất vào MinIO.
+2. **Cuộc họp** (`/meetings`): «Tạo cuộc họp mẫu» → «Sinh action items» →
+   tóm tắt + **phân tích chất lượng họp** (điểm /10, tốt/chưa tốt kèm trích
+   dẫn) + action items → Phê duyệt → dispatch qua connector (mock hoặc
+   Slack thật qua `DW_TASK_CONNECTOR=slack`).
+3. **Trợ lý chat** (nút 🤖 góc phải mọi trang): dán transcript → nhận phân
+   tích ngay trong khung chat. Cùng luồng với **bot Telegram** — điền
+   `TELEGRAM_BOT_TOKEN` vào `.env`, nhắn `/start` cho bot để lấy ID rồi map
+   trong `configs/demo/channel_identities.yaml`.
+4. Trang hệ thống (link cuối sidebar/Trang chủ): `/audit`, `/knowledge`,
+   `/memory`, `/integrations`; run detail có `release_manifest_ref`.
 
 ## Observability (optional)
 
