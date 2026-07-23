@@ -45,7 +45,11 @@ services:
       - "127.0.0.1:5432:5432"
     networks: [dw-internal, dw-edge]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d dw || pg_isready -U $${POSTGRES_USER}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d dw || pg_isready -U $${POSTGRES_USER}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -72,7 +76,8 @@ services:
   valkey:
     image: valkey/valkey:8-alpine
     profiles: ["infra", "full", "observability"]
-    command: ["valkey-server", "--maxmemory-policy", "noeviction", "--save", "60", "1"]
+    command:
+      ["valkey-server", "--maxmemory-policy", "noeviction", "--save", "60", "1"]
     volumes:
       - valkey-data:/data
     ports:
@@ -269,7 +274,11 @@ services:
       - clickhouse-data:/var/lib/clickhouse
     networks: [dw-internal]
     healthcheck:
-      test: ["CMD-SHELL", "clickhouse-client --user langfuse --password $${CLICKHOUSE_PASSWORD} -q 'SELECT 1'"]
+      test:
+        [
+          "CMD-SHELL",
+          "clickhouse-client --user langfuse --password $${CLICKHOUSE_PASSWORD} -q 'SELECT 1'",
+        ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -320,7 +329,11 @@ services:
       langfuse-worker:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/public/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O /dev/null http://127.0.0.1:3000/api/public/health || exit 1",
+        ]
       interval: 15s
       timeout: 5s
       retries: 10

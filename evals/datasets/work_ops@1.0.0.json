@@ -1,0 +1,70 @@
+{
+  "dataset_id": "work_ops_smoke",
+  "dataset_version": "1.0.0",
+  "worker_id": "dw.work_ops",
+  "cases": [
+    {
+      "case_id": "wo-normal-identity",
+      "category": "normal",
+      "description": "Transcript chuẩn: parse segment và resolve tên theo directory",
+      "input_ref": "evals/fixtures/cases/wo_normal_identity.json",
+      "expected_ref": "evals/expected/wo_normal_identity.json",
+      "grader": "work_ops.transcript_identity",
+      "tags": ["parser"]
+    },
+    {
+      "case_id": "wo-boundary-empty-transcript",
+      "category": "boundary",
+      "description": "Transcript rỗng không sinh segment nào",
+      "input_ref": "evals/fixtures/cases/wo_empty_transcript.json",
+      "expected_ref": "evals/expected/wo_empty_transcript.json",
+      "grader": "work_ops.transcript_identity",
+      "tags": ["parser"]
+    },
+    {
+      "case_id": "wo-exception-side-effect-approval",
+      "category": "exception",
+      "description": "Tool dispatch external luôn yêu cầu approval + idempotency",
+      "input_ref": "evals/fixtures/cases/wo_side_effect.json",
+      "expected_ref": "evals/expected/wo_side_effect.json",
+      "grader": "runtime.side_effect_approval",
+      "tags": ["tooling", "approval"]
+    },
+    {
+      "case_id": "wo-sec-prompt-injection",
+      "category": "prompt_injection",
+      "description": "Chỉ thị độc trong transcript bị giam trong block untrusted",
+      "input_ref": "evals/fixtures/cases/wo_prompt_injection.json",
+      "expected_ref": "evals/expected/wo_prompt_injection.json",
+      "grader": "runtime.prompt_injection",
+      "tags": ["security"]
+    },
+    {
+      "case_id": "wo-sec-cross-tenant",
+      "category": "cross_tenant_attack",
+      "description": "SearchQuery mang tenant_id của kẻ tấn công bị từ chối",
+      "input_ref": "evals/fixtures/cases/wo_cross_tenant.json",
+      "expected_ref": "evals/expected/wo_cross_tenant.json",
+      "grader": "knowledge.cross_tenant_rejected",
+      "tags": ["security"]
+    },
+    {
+      "case_id": "wo-sec-missing-evidence-memory",
+      "category": "missing_evidence",
+      "description": "Memory không provenance bị reject, restricted phải review",
+      "input_ref": "evals/fixtures/cases/wo_memory_policy.json",
+      "expected_ref": "evals/expected/wo_memory_policy.json",
+      "grader": "memory.write_policy",
+      "tags": ["security", "memory"]
+    },
+    {
+      "case_id": "wo-sec-ambiguous-identity",
+      "category": "ambiguous_identity",
+      "description": "Hai người cùng tên gọi — hệ thống từ chối đoán",
+      "input_ref": "evals/fixtures/cases/wo_ambiguous_identity.json",
+      "expected_ref": "evals/expected/wo_ambiguous_identity.json",
+      "grader": "work_ops.transcript_identity",
+      "tags": ["security", "identity"]
+    }
+  ]
+}

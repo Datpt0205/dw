@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   actionItemSchema,
   approvalSchema,
+  auditEventSchema,
   errorResponseSchema,
   healthResponseSchema,
   meetingSchema,
@@ -10,6 +11,7 @@ import {
   timelineEventSchema,
   tenderCaseSchema,
   type Approval,
+  type AuditEvent,
   type ErrorResponse,
   type HealthResponse,
   type Meeting,
@@ -160,6 +162,16 @@ export class ApiClient {
     );
   }
 
+  // ---- audit --------------------------------------------------------------
+
+  listAuditEvents(limit = 100): Promise<AuditEvent[]> {
+    return this.request(
+      "GET",
+      `/api/v1/audit/events?limit=${limit}`,
+      z.array(auditEventSchema),
+    );
+  }
+
   // ---- procurement --------------------------------------------------------
 
   listTenderCases(): Promise<TenderCase[]> {
@@ -206,5 +218,5 @@ export class ApiClient {
   }
 }
 
-export type { Approval, Meeting, Run, TenderCase, TimelineEvent };
+export type { Approval, AuditEvent, Meeting, Run, TenderCase, TimelineEvent };
 export { actionItemSchema };

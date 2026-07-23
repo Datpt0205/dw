@@ -1,0 +1,10 @@
+{
+  "scores": {
+    "NCC Không Bằng Chứng": {
+      "mandatory_passed": false,
+      "eligible": false,
+      "violations_contain": ["REQ-01:missing_evidence"]
+    }
+  },
+  "top_supplier": null
+}

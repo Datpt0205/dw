@@ -1,5 +1,8 @@
 name: CI
 
+# Blueprint §24.2 — the 10 mandatory stages. Fast static jobs run in parallel;
+# docker-heavy jobs (integration, compose smoke) gate the end.
+
 on:
   push:
     branches: [main]
@@ -10,75 +13,141 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  python-quality:
-    name: Python lint · typecheck · unit · architecture
+  # 1. config / contract validation ------------------------------------------
+  contracts:
+    name: Config · contract · manifest validation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           version: "0.11.31"
           enable-cache: true
-
       - name: Sync workspace
         run: uv sync --all-packages
-
-      - name: Ruff lint
-        run: uv run ruff check .
-
-      - name: Ruff format check
-        run: uv run ruff format --check .
-
-      - name: mypy
-        run: uv run mypy
-
-      - name: Unit tests
-        run: uv run pytest -m unit
-
-      - name: Architecture tests
-        run: |
-          uv run lint-imports
-          uv run python scripts/verify_architecture.py
-
-  frontend-quality:
-    name: Frontend lint · typecheck · build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Prettier check
-        run: pnpm run format:check
-
-      - name: Lint
-        run: pnpm run lint
-
-      - name: Typecheck
-        run: pnpm run typecheck
-
-      - name: Build web
-        run: pnpm --filter @dw/web build
-
-  compose-validate:
-    name: Docker Compose config validation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Validate compose profiles
+      - name: OpenAPI snapshot is current
+        run: uv run python scripts/generate_contracts.py --check
+      - name: Release manifest is current
+        run: uv run python scripts/release_manifest.py --check
+      - name: Compose profiles validate
         run: |
           cp .env.example .env
           docker compose --env-file .env -f infra/compose/docker-compose.yml --profile infra config -q
           docker compose --env-file .env -f infra/compose/docker-compose.yml --profile full config -q
           docker compose --env-file .env -f infra/compose/docker-compose.yml --profile full --profile observability config -q
+
+  # 2, 4, 5, 8. python quality + unit + architecture + eval smoke -------------
+  python-quality:
+    name: Python lint · typecheck · unit · architecture · eval smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.31"
+          enable-cache: true
+      - name: Sync workspace
+        run: uv sync --all-packages
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: mypy
+        run: uv run mypy
+      - name: Unit tests
+        run: uv run pytest -m unit
+      - name: Architecture tests
+        run: |
+          uv run lint-imports
+          uv run python scripts/verify_architecture.py
+      - name: Eval smoke suite
+        run: uv run python scripts/run_evals.py --smoke
+
+  # 3. frontend quality -------------------------------------------------------
+  frontend-quality:
+    name: Frontend lint · typecheck · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Prettier check
+        run: pnpm run format:check
+      - name: Lint
+        run: pnpm run lint
+      - name: Typecheck
+        run: pnpm run typecheck
+      - name: Build web
+        run: pnpm --filter @dw/web build
+
+  # 7. security / dependency scan --------------------------------------------
+  security-scan:
+    name: Security · dependency scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.31"
+          enable-cache: true
+      - name: Sync workspace
+        run: uv sync --all-packages
+      - name: pip-audit (Python dependencies)
+        run: uv export --all-packages --no-emit-workspace --format requirements.txt > /tmp/requirements.txt && uvx pip-audit@2.9.0 -r /tmp/requirements.txt --disable-pip
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: pnpm audit (frontend, high+)
+        run: pnpm install --frozen-lockfile && pnpm audit --audit-level high
+
+  # 6. integration tests (real Postgres/Qdrant/Redis/MinIO) -------------------
+  integration:
+    name: Integration · RLS · checkpoint · E2E slices
+    runs-on: ubuntu-latest
+    needs: [python-quality, contracts]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.31"
+          enable-cache: true
+      - name: Sync workspace
+        run: uv sync --all-packages
+      - name: Start infra profile
+        run: |
+          cp .env.example .env
+          docker compose --env-file .env -f infra/compose/docker-compose.yml --profile infra up -d --wait
+      - name: Integration + E2E tests
+        run: uv run pytest -m integration
+      - name: Stop infra
+        if: always()
+        run: docker compose --env-file .env -f infra/compose/docker-compose.yml --profile infra down -v
+
+  # 9 + 10. container build + compose smoke ----------------------------------
+  containers:
+    name: Container build · compose smoke test
+    runs-on: ubuntu-latest
+    needs: [contracts]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start full profile
+        run: |
+          cp .env.example .env
+          docker compose --env-file .env -f infra/compose/docker-compose.yml --profile full up -d --build --wait
+      - name: "Smoke: API health"
+        run: curl --fail --retry 5 --retry-delay 3 http://localhost:8000/api/v1/health
+      - name: "Smoke: web responds"
+        run: curl --fail --retry 5 --retry-delay 3 -o /dev/null http://localhost:3000
+      - name: Container status
+        if: always()
+        run: docker compose --env-file .env -f infra/compose/docker-compose.yml --profile full ps
+      - name: Tear down
+        if: always()
+        run: docker compose --env-file .env -f infra/compose/docker-compose.yml --profile full down -v

@@ -158,6 +158,8 @@ async def test_tender_end_to_end(client: httpx.AsyncClient) -> None:
     run = (await client.get(f"/api/v1/runs/{run_id}", headers=member)).json()
     assert run["status"] == "waiting_approval", run
     approval_id = run["approval_request_id"]
+    # every run records the release it was produced by (§23)
+    assert run["release_manifest_ref"], "run must carry a release manifest reference"
 
     case = (await client.get(f"/api/v1/procurement/cases/{case_id}", headers=member)).json()
     assert case["status"] == "recommendation_ready"

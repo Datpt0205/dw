@@ -27,6 +27,8 @@ from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_kernel.errors import ConflictError, InfrastructureError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_observability.metrics import DW_RUN_TOTAL
+from dw_observability.telemetry import NullTelemetry, TelemetryPort
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.domain.approval import ApprovalRequest
 from dw_platform.domain.audit import AuditEvent
@@ -54,7 +56,24 @@ class LangGraphWorkflowRunner:
     uow_factory: PlatformUnitOfWorkFactory
     clock: UtcClock
     id_generator: IdGenerator
+    release_manifest_ref: str | None = None
+    telemetry: TelemetryPort = field(default_factory=NullTelemetry)
     _compiled: dict[tuple[str, str], Any] = field(default_factory=dict)
+
+    def _span_attributes(
+        self, run_context: RunContext, run_id: uuid.UUID, graph_version: str
+    ) -> dict[str, object]:
+        """Safe identifiers only — never prompt/content payloads (§21.2)."""
+        return {
+            "dw.tenant_id": str(run_context.tenant_id),
+            "dw.workspace_id": str(run_context.workspace_id),
+            "dw.run_id": str(run_id),
+            "dw.worker_id": run_context.worker_id,
+            "dw.worker_version": run_context.worker_version,
+            "dw.graph_version": graph_version,
+            "dw.trace_id": run_context.trace_id,
+            "dw.release_manifest_ref": self.release_manifest_ref,
+        }
 
     def _graph(self, worker_id: str, graph_version: str) -> Any:
         key = (worker_id, graph_version)
@@ -87,10 +106,17 @@ class LangGraphWorkflowRunner:
             run_context,
             graph_version=worker.definition.graph_version,
             input_payload=input_payload,
+            release_manifest_ref=self.release_manifest_ref,
         )
         await self._audit(run_context, "run.started", str(run_context.run_id))
 
-        state = await graph.ainvoke(input_payload, self._config(run_context, run_context.run_id))
+        attributes = self._span_attributes(
+            run_context, run_context.run_id, worker.definition.graph_version
+        )
+        with self.telemetry.span("dw.run.start", attributes):
+            state = await graph.ainvoke(
+                input_payload, self._config(run_context, run_context.run_id)
+            )
         await self._handle_outcome(run_context, run_context.run_id, state)
         return run_context.run_id
 
@@ -111,9 +137,11 @@ class LangGraphWorkflowRunner:
         graph = self._graph(record.worker_id, record.graph_version)
 
         await self._audit(run_context, "run.resumed", str(run_id))
-        state = await graph.ainvoke(
-            Command(resume=resume_payload), self._config(run_context, run_id)
-        )
+        attributes = self._span_attributes(run_context, run_id, record.graph_version)
+        with self.telemetry.span("dw.run.resume", attributes):
+            state = await graph.ainvoke(
+                Command(resume=resume_payload), self._config(run_context, run_id)
+            )
         await self._handle_outcome(run_context, run_id, state)
 
     # -------------------------------------------------------------- outcome --
@@ -138,12 +166,20 @@ class LangGraphWorkflowRunner:
                 str(run_id),
                 details={"approval_request_id": str(approval_id)},
             )
+            self.telemetry.add_metric(
+                DW_RUN_TOTAL,
+                1,
+                {"worker": run_context.worker_id, "status": "waiting_approval"},
+            )
             return
 
         await self.run_store.set_status(
             run_context, run_id, RunStatus.COMPLETED, result=_jsonable(state)
         )
         await self._audit(run_context, "run.completed", str(run_id))
+        self.telemetry.add_metric(
+            DW_RUN_TOTAL, 1, {"worker": run_context.worker_id, "status": "completed"}
+        )
 
     async def _create_approval(
         self, run_context: RunContext, run_id: uuid.UUID, payload: dict[str, Any]

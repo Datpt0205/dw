@@ -72,6 +72,26 @@ class ApiSettings(BaseSettings):
         default=None, validation_alias=AliasChoices("DW_API_OPENAI_BASE_URL", "OPENAI_BASE_URL")
     )
 
+    # --- observability (§21; Langfuse optional behind configuration) ---
+    otel_endpoint: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DW_API_OTEL_ENDPOINT", "OTEL_EXPORTER_OTLP_ENDPOINT"),
+    )
+    langfuse_enabled: bool = Field(
+        default=False, validation_alias=AliasChoices("DW_API_LANGFUSE_ENABLED", "LANGFUSE_ENABLED")
+    )
+    langfuse_host: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_LANGFUSE_HOST", "LANGFUSE_HOST")
+    )
+    langfuse_public_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DW_API_LANGFUSE_PUBLIC_KEY", "LANGFUSE_PUBLIC_KEY"),
+    )
+    langfuse_secret_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DW_API_LANGFUSE_SECRET_KEY", "LANGFUSE_SECRET_KEY"),
+    )
+
     def require_database_url(self) -> str:
         if not self.database_url:
             raise RuntimeError(
@@ -89,3 +109,10 @@ class ApiSettings(BaseSettings):
             self.require_database_url()
         if self.auth_mode == "oidc" and not self.oidc_issuer_url:
             raise RuntimeError("auth_mode=oidc requires DW_API_OIDC_ISSUER_URL")
+        if self.langfuse_enabled and not (
+            self.langfuse_host and self.langfuse_public_key and self.langfuse_secret_key
+        ):
+            raise RuntimeError(
+                "LANGFUSE_ENABLED requires LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY "
+                "and LANGFUSE_SECRET_KEY"
+            )

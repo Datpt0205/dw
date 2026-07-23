@@ -1,0 +1,29 @@
+name: Eval regression
+
+# Nightly + on-demand: full eval datasets against the current tree. Grows into
+# model-backed regression runs once a hosted provider key is configured.
+
+on:
+  schedule:
+    - cron: "30 19 * * *" # 02:30 Asia/Ho_Chi_Minh
+  workflow_dispatch:
+
+jobs:
+  eval-regression:
+    name: Eval datasets · security coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.31"
+          enable-cache: true
+      - name: Sync workspace
+        run: uv sync --all-packages
+      - name: Run all datasets
+        run: uv run python scripts/run_evals.py --smoke
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports
+          path: evals/reports/*.json

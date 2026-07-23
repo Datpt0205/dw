@@ -20,7 +20,7 @@ COMPOSE := docker compose --env-file .env -f infra/compose/docker-compose.yml
         db-migrate db-seed migrate seed lint format typecheck \
         test-unit test-integration test-architecture test-contract \
         test-e2e test-all eval-smoke test-eval-smoke \
-        generate-contracts release-manifest ci
+        generate-contracts release-manifest release-manifest-check ci
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -99,13 +99,8 @@ test-contract: ## API/event/tool contract tests
 test-e2e: ## End-to-end vertical slice tests (requires full stack)
 	uv run pytest -m e2e || test $$? -eq 5
 
-eval-smoke: ## Evaluation smoke suite (available from phase 5)
-	@if [ -f scripts/run_evals.py ]; then \
-		uv run python scripts/run_evals.py --smoke; \
-	else \
-		echo "ERROR: scripts/run_evals.py arrives in phase 5 (see docs/implementation/IMPLEMENTATION_PLAN.md)"; \
-		exit 1; \
-	fi
+eval-smoke: ## Evaluation smoke suite (deterministic safety-gate graders)
+	uv run python scripts/run_evals.py --smoke
 
 test-eval-smoke: eval-smoke ## Alias for eval-smoke
 
@@ -117,14 +112,12 @@ generate-contracts: ## Export OpenAPI snapshot + regenerate TS types
 	pnpm exec openapi-typescript contracts/openapi/openapi.json \
 		-o packages/typescript/api-client/src/generated/schema.d.ts
 
-release-manifest: ## Generate the immutable release manifest (phase 5)
-	@if [ -f scripts/release_manifest.py ]; then \
-		uv run python scripts/release_manifest.py; \
-	else \
-		echo "ERROR: scripts/release_manifest.py arrives in phase 5"; \
-		exit 1; \
-	fi
+release-manifest: ## Generate the immutable release manifest
+	uv run python scripts/release_manifest.py
+
+release-manifest-check: ## Verify the committed manifest matches the repo
+	uv run python scripts/release_manifest.py --check
 
 # ----------------------------------------------------------------------- ci --
-ci: lint typecheck test-unit test-architecture test-contract ## Local CI gate (grows per phase)
+ci: lint typecheck test-unit test-architecture test-contract eval-smoke release-manifest-check ## Local CI gate
 	@echo ">> local CI gate passed"

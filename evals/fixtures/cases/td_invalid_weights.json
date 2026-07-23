@@ -1,0 +1,8 @@
+{
+  "requirements": [
+    { "code": "REQ-01", "kind": "mandatory" },
+    { "code": "REQ-03", "kind": "weighted", "weight": "0.6" },
+    { "code": "REQ-04", "kind": "weighted", "weight": "0.3" }
+  ],
+  "findings": []
+}

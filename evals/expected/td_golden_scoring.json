@@ -1,0 +1,16 @@
+{
+  "scores": {
+    "Công ty TNHH Thiết bị Việt": {
+      "total": "87.00",
+      "mandatory_passed": true,
+      "eligible": true
+    },
+    "Công ty CP Vật tư Miền Nam": {
+      "total": "78.00",
+      "mandatory_passed": false,
+      "eligible": false
+    }
+  },
+  "top_supplier": "Công ty TNHH Thiết bị Việt",
+  "gate_passed": true
+}

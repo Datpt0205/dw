@@ -1,0 +1,59 @@
+{
+  "requirements": [
+    { "code": "REQ-01", "kind": "mandatory" },
+    { "code": "REQ-02", "kind": "mandatory" },
+    { "code": "REQ-03", "kind": "weighted", "weight": "0.6" },
+    { "code": "REQ-04", "kind": "weighted", "weight": "0.4" }
+  ],
+  "findings": [
+    {
+      "supplier": "Công ty TNHH Thiết bị Việt",
+      "code": "REQ-01",
+      "status": "compliant",
+      "raw_score": "100"
+    },
+    {
+      "supplier": "Công ty TNHH Thiết bị Việt",
+      "code": "REQ-02",
+      "status": "compliant",
+      "raw_score": "100"
+    },
+    {
+      "supplier": "Công ty TNHH Thiết bị Việt",
+      "code": "REQ-03",
+      "status": "compliant",
+      "raw_score": "85"
+    },
+    {
+      "supplier": "Công ty TNHH Thiết bị Việt",
+      "code": "REQ-04",
+      "status": "compliant",
+      "raw_score": "90"
+    },
+    {
+      "supplier": "Công ty CP Vật tư Miền Nam",
+      "code": "REQ-01",
+      "status": "compliant",
+      "raw_score": "100"
+    },
+    {
+      "supplier": "Công ty CP Vật tư Miền Nam",
+      "code": "REQ-02",
+      "status": "non_compliant",
+      "raw_score": "0"
+    },
+    {
+      "supplier": "Công ty CP Vật tư Miền Nam",
+      "code": "REQ-03",
+      "status": "compliant",
+      "raw_score": "90"
+    },
+    {
+      "supplier": "Công ty CP Vật tư Miền Nam",
+      "code": "REQ-04",
+      "status": "compliant",
+      "raw_score": "60"
+    }
+  ],
+  "draft_recommendation": "Công ty CP Vật tư Miền Nam"
+}

@@ -1,0 +1,28 @@
+{
+  "requirements": [
+    { "code": "REQ-01", "kind": "mandatory" },
+    { "code": "REQ-03", "kind": "weighted", "weight": "0.6" },
+    { "code": "REQ-04", "kind": "weighted", "weight": "0.4" }
+  ],
+  "findings": [
+    {
+      "supplier": "NCC Biên",
+      "code": "REQ-01",
+      "status": "compliant",
+      "raw_score": "100"
+    },
+    {
+      "supplier": "NCC Biên",
+      "code": "REQ-03",
+      "status": "compliant",
+      "raw_score": "50"
+    },
+    {
+      "supplier": "NCC Biên",
+      "code": "REQ-04",
+      "status": "compliant",
+      "raw_score": "50"
+    }
+  ],
+  "draft_recommendation": null
+}

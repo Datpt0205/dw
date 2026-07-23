@@ -1,0 +1,11 @@
+{
+  "scores": {
+    "NCC Biên": {
+      "total": "50.00",
+      "mandatory_passed": true,
+      "eligible": false
+    }
+  },
+  "top_supplier": null,
+  "violations_contain": ["no_eligible_supplier"]
+}

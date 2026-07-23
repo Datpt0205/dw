@@ -1,0 +1,40 @@
+name: Release
+
+# Tag push → verify gates, regenerate the immutable release manifest and
+# attach it (with eval reports) to the GitHub release artifacts.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  release:
+    name: Release manifest + artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.31"
+          enable-cache: true
+      - name: Sync workspace
+        run: uv sync --all-packages
+      - name: Gates (unit + architecture + evals)
+        run: |
+          uv run pytest -m unit
+          uv run lint-imports
+          uv run python scripts/verify_architecture.py
+          uv run python scripts/run_evals.py --smoke
+      - name: Generate release manifest
+        run: uv run python scripts/release_manifest.py
+      - name: Manifest matches the tagged tree
+        run: uv run python scripts/release_manifest.py --check
+      - name: Upload release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            contracts/release/manifest.json
+            contracts/release/manifest.ref
+            evals/reports/*.json

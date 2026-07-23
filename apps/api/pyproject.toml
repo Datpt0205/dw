@@ -12,6 +12,7 @@ dependencies = [
     "dw-connectors",
     "dw-work-ops",
     "dw-tender",
+    "dw-observability",
     "minio>=7.2,<8",
     "qdrant-client>=1.12,<1.15",
     "fastapi>=0.115,<1",

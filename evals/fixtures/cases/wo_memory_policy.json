@@ -1,0 +1,25 @@
+{
+  "candidates": [
+    {
+      "content": "Khách hàng lớn nhất là ACME",
+      "confidence": 0.95,
+      "has_provenance": false
+    },
+    {
+      "content": "Lương của giám đốc",
+      "confidence": 0.9,
+      "has_provenance": true,
+      "classification": "restricted"
+    },
+    {
+      "content": "Team họp định kỳ thứ hai hằng tuần",
+      "confidence": 0.9,
+      "has_provenance": true
+    },
+    {
+      "content": "Có thể Q4 sẽ đổi nhà cung cấp",
+      "confidence": 0.6,
+      "has_provenance": true
+    }
+  ]
+}
