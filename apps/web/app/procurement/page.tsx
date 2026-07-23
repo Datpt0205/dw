@@ -65,9 +65,27 @@ export default function ProcurementPage() {
     }
   }
 
+  async function createDemo() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { case_id } = await apiClient().createDemoTenderCase();
+      window.location.href = `/procurement/cases/${case_id}`;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "lỗi không rõ");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="max-w-4xl space-y-6">
-      <h1 className="text-2xl font-bold">Procurement — Tender cases</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Procurement — Tender cases</h1>
+        <Button onClick={() => void createDemo()} disabled={busy}>
+          {busy ? "Đang tạo…" : "⚡ Tạo hồ sơ mẫu"}
+        </Button>
+      </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <Card>

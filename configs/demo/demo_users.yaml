@@ -1,0 +1,34 @@
+# Dev-only demo login roster (KHÔNG dùng ở production — router /api/v1/dev/*
+# chỉ được mount khi auth_mode=dev). UUID là uuid5 deterministic khớp seed
+# (scripts/seed_demo.py, SEED_NAMESPACE); backend vẫn xác minh membership
+# trong DB trên mọi request — roster này chỉ là tiện ích đăng nhập demo.
+schema_version: "1.0"
+users:
+  - subject: dev|an.nguyen
+    display_name: Nguyễn Văn An
+    description: Nhân viên mua hàng — tạo hồ sơ, chạy phân tích
+    roles: [member]
+    tenant_id: d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d
+    tenant_name: Công ty Alpha
+    workspace_id: 64764894-718d-5558-ba17-9a2949214063
+  - subject: dev|binh.tran
+    display_name: Trần Thanh Bình
+    description: Trưởng phòng — phê duyệt đề xuất và action item
+    roles: [approver]
+    tenant_id: d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d
+    tenant_name: Công ty Alpha
+    workspace_id: 64764894-718d-5558-ba17-9a2949214063
+  - subject: dev|chi.le
+    display_name: Lê Kim Chi
+    description: Quản trị nền tảng — xem mọi trang, cấu hình
+    roles: [platform_admin, member]
+    tenant_id: d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d
+    tenant_name: Công ty Alpha
+    workspace_id: 64764894-718d-5558-ba17-9a2949214063
+  - subject: dev|bao.pham
+    display_name: Phạm Gia Bảo
+    description: Tenant Beta (kiểm chứng cách ly dữ liệu giữa tenant)
+    roles: [member]
+    tenant_id: 6634f09a-d1d7-54a6-aa23-f3f018f41f28
+    tenant_name: Công ty Beta
+    workspace_id: eda6af16-a0c4-55d3-be0b-163414390572

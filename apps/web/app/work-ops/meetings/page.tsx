@@ -46,9 +46,27 @@ export default function MeetingsPage() {
     }
   }
 
+  async function createDemo() {
+    setCreating(true);
+    setError(null);
+    try {
+      const { meeting_id } = await apiClient().createDemoMeeting();
+      window.location.href = `/work-ops/meetings/${meeting_id}`;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "lỗi không rõ");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <div className="max-w-4xl space-y-6">
-      <h1 className="text-2xl font-bold">Cuộc họp</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Cuộc họp</h1>
+        <Button onClick={() => void createDemo()} disabled={creating}>
+          {creating ? "Đang tạo…" : "⚡ Tạo cuộc họp mẫu"}
+        </Button>
+      </div>
       {error && (
         <p className="text-sm text-red-600">
           {error} — kiểm tra phiên ở trang Admin.

@@ -75,6 +75,13 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
     app.include_router(knowledge_router, prefix="/api/v1")
     app.include_router(memory_router, prefix="/api/v1")
     app.include_router(integrations_router, prefix="/api/v1")
+    # Dev-only demo login/data — never mounted in production (ADR-013).
+    settings = container.settings
+    if settings.profile != "production" and settings.auth_mode == "dev" and settings.dev_secret:
+        from dw_api.bootstrap import REPO_ROOT
+        from dw_api.routes.v1.dev import build_dev_router
+
+        app.include_router(build_dev_router(REPO_ROOT, settings.dev_secret), prefix="/api/v1")
     if container.work_ops is not None:
         from dw_api.dependencies.auth import get_access_context
         from dw_work_ops.presentation.api import build_work_ops_router

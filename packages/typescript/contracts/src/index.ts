@@ -4,3 +4,4 @@ export * from "./workops";
 export * from "./tender";
 export * from "./audit";
 export * from "./platform";
+export * from "./dev";

@@ -426,6 +426,150 @@
         "title": "DecisionView",
         "type": "object"
       },
+      "DemoCaseResponse": {
+        "properties": {
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id"
+        ],
+        "title": "DemoCaseResponse",
+        "type": "object"
+      },
+      "DemoMeetingResponse": {
+        "properties": {
+          "meeting_id": {
+            "format": "uuid",
+            "title": "Meeting Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "meeting_id"
+        ],
+        "title": "DemoMeetingResponse",
+        "type": "object"
+      },
+      "DemoUser": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "tenant_name": {
+            "title": "Tenant Name",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "display_name",
+          "description",
+          "roles",
+          "tenant_id",
+          "tenant_name",
+          "workspace_id"
+        ],
+        "title": "DemoUser",
+        "type": "object"
+      },
+      "DevSessionRequest": {
+        "properties": {
+          "subject": {
+            "minLength": 1,
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "title": "DevSessionRequest",
+        "type": "object"
+      },
+      "DevSessionResponse": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "tenant_name": {
+            "title": "Tenant Name",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "subject",
+          "display_name",
+          "roles",
+          "tenant_id",
+          "tenant_name",
+          "workspace_id",
+          "expires_at"
+        ],
+        "title": "DevSessionResponse",
+        "type": "object"
+      },
       "DocumentKind": {
         "enum": [
           "rfq",
@@ -1421,6 +1565,116 @@
         "summary": "List Events",
         "tags": [
           "audit"
+        ]
+      }
+    },
+    "/api/v1/dev/demo-users": {
+      "get": {
+        "operationId": "demo_users_api_v1_dev_demo_users_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DemoUser"
+                  },
+                  "title": "Response Demo Users Api V1 Dev Demo Users Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Demo Users",
+        "tags": [
+          "dev"
+        ]
+      }
+    },
+    "/api/v1/dev/demo/meeting": {
+      "post": {
+        "description": "Create a sample meeting from the bundled transcript (normal authz).",
+        "operationId": "create_demo_meeting_api_v1_dev_demo_meeting_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoMeetingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Create Demo Meeting",
+        "tags": [
+          "dev"
+        ]
+      }
+    },
+    "/api/v1/dev/demo/tender-case": {
+      "post": {
+        "description": "Create a sample tender case from the bundled fixtures (normal authz).",
+        "operationId": "create_demo_tender_case_api_v1_dev_demo_tender_case_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Create Demo Tender Case",
+        "tags": [
+          "dev"
+        ]
+      }
+    },
+    "/api/v1/dev/session": {
+      "post": {
+        "operationId": "create_session_api_v1_dev_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Session",
+        "tags": [
+          "dev"
         ]
       }
     },

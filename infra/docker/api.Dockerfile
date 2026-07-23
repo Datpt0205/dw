@@ -54,6 +54,8 @@ COPY --chown=dw:dw db/migrations /app/db/migrations
 COPY --chown=dw:dw configs /app/configs
 COPY --chown=dw:dw evals/fixtures /app/evals/fixtures
 COPY --chown=dw:dw contracts/release /app/contracts/release
+# Demo fixtures for the dev-only sample-data endpoints
+COPY --chown=dw:dw db/fixtures /app/db/fixtures
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

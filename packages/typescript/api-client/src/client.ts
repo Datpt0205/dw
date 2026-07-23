@@ -3,6 +3,8 @@ import {
   actionItemSchema,
   approvalSchema,
   auditEventSchema,
+  demoUserSchema,
+  devSessionSchema,
   integrationSchema,
   knowledgeDocumentSchema,
   memoryItemSchema,
@@ -15,6 +17,8 @@ import {
   tenderCaseSchema,
   type Approval,
   type AuditEvent,
+  type DemoUser,
+  type DevSessionInfo,
   type ErrorResponse,
   type Integration,
   type KnowledgeDocument,
@@ -165,6 +169,40 @@ export class ApiClient {
       "GET",
       `/api/v1/runs/${runId}/timeline`,
       z.array(timelineEventSchema),
+    );
+  }
+
+  // ---- dev demo (local only; the API refuses these in production) ---------
+
+  listDemoUsers(): Promise<DemoUser[]> {
+    return this.request(
+      "GET",
+      "/api/v1/dev/demo-users",
+      z.array(demoUserSchema),
+    );
+  }
+
+  createDevSession(subject: string): Promise<DevSessionInfo> {
+    return this.request("POST", "/api/v1/dev/session", devSessionSchema, {
+      body: { subject },
+    });
+  }
+
+  createDemoTenderCase(): Promise<{ case_id: string }> {
+    return this.request(
+      "POST",
+      "/api/v1/dev/demo/tender-case",
+      z.object({ case_id: z.string().uuid() }),
+      { body: {} },
+    );
+  }
+
+  createDemoMeeting(): Promise<{ meeting_id: string }> {
+    return this.request(
+      "POST",
+      "/api/v1/dev/demo/meeting",
+      z.object({ meeting_id: z.string().uuid() }),
+      { body: {} },
     );
   }
 
