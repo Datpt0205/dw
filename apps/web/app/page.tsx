@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  Bot,
   ClipboardList,
   FileSearch,
   LogIn,
@@ -61,17 +60,14 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-4xl flex-col justify-center gap-8 px-6 py-12">
-      <div className="text-center">
-        <span className="inline-flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-          <Bot className="size-8" />
-        </span>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight">
+    <div className="mx-auto flex max-w-3xl flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">
           Digital Worker Platform
         </h1>
-        <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
-          Chọn nghiệp vụ để bắt đầu. Máy phân tích và đề xuất — con người luôn
-          phê duyệt trước khi bất kỳ hành động thật nào xảy ra.
+        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+          Máy phân tích và đề xuất — con người luôn phê duyệt trước khi bất kỳ
+          hành động thật nào xảy ra.
         </p>
       </div>
 
@@ -178,7 +174,7 @@ export default function LandingPage() {
         </Link>
       </div>
 
-      <p className="text-center text-xs text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Trang hệ thống:{" "}
         <Link className="underline hover:text-foreground" href="/audit">
           Nhật ký

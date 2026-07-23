@@ -161,7 +161,7 @@ export default function MeetingDetailPage() {
             Action items đã sẵn sàng — chưa có việc nào được giao cho đến khi
             người có quyền duyệt.
             <Button size="sm" variant="outline" asChild>
-              <Link href="/meetings/approvals">
+              <Link href="/approvals">
                 Mở Phê duyệt <ArrowRight />
               </Link>
             </Button>

@@ -1,12 +1,5 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { ApprovalsView } from "../../../components/approvals-view";
-
-export default function MeetingApprovalsPage() {
-  return (
-    <ApprovalsView
-      typePrefix="work_ops."
-      emptyHint="Không có action item nào chờ duyệt — chạy Sinh action items ở một cuộc họp trước."
-    />
-  );
+export default function MeetingApprovalsRedirect() {
+  redirect("/approvals");
 }

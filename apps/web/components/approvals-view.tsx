@@ -39,12 +39,19 @@ const STATUS_BADGE: Record<
   cancelled: { label: "đã huỷ", variant: "secondary" },
 };
 
-/** Approval inbox scoped to one module via the approval_type prefix. */
+const MODULE_LABEL = (approvalType: string) =>
+  approvalType.startsWith("tender.")
+    ? { label: "Đấu thầu", className: "bg-blue-50 text-blue-700" }
+    : approvalType.startsWith("work_ops.")
+      ? { label: "Cuộc họp", className: "bg-emerald-50 text-emerald-700" }
+      : null;
+
+/** Approval inbox; optionally scoped by approval_type prefix. */
 export function ApprovalsView({
   typePrefix,
   emptyHint,
 }: {
-  typePrefix: string;
+  typePrefix?: string;
   emptyHint: string;
 }) {
   const [approvals, setApprovals] = useState<Approval[] | null>(null);
@@ -57,7 +64,11 @@ export function ApprovalsView({
     apiClient()
       .listApprovals()
       .then((all) =>
-        setApprovals(all.filter((a) => a.approval_type.startsWith(typePrefix))),
+        setApprovals(
+          typePrefix
+            ? all.filter((a) => a.approval_type.startsWith(typePrefix))
+            : all,
+        ),
       )
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : "lỗi không rõ"),
@@ -119,7 +130,19 @@ export function ApprovalsView({
           <Card key={approval.id} className="border-warning/50">
             <CardHeader>
               <CardTitle className="flex items-center justify-between text-base">
-                {approval.approval_type}
+                <span className="flex items-center gap-2">
+                  {(() => {
+                    const moduleTag = MODULE_LABEL(approval.approval_type);
+                    return moduleTag ? (
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${moduleTag.className}`}
+                      >
+                        {moduleTag.label}
+                      </span>
+                    ) : null;
+                  })()}
+                  {approval.approval_type}
+                </span>
                 <Badge variant={badge.variant}>{badge.label}</Badge>
               </CardTitle>
               <CardDescription>{approval.reason}</CardDescription>

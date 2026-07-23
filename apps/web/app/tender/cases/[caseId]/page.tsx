@@ -172,7 +172,7 @@ export default function TenderCaseDetailPage() {
           <AlertDescription className="flex items-center justify-between gap-3">
             Đề xuất đã sẵn sàng — cần người có quyền duyệt quyết định.
             <Button size="sm" variant="outline" asChild>
-              <Link href="/tender/approvals">
+              <Link href="/approvals">
                 Mở Phê duyệt <ArrowRight />
               </Link>
             </Button>
