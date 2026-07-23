@@ -202,6 +202,10 @@ services:
       DW_API_DATABASE_URL: postgresql+asyncpg://dw_app:${DW_DB_APP_PASSWORD:?}@postgres:5432/dw
       DW_API_DEV_SECRET: ${DW_API_DEV_SECRET:-}
       DW_MODEL_PROVIDER: ${DW_MODEL_PROVIDER:-mock}
+      DW_TASK_CONNECTOR: ${DW_TASK_CONNECTOR:-mock}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_DEFAULT_CHANNEL: ${SLACK_DEFAULT_CHANNEL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       QDRANT_URL: http://qdrant:6333
       REDIS_URL: redis://valkey:6379/0
       S3_ENDPOINT_URL: http://minio:9000

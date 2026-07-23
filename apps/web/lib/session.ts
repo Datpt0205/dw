@@ -90,3 +90,10 @@ export function apiClient(): ApiClient {
     },
   });
 }
+
+/** Demo roles that may create content (approver chỉ duyệt). */
+export function canCreate(session: DevSession | null): boolean {
+  if (!session) return false;
+  if (!session.roles) return true; // manual session: let the API decide
+  return session.roles.some((r) => r === "member" || r === "platform_admin");
+}

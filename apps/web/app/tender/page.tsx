@@ -18,7 +18,7 @@ import {
   Skeleton,
   Textarea,
 } from "@dw/ui";
-import { apiClient } from "../../lib/session";
+import { apiClient, canCreate, loadSession } from "../../lib/session";
 
 const STATUS: Record<
   string,
@@ -42,6 +42,8 @@ export default function TenderCasesPage() {
   const [supplierA, setSupplierA] = useState("");
   const [supplierBName, setSupplierBName] = useState("");
   const [supplierB, setSupplierB] = useState("");
+
+  const allowed = canCreate(loadSession());
 
   const refresh = useCallback(() => {
     apiClient()
@@ -111,15 +113,25 @@ export default function TenderCasesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => void createDemo()} disabled={busy}>
+          <Button onClick={() => void createDemo()} disabled={busy || !allowed}>
             <Zap />
             {busy ? "Đang tạo…" : "Tạo hồ sơ mẫu"}
           </Button>
-          <Button variant="outline" onClick={() => setShowForm((v) => !v)}>
+          <Button
+            variant="outline"
+            onClick={() => setShowForm((v) => !v)}
+            disabled={!allowed}
+          >
             <Plus /> Tự nhập
           </Button>
         </div>
       </div>
+      {!allowed && (
+        <p className="rounded-md bg-warning/10 px-3 py-2 text-sm text-warning">
+          Vai «Người phê duyệt» chỉ duyệt, không tạo hồ sơ — sang Đăng nhập chọn
+          <strong> Nguyễn Văn An (Nhân viên)</strong> để tạo.
+        </p>
+      )}
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {showForm && (

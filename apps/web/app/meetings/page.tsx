@@ -18,7 +18,7 @@ import {
   Skeleton,
   Textarea,
 } from "@dw/ui";
-import { apiClient } from "../../lib/session";
+import { apiClient, canCreate, loadSession } from "../../lib/session";
 
 export default function MeetingsPage() {
   const router = useRouter();
@@ -28,6 +28,8 @@ export default function MeetingsPage() {
   const [title, setTitle] = useState("");
   const [transcript, setTranscript] = useState("");
   const [creating, setCreating] = useState(false);
+
+  const allowed = canCreate(loadSession());
 
   const refresh = useCallback(() => {
     apiClient()
@@ -79,15 +81,28 @@ export default function MeetingsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => void createDemo()} disabled={creating}>
+          <Button
+            onClick={() => void createDemo()}
+            disabled={creating || !allowed}
+          >
             <Zap />
             {creating ? "Đang tạo…" : "Tạo cuộc họp mẫu"}
           </Button>
-          <Button variant="outline" onClick={() => setShowForm((v) => !v)}>
+          <Button
+            variant="outline"
+            onClick={() => setShowForm((v) => !v)}
+            disabled={!allowed}
+          >
             <Plus /> Tự nhập
           </Button>
         </div>
       </div>
+      {!allowed && (
+        <p className="rounded-md bg-warning/10 px-3 py-2 text-sm text-warning">
+          Vai «Người phê duyệt» chỉ duyệt, không tạo cuộc họp — sang Đăng nhập
+          chọn <strong>Nguyễn Văn An (Nhân viên)</strong> để tạo.
+        </p>
+      )}
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {showForm && (
