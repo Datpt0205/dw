@@ -10,8 +10,8 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "build": "turbo run build",
-    "format": "prettier --write \"**/*.{ts,tsx,json,css,md,mjs}\" --ignore-path .gitignore",
-    "format:check": "prettier --check \"**/*.{ts,tsx,json,css,md,mjs}\" --ignore-path .gitignore"
+    "format": "prettier --write \"**/*.{ts,tsx,json,css,md,mjs}\" --ignore-path .gitignore --ignore-path .prettierignore",
+    "format:check": "prettier --check \"**/*.{ts,tsx,json,css,md,mjs}\" --ignore-path .gitignore --ignore-path .prettierignore"
   },
   "devDependencies": {
     "openapi-typescript": "^7.13.0",

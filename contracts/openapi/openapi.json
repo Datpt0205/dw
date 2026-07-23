@@ -120,7 +120,9 @@
             "type": "string"
           }
         },
-        "required": ["run_id"],
+        "required": [
+          "run_id"
+        ],
         "title": "AnalyzeResponse",
         "type": "object"
       },
@@ -280,7 +282,10 @@
             "type": "string"
           }
         },
-        "required": ["title", "documents"],
+        "required": [
+          "title",
+          "documents"
+        ],
         "title": "CreateCaseRequest",
         "type": "object"
       },
@@ -292,7 +297,9 @@
             "type": "string"
           }
         },
-        "required": ["case_id"],
+        "required": [
+          "case_id"
+        ],
         "title": "CreateCaseResponse",
         "type": "object"
       },
@@ -321,7 +328,11 @@
             "type": "string"
           }
         },
-        "required": ["title", "occurred_at", "transcript_text"],
+        "required": [
+          "title",
+          "occurred_at",
+          "transcript_text"
+        ],
         "title": "CreateMeetingRequest",
         "type": "object"
       },
@@ -333,7 +344,9 @@
             "type": "string"
           }
         },
-        "required": ["meeting_id"],
+        "required": [
+          "meeting_id"
+        ],
         "title": "CreateMeetingResponse",
         "type": "object"
       },
@@ -364,7 +377,9 @@
             "type": "string"
           }
         },
-        "required": ["approve"],
+        "required": [
+          "approve"
+        ],
         "title": "DecisionRequest",
         "type": "object"
       },
@@ -402,12 +417,21 @@
             "type": "string"
           }
         },
-        "required": ["id", "statement", "decided_by_name", "evidence_quote"],
+        "required": [
+          "id",
+          "statement",
+          "decided_by_name",
+          "evidence_quote"
+        ],
         "title": "DecisionView",
         "type": "object"
       },
       "DocumentKind": {
-        "enum": ["rfq", "supplier_submission", "other"],
+        "enum": [
+          "rfq",
+          "supplier_submission",
+          "other"
+        ],
         "title": "DocumentKind",
         "type": "string"
       },
@@ -440,7 +464,11 @@
             "type": "string"
           }
         },
-        "required": ["kind", "title", "content"],
+        "required": [
+          "kind",
+          "title",
+          "content"
+        ],
         "title": "DocumentUploadRequest",
         "type": "object"
       },
@@ -502,7 +530,9 @@
             "type": "string"
           }
         },
-        "required": ["run_id"],
+        "required": [
+          "run_id"
+        ],
         "title": "GenerateActionsResponse",
         "type": "object"
       },
@@ -534,8 +564,125 @@
             "type": "string"
           }
         },
-        "required": ["status", "version", "api_version"],
+        "required": [
+          "status",
+          "version",
+          "api_version"
+        ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "IntegrationView": {
+        "properties": {
+          "approval_policy": {
+            "title": "Approval Policy",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "idempotent": {
+            "title": "Idempotent",
+            "type": "boolean"
+          },
+          "required_scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Scopes",
+            "type": "array"
+          },
+          "requires_approval": {
+            "title": "Requires Approval",
+            "type": "boolean"
+          },
+          "side_effect_level": {
+            "title": "Side Effect Level",
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "title": "Timeout Seconds",
+            "type": "integer"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "version",
+          "description",
+          "side_effect_level",
+          "approval_policy",
+          "requires_approval",
+          "idempotent",
+          "timeout_seconds",
+          "required_scopes"
+        ],
+        "title": "IntegrationView",
+        "type": "object"
+      },
+      "KnowledgeDocumentView": {
+        "properties": {
+          "chunk_count": {
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "classification": {
+            "title": "Classification",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "index_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Version"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "title",
+          "domain",
+          "classification",
+          "source_version",
+          "index_version",
+          "chunk_count",
+          "created_at"
+        ],
+        "title": "KnowledgeDocumentView",
         "type": "object"
       },
       "MeResponse": {
@@ -668,6 +815,62 @@
         "title": "MeetingView",
         "type": "object"
       },
+      "MemoryItemView": {
+        "properties": {
+          "classification": {
+            "title": "Classification",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_by_run_id": {
+            "format": "uuid",
+            "title": "Created By Run Id",
+            "type": "string"
+          },
+          "memory_id": {
+            "format": "uuid",
+            "title": "Memory Id",
+            "type": "string"
+          },
+          "memory_type": {
+            "title": "Memory Type",
+            "type": "string"
+          },
+          "provenance_count": {
+            "title": "Provenance Count",
+            "type": "integer"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "title": "Valid From",
+            "type": "string"
+          },
+          "worker_id": {
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id",
+          "worker_id",
+          "memory_type",
+          "content",
+          "confidence",
+          "classification",
+          "provenance_count",
+          "valid_from",
+          "created_by_run_id"
+        ],
+        "title": "MemoryItemView",
+        "type": "object"
+      },
       "ReadinessResponse": {
         "properties": {
           "checks": {
@@ -682,7 +885,10 @@
             "type": "string"
           }
         },
-        "required": ["status", "checks"],
+        "required": [
+          "status",
+          "checks"
+        ],
         "title": "ReadinessResponse",
         "type": "object"
       },
@@ -780,7 +986,13 @@
             "type": "string"
           }
         },
-        "required": ["id", "code", "statement", "kind", "weight"],
+        "required": [
+          "id",
+          "code",
+          "statement",
+          "kind",
+          "weight"
+        ],
         "title": "RequirementView",
         "type": "object"
       },
@@ -1026,7 +1238,11 @@
             "type": "string"
           }
         },
-        "required": ["loc", "msg", "type"],
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
         "title": "ValidationError",
         "type": "object"
       }
@@ -1058,7 +1274,9 @@
           }
         },
         "summary": "List Pending",
-        "tags": ["approvals"]
+        "tags": [
+          "approvals"
+        ]
       }
     },
     "/api/v1/approvals/{approval_id}": {
@@ -1099,7 +1317,9 @@
           }
         },
         "summary": "Get Approval",
-        "tags": ["approvals"]
+        "tags": [
+          "approvals"
+        ]
       }
     },
     "/api/v1/approvals/{approval_id}/decisions": {
@@ -1150,7 +1370,9 @@
           }
         },
         "summary": "Decide",
-        "tags": ["approvals"]
+        "tags": [
+          "approvals"
+        ]
       }
     },
     "/api/v1/audit/events": {
@@ -1197,7 +1419,9 @@
           }
         },
         "summary": "List Events",
-        "tags": ["audit"]
+        "tags": [
+          "audit"
+        ]
       }
     },
     "/api/v1/health": {
@@ -1216,7 +1440,83 @@
           }
         },
         "summary": "Health",
-        "tags": ["health"]
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/integrations": {
+      "get": {
+        "operationId": "list_integrations_api_v1_integrations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IntegrationView"
+                  },
+                  "title": "Response List Integrations Api V1 Integrations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Integrations",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/api/v1/knowledge/documents": {
+      "get": {
+        "operationId": "list_documents_api_v1_knowledge_documents_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeDocumentView"
+                  },
+                  "title": "Response List Documents Api V1 Knowledge Documents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Documents",
+        "tags": [
+          "knowledge"
+        ]
       }
     },
     "/api/v1/me": {
@@ -1235,7 +1535,58 @@
           }
         },
         "summary": "Me",
-        "tags": ["identity"]
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/memory/items": {
+      "get": {
+        "operationId": "list_items_api_v1_memory_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryItemView"
+                  },
+                  "title": "Response List Items Api V1 Memory Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Items",
+        "tags": [
+          "memory"
+        ]
       }
     },
     "/api/v1/procurement/cases": {
@@ -1258,7 +1609,9 @@
           }
         },
         "summary": "List All",
-        "tags": ["procurement"]
+        "tags": [
+          "procurement"
+        ]
       },
       "post": {
         "operationId": "create_api_v1_procurement_cases_post",
@@ -1295,7 +1648,9 @@
           }
         },
         "summary": "Create",
-        "tags": ["procurement"]
+        "tags": [
+          "procurement"
+        ]
       }
     },
     "/api/v1/procurement/cases/{case_id}": {
@@ -1336,7 +1691,9 @@
           }
         },
         "summary": "Get",
-        "tags": ["procurement"]
+        "tags": [
+          "procurement"
+        ]
       }
     },
     "/api/v1/procurement/cases/{case_id}/analyze": {
@@ -1377,7 +1734,9 @@
           }
         },
         "summary": "Analyze",
-        "tags": ["procurement"]
+        "tags": [
+          "procurement"
+        ]
       }
     },
     "/api/v1/ready": {
@@ -1396,7 +1755,9 @@
           }
         },
         "summary": "Ready",
-        "tags": ["health"]
+        "tags": [
+          "health"
+        ]
       }
     },
     "/api/v1/runs/{run_id}": {
@@ -1437,7 +1798,9 @@
           }
         },
         "summary": "Get Run",
-        "tags": ["runs"]
+        "tags": [
+          "runs"
+        ]
       }
     },
     "/api/v1/runs/{run_id}/timeline": {
@@ -1482,7 +1845,9 @@
           }
         },
         "summary": "Get Timeline",
-        "tags": ["runs"]
+        "tags": [
+          "runs"
+        ]
       }
     },
     "/api/v1/work-ops/meetings": {
@@ -1505,7 +1870,9 @@
           }
         },
         "summary": "List All",
-        "tags": ["work-ops"]
+        "tags": [
+          "work-ops"
+        ]
       },
       "post": {
         "operationId": "create_api_v1_work_ops_meetings_post",
@@ -1542,7 +1909,9 @@
           }
         },
         "summary": "Create",
-        "tags": ["work-ops"]
+        "tags": [
+          "work-ops"
+        ]
       }
     },
     "/api/v1/work-ops/meetings/{meeting_id}": {
@@ -1583,7 +1952,9 @@
           }
         },
         "summary": "Get",
-        "tags": ["work-ops"]
+        "tags": [
+          "work-ops"
+        ]
       }
     },
     "/api/v1/work-ops/meetings/{meeting_id}/generate-actions": {
@@ -1624,7 +1995,9 @@
           }
         },
         "summary": "Generate",
-        "tags": ["work-ops"]
+        "tags": [
+          "work-ops"
+        ]
       }
     }
   }

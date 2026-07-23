@@ -72,6 +72,21 @@ class ApiSettings(BaseSettings):
         default=None, validation_alias=AliasChoices("DW_API_OPENAI_BASE_URL", "OPENAI_BASE_URL")
     )
 
+    # --- hardening ---
+    rate_limit_per_minute: int = Field(
+        default=240,
+        ge=0,  # 0 disables (tests); per-caller fixed window
+        validation_alias=AliasChoices("DW_API_RATE_LIMIT_PER_MINUTE"),
+    )
+    outbound_allowed_hosts: list[str] = Field(
+        default=[],
+        validation_alias=AliasChoices("DW_API_OUTBOUND_ALLOWED_HOSTS"),
+    )
+
+    def outbound_allow_private(self) -> bool:
+        """Local/test may call localhost providers (Ollama, vLLM); prod never."""
+        return self.profile != "production"
+
     # --- observability (§21; Langfuse optional behind configuration) ---
     otel_endpoint: str | None = Field(
         default=None,

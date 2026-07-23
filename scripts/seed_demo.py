@@ -38,7 +38,14 @@ ROLES = [
     {
         "key": "approver",
         "name": "Approver",
-        "scopes": ["approvals.read", "approvals.decide", "work_ops.read", "tender.read"],
+        "scopes": [
+            "approvals.read",
+            "approvals.decide",
+            "work_ops.read",
+            "tender.read",
+            "knowledge.read",
+            "memory.read",
+        ],
     },
     {
         "key": "member",
@@ -50,6 +57,7 @@ ROLES = [
             "tender.write",
             "approvals.read",
             "knowledge.read",
+            "memory.read",
         ],
     },
 ]

@@ -38,7 +38,10 @@ from dw_agent_runtime.tools import ToolRegistry
 from dw_api.health import HealthService, database_probe
 from dw_api.settings import ApiSettings
 from dw_connectors.adapters.mock_task_connector import MockTaskConnectorAdapter
+from dw_kernel.net_guard import ensure_allowed_outbound_url
 from dw_kernel.ports import SystemClock, Uuid4Generator
+from dw_kernel.resilience import CircuitBreaker
+from dw_knowledge.gateway import KnowledgeGateway
 from dw_memory.policy import MemoryWritePolicy
 from dw_memory.service import MemoryService
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
@@ -126,6 +129,9 @@ class ApiContainer:
     approval_flow: ApproveAndResumeService | None = None
     work_ops: WorkOpsHandlers | None = None
     tender: TenderHandlers | None = None
+    knowledge_gateway: KnowledgeGateway | None = None
+    memory_service: MemoryService | None = None
+    tool_registry: ToolRegistry | None = None
 
     def run_context_for(self, context: AccessContext, run_id: uuid.UUID) -> RunContext:
         return RunContext(
@@ -165,10 +171,17 @@ def _build_model_adapters(settings: ApiSettings) -> dict[str, ModelProviderAdapt
             fixtures_dir=REPO_ROOT / "evals" / "fixtures" / "mock_model"
         )
     if settings.openai_api_key and settings.openai_base_url:
+        # SSRF guard: provider endpoints must be public unless local dev.
+        ensure_allowed_outbound_url(
+            settings.openai_base_url,
+            allow_private=settings.outbound_allow_private(),
+            allowed_hosts=tuple(settings.outbound_allowed_hosts),
+        )
         adapters["openai_compatible"] = OpenAICompatibleAdapter(
             base_url=settings.openai_base_url,
             api_key=settings.openai_api_key,
             structured_mode=settings.openai_structured_mode,
+            breaker=CircuitBreaker(clock=SystemClock(), name="model.openai_compatible"),
         )
     if settings.profile == "production" and "openai_compatible" not in adapters:
         raise RuntimeError("production requires a real model provider")
@@ -232,6 +245,9 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
     approval_flow: ApproveAndResumeService | None = None
     work_ops: WorkOpsHandlers | None = None
     tender: TenderHandlers | None = None
+    knowledge_gateway: KnowledgeGateway | None = None
+    memory_service: MemoryService | None = None
+    tool_registry: ToolRegistry | None = None
 
     if settings.database_url:
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
@@ -274,6 +290,12 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
             from dw_work_ops.application.ports import TranscriptStoragePort
 
             assert isinstance(storage, object)
+            memory_service = MemoryService(
+                session_factory=session_factory,
+                policy=MemoryWritePolicy(),
+                clock=clock,
+                id_generator=id_generator,
+            )
             work_ops_uow_factory = SqlWorkOpsUnitOfWorkFactory(session_factory)
             services = WorkOpsWorkflowServices(
                 uow_factory=work_ops_uow_factory,
@@ -281,12 +303,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 directory=SqlOrganizationDirectory(session_factory),
                 model_gateway=gateway,
                 tool_executor=tool_executor,
-                memory_service=MemoryService(
-                    session_factory=session_factory,
-                    policy=MemoryWritePolicy(),
-                    clock=clock,
-                    id_generator=id_generator,
-                ),
+                memory_service=memory_service,
                 dispatch_policy=CanAutoDispatchAction(),
                 clock=clock,
                 id_generator=id_generator,
@@ -294,7 +311,6 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
             )
             # ---- knowledge gateway (tender evidence retrieval) ------------
             from dw_knowledge.adapters.hash_embedding import HashEmbeddingAdapter
-            from dw_knowledge.gateway import KnowledgeGateway
             from dw_knowledge.ports import VectorIndexPort
 
             vector_index: VectorIndexPort
@@ -330,12 +346,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 storage=storage,  # type: ignore[arg-type]
                 knowledge=knowledge_gateway,
                 model_gateway=gateway,
-                memory_service=MemoryService(
-                    session_factory=session_factory,
-                    policy=MemoryWritePolicy(),
-                    clock=clock,
-                    id_generator=id_generator,
-                ),
+                memory_service=memory_service,
                 scoring_engine=scoring_engine,
                 clock=clock,
                 id_generator=id_generator,
@@ -429,4 +440,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         approval_flow=approval_flow,
         work_ops=work_ops,
         tender=tender,
+        knowledge_gateway=knowledge_gateway,
+        memory_service=memory_service,
+        tool_registry=tool_registry,
     )

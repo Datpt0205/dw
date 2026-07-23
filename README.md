@@ -63,14 +63,15 @@ make infra-up/-down     Bật/tắt data plane trong Docker
 make dev                API + worker + web trên host (cần infra-up)
 make docker-up/-down    Toàn bộ stack trong Docker (profile full)
 make db-migrate | migrate    Alembic upgrade head
-make db-seed    | seed       Seed demo idempotent (Phase 1)
+make db-seed    | seed       Seed demo idempotent
 make lint / format / typecheck
 make test-unit / test-integration / test-architecture / test-contract / test-e2e
-make eval-smoke | test-eval-smoke    Eval smoke suite (Phase 5)
+make eval-smoke | test-eval-smoke    Eval suite: 15 case chấm safety gate thật
 make test-all
-make generate-contracts  OpenAPI snapshot + TS client (Phase 3)
-make release-manifest    Release manifest immutable (Phase 5)
-make ci                  Toàn bộ quality gate local
+make generate-contracts        OpenAPI snapshot + TS client
+make release-manifest          Sinh release manifest immutable (content-addressed)
+make release-manifest-check    Verify manifest khớp repo (chạy trong ci)
+make ci                        Toàn bộ quality gate local (gồm eval + manifest)
 ```
 
 ## Cấu trúc monorepo
@@ -121,3 +122,42 @@ curl -H "Authorization: Bearer $TOKEN" \
 ```
 
 Keycloak (OIDC mode): realm `dw` được import từ [infra/keycloak/dw-realm.json](infra/keycloak/dw-realm.json); user demo `an.nguyen` / `demo-password`; bật bằng `DW_API_AUTH_MODE=oidc`.
+
+## Luồng demo end-to-end
+
+1. **Work Ops**: Web → Work Ops → tạo meeting (dùng fixture
+   `db/fixtures/transcripts/hop_giao_ban_q3.txt`) → "Sinh action items" → run
+   pause tại approval → Approvals inbox (đăng nhập `dev|binh.tran`) → Approve
+   → action được dispatch qua MockTaskConnector, external ref + audit timeline
+   hiển thị trên trang meeting.
+2. **Tender**: Web → Procurement → tạo case với 3 tài liệu fixture
+   (`db/fixtures/tender/`) → "Phân tích hồ sơ" → ma trận tuân thủ + điểm
+   deterministic (Thiết bị Việt 87.00 thắng; Vật tư Miền Nam bị loại vì giao
+   hàng 45>30 ngày) → Approve → evaluation pack xuất vào MinIO, case
+   completed.
+3. Kiểm chứng nền tảng: `/audit` (chuỗi sự kiện), `/knowledge` (tài liệu đã
+   ingest), `/memory` (fact có provenance), `/integrations` (tool + approval
+   policy), run detail có `release_manifest_ref`.
+
+## Observability (optional)
+
+```bash
+# OTLP collector bất kỳ
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+
+# hoặc Langfuse (profile observability của compose)
+LANGFUSE_ENABLED=true
+LANGFUSE_HOST=http://localhost:3001
+LANGFUSE_PUBLIC_KEY=pk-...
+LANGFUSE_SECRET_KEY=sk-...
+```
+
+Span/metric chỉ chứa safe identifier (worker, version, tenant id, token
+count) — không bao giờ chứa prompt content; mọi attribute qua redaction.
+
+## Tài liệu vận hành & bảo mật
+
+- [Threat model (STRIDE)](docs/threat-model/THREAT_MODEL.md)
+- [Runbooks](docs/runbooks/): local dev · approval kẹt · sự cố cách ly tenant · xoay secret
+- [ADRs](docs/adr/) — ADR-015 evals, ADR-016 observability, ADR-017 hardening
+- [Báo cáo nghiệm thu](docs/implementation/ACCEPTANCE_REPORT.md)

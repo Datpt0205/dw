@@ -16,6 +16,7 @@ from dw_agent_runtime.model.gateway import ModelUsage
 from dw_agent_runtime.model.profiles import ModelRoute
 from dw_agent_runtime.model.prompts import RenderedPrompt
 from dw_kernel.errors import InfrastructureError
+from dw_kernel.resilience import CircuitBreaker
 
 
 @dataclass
@@ -32,6 +33,7 @@ class OpenAICompatibleAdapter:
     api_key: str
     provider: str = "openai_compatible"
     structured_mode: str = "json_schema"
+    breaker: CircuitBreaker | None = None  # trips on repeated provider failures
 
     @property
     def provider_name(self) -> str:
@@ -72,6 +74,8 @@ class OpenAICompatibleAdapter:
         if max_output_tokens:
             body["max_tokens"] = max_output_tokens
 
+        if self.breaker is not None:
+            self.breaker.before_call()
         try:
             async with httpx.AsyncClient(
                 base_url=self.base_url,
@@ -82,15 +86,21 @@ class OpenAICompatibleAdapter:
                 response.raise_for_status()
                 data = response.json()
         except httpx.TimeoutException as exc:
+            if self.breaker is not None:
+                self.breaker.record_failure()
             raise InfrastructureError(
                 "model provider timed out",
                 details={"provider": self.provider, "model": route.model},
             ) from exc
         except httpx.HTTPError as exc:
+            if self.breaker is not None:
+                self.breaker.record_failure()
             raise InfrastructureError(
                 "model provider request failed",
                 details={"provider": self.provider, "error": type(exc).__name__},
             ) from exc
+        if self.breaker is not None:
+            self.breaker.record_success()
 
         try:
             content = data["choices"][0]["message"]["content"]

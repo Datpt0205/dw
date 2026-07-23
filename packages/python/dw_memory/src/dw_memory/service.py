@@ -110,3 +110,24 @@ class MemoryService:
                     )
                 )
         return ProposalResult(candidate_id=candidate_id, outcome=outcome, item=item)
+
+    async def list_items(self, context: AccessContext, *, limit: int = 100) -> list[MemoryItem]:
+        """Tenant-scoped long-term memory inventory (newest first)."""
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_TENANT, {"tenant_id": str(context.tenant_id)})
+            rows = await session.execute(
+                sa.select(tables.items)
+                .where(tables.items.c.workspace_id == context.workspace_id)
+                .order_by(tables.items.c.created_at.desc())
+                .limit(limit)
+            )
+            return [
+                MemoryItem.model_validate(
+                    {
+                        **dict(row._mapping),
+                        "subject_refs": tuple(row.subject_refs),
+                        "provenance_refs": tuple(row.provenance_refs),
+                    }
+                )
+                for row in rows
+            ]

@@ -89,6 +89,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/integrations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Integrations */
+    get: operations["list_integrations_api_v1_integrations_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/knowledge/documents": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Documents */
+    get: operations["list_documents_api_v1_knowledge_documents_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/me": {
     parameters: {
       query?: never;
@@ -98,6 +132,23 @@ export interface paths {
     };
     /** Me */
     get: operations["me_api_v1_me_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/memory/items": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Items */
+    get: operations["list_items_api_v1_memory_items_get"];
     put?: never;
     post?: never;
     delete?: never;
@@ -476,6 +527,52 @@ export interface components {
       /** Version */
       version: string;
     };
+    /** IntegrationView */
+    IntegrationView: {
+      /** Approval Policy */
+      approval_policy: string;
+      /** Description */
+      description: string;
+      /** Idempotent */
+      idempotent: boolean;
+      /** Required Scopes */
+      required_scopes: string[];
+      /** Requires Approval */
+      requires_approval: boolean;
+      /** Side Effect Level */
+      side_effect_level: string;
+      /** Timeout Seconds */
+      timeout_seconds: number;
+      /** Tool */
+      tool: string;
+      /** Version */
+      version: string;
+    };
+    /** KnowledgeDocumentView */
+    KnowledgeDocumentView: {
+      /** Chunk Count */
+      chunk_count: number;
+      /** Classification */
+      classification: string;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Document Id
+       * Format: uuid
+       */
+      document_id: string;
+      /** Domain */
+      domain: string;
+      /** Index Version */
+      index_version: string | null;
+      /** Source Version */
+      source_version: string;
+      /** Title */
+      title: string;
+    };
     /** MeResponse */
     MeResponse: {
       /** Clearance */
@@ -530,6 +627,36 @@ export interface components {
       } | null;
       /** Title */
       title: string;
+    };
+    /** MemoryItemView */
+    MemoryItemView: {
+      /** Classification */
+      classification: string;
+      /** Confidence */
+      confidence: number;
+      /** Content */
+      content: string;
+      /**
+       * Created By Run Id
+       * Format: uuid
+       */
+      created_by_run_id: string;
+      /**
+       * Memory Id
+       * Format: uuid
+       */
+      memory_id: string;
+      /** Memory Type */
+      memory_type: string;
+      /** Provenance Count */
+      provenance_count: number;
+      /**
+       * Valid From
+       * Format: date-time
+       */
+      valid_from: string;
+      /** Worker Id */
+      worker_id: string;
     };
     /** ReadinessResponse */
     ReadinessResponse: {
@@ -809,6 +936,57 @@ export interface operations {
       };
     };
   };
+  list_integrations_api_v1_integrations_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IntegrationView"][];
+        };
+      };
+    };
+  };
+  list_documents_api_v1_knowledge_documents_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["KnowledgeDocumentView"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   me_api_v1_me_get: {
     parameters: {
       query?: never;
@@ -825,6 +1003,37 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["MeResponse"];
+        };
+      };
+    };
+  };
+  list_items_api_v1_memory_items_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MemoryItemView"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

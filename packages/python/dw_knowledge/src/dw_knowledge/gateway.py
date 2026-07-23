@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import sqlalchemy as sa
 from pydantic import BaseModel, ConfigDict, Field
@@ -56,6 +57,20 @@ class IngestedDocument:
     document_id: uuid.UUID
     chunk_count: int
     storage_key: str
+
+
+@dataclass(frozen=True)
+class DocumentInfo:
+    """Read-model row for the knowledge inventory page."""
+
+    document_id: uuid.UUID
+    title: str
+    domain: str
+    classification: str
+    source_version: str
+    index_version: str | None
+    chunk_count: int
+    created_at: datetime
 
 
 def build_trusted_filter(context: AccessContext, domain: str) -> TrustedSearchFilter:
@@ -162,6 +177,39 @@ class KnowledgeGateway:
             chunk_count=len(text_chunks),
             storage_key=storage_key,
         )
+
+    # -------------------------------------------------------------- listing --
+    async def list_documents(
+        self, context: AccessContext, *, limit: int = 100
+    ) -> list[DocumentInfo]:
+        """Tenant-scoped document inventory (RLS + explicit workspace filter)."""
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_TENANT, {"tenant_id": str(context.tenant_id)})
+            rows = await session.execute(
+                sa.select(
+                    tables.documents,
+                    sa.select(sa.func.count())
+                    .where(tables.chunks.c.document_id == tables.documents.c.id)
+                    .scalar_subquery()
+                    .label("chunk_count"),
+                )
+                .where(tables.documents.c.workspace_id == context.workspace_id)
+                .order_by(tables.documents.c.created_at.desc())
+                .limit(limit)
+            )
+            return [
+                DocumentInfo(
+                    document_id=row.id,
+                    title=row.title,
+                    domain=row.domain,
+                    classification=row.classification,
+                    source_version=row.source_version,
+                    index_version=row.index_version,
+                    chunk_count=row.chunk_count,
+                    created_at=row.created_at,
+                )
+                for row in rows
+            ]
 
     # ------------------------------------------------------------ retrieval --
     async def search(self, query: SearchQuery, context: AccessContext) -> list[EvidenceChunk]:

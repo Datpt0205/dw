@@ -3,6 +3,9 @@ import {
   actionItemSchema,
   approvalSchema,
   auditEventSchema,
+  integrationSchema,
+  knowledgeDocumentSchema,
+  memoryItemSchema,
   errorResponseSchema,
   healthResponseSchema,
   meetingSchema,
@@ -13,6 +16,9 @@ import {
   type Approval,
   type AuditEvent,
   type ErrorResponse,
+  type Integration,
+  type KnowledgeDocument,
+  type MemoryItem,
   type HealthResponse,
   type Meeting,
   type ReadinessResponse,
@@ -159,6 +165,32 @@ export class ApiClient {
       "GET",
       `/api/v1/runs/${runId}/timeline`,
       z.array(timelineEventSchema),
+    );
+  }
+
+  // ---- platform inventories ----------------------------------------------
+
+  listKnowledgeDocuments(limit = 100): Promise<KnowledgeDocument[]> {
+    return this.request(
+      "GET",
+      `/api/v1/knowledge/documents?limit=${limit}`,
+      z.array(knowledgeDocumentSchema),
+    );
+  }
+
+  listMemoryItems(limit = 100): Promise<MemoryItem[]> {
+    return this.request(
+      "GET",
+      `/api/v1/memory/items?limit=${limit}`,
+      z.array(memoryItemSchema),
+    );
+  }
+
+  listIntegrations(): Promise<Integration[]> {
+    return this.request(
+      "GET",
+      "/api/v1/integrations",
+      z.array(integrationSchema),
     );
   }
 
