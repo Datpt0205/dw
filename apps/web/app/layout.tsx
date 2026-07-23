@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Bot } from "lucide-react";
 import { Toaster } from "sonner";
+import { AssistantChat } from "../components/assistant-chat";
 import { NavLinks } from "../components/nav-links";
 import { SessionChip } from "../components/session-chip";
 import "./globals.css";
@@ -49,6 +50,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <main className="flex-1 p-6 md:p-8">{children}</main>
           </div>
         </div>
+        <AssistantChat />
         <Toaster richColors position="bottom-right" />
       </body>
     </html>
