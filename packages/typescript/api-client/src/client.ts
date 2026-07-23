@@ -1,11 +1,20 @@
 import { z } from "zod";
 import {
+  actionItemSchema,
+  approvalSchema,
   errorResponseSchema,
   healthResponseSchema,
+  meetingSchema,
   readinessResponseSchema,
+  runSchema,
+  timelineEventSchema,
+  type Approval,
   type ErrorResponse,
   type HealthResponse,
+  type Meeting,
   type ReadinessResponse,
+  type Run,
+  type TimelineEvent,
 } from "@dw/contracts";
 
 /**
@@ -77,4 +86,78 @@ export class ApiClient {
   getReadiness(): Promise<ReadinessResponse> {
     return this.request("GET", "/api/v1/ready", readinessResponseSchema);
   }
+
+  // ---- work-ops -----------------------------------------------------------
+
+  listMeetings(): Promise<Meeting[]> {
+    return this.request(
+      "GET",
+      "/api/v1/work-ops/meetings",
+      z.array(meetingSchema),
+    );
+  }
+
+  getMeeting(meetingId: string): Promise<Meeting> {
+    return this.request(
+      "GET",
+      `/api/v1/work-ops/meetings/${meetingId}`,
+      meetingSchema,
+    );
+  }
+
+  createMeeting(input: {
+    title: string;
+    occurred_at: string;
+    transcript_text: string;
+    transcript_filename?: string;
+  }): Promise<{ meeting_id: string }> {
+    return this.request(
+      "POST",
+      "/api/v1/work-ops/meetings",
+      z.object({ meeting_id: z.string().uuid() }),
+      { body: input },
+    );
+  }
+
+  generateActions(meetingId: string): Promise<{ run_id: string }> {
+    return this.request(
+      "POST",
+      `/api/v1/work-ops/meetings/${meetingId}/generate-actions`,
+      z.object({ run_id: z.string().uuid() }),
+      { body: {} },
+    );
+  }
+
+  // ---- approvals / runs ---------------------------------------------------
+
+  listApprovals(): Promise<Approval[]> {
+    return this.request("GET", "/api/v1/approvals", z.array(approvalSchema));
+  }
+
+  decideApproval(
+    approvalId: string,
+    decision: { approve: boolean; comment?: string },
+  ): Promise<Approval> {
+    return this.request(
+      "POST",
+      `/api/v1/approvals/${approvalId}/decisions`,
+      approvalSchema,
+      { body: decision },
+    );
+  }
+
+  getRun(runId: string): Promise<Run> {
+    return this.request("GET", `/api/v1/runs/${runId}`, runSchema);
+  }
+
+  getRunTimeline(runId: string): Promise<TimelineEvent[]> {
+    return this.request(
+      "GET",
+      `/api/v1/runs/${runId}/timeline`,
+      z.array(timelineEventSchema),
+    );
+  }
 }
+
+export type { Approval, Meeting, Run, TimelineEvent };
+export { actionItemSchema };

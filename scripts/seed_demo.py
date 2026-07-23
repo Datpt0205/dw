@@ -86,18 +86,47 @@ TENANTS = [
 ]
 
 USERS = [
-    # (subject, email, display_name, tenant_slug, roles)
-    ("dev|an.nguyen", "an.nguyen@alpha.local", "Nguyễn Văn An", "tenant-alpha", ["member"]),
-    ("dev|binh.tran", "binh.tran@alpha.local", "Trần Thị Bình", "tenant-alpha", ["approver"]),
+    # (subject, email, display_name, tenant_slug, roles, department)
+    (
+        "dev|an.nguyen",
+        "an.nguyen@alpha.local",
+        "Nguyễn Văn An",
+        "tenant-alpha",
+        ["member"],
+        "kinh-doanh",
+    ),
+    (
+        "dev|binh.tran",
+        "binh.tran@alpha.local",
+        "Trần Thị Bình",
+        "tenant-alpha",
+        ["approver", "member"],
+        "mua-hang",
+    ),
     (
         "dev|chi.le",
         "chi.le@alpha.local",
         "Lê Thị Chi",
         "tenant-alpha",
         ["platform_admin", "member"],
+        "dieu-hanh",
     ),
-    ("dev|bao.pham", "bao.pham@beta.local", "Phạm Quốc Bảo", "tenant-beta", ["member"]),
-    ("dev|dung.vo", "dung.vo@beta.local", "Võ Thị Dung", "tenant-beta", ["approver"]),
+    (
+        "dev|bao.pham",
+        "bao.pham@beta.local",
+        "Phạm Quốc Bảo",
+        "tenant-beta",
+        ["member"],
+        "kinh-doanh",
+    ),
+    (
+        "dev|dung.vo",
+        "dung.vo@beta.local",
+        "Võ Thị Dung",
+        "tenant-beta",
+        ["approver"],
+        "dieu-hanh",
+    ),
 ]
 
 
@@ -162,7 +191,7 @@ async def seed(database_url: str) -> dict[str, int]:
                     )
                 )
 
-            for subject, email, display_name, tenant_slug, role_keys in USERS:
+            for subject, email, display_name, tenant_slug, role_keys, department in USERS:
                 user_id = sid("user", subject)
                 user_stmt = pg_insert(tables.users).values(
                     id=user_id, subject=subject, email=email, display_name=display_name
@@ -183,11 +212,15 @@ async def seed(database_url: str) -> dict[str, int]:
                     workspace_id=sid("workspace", f"{tenant_slug}:main"),
                     user_id=user_id,
                     role_keys=role_keys,
+                    department=department,
                 )
                 await conn.execute(
                     membership_stmt.on_conflict_do_update(
                         constraint="uq_memberships_scope_user",
-                        set_={"role_keys": membership_stmt.excluded.role_keys},
+                        set_={
+                            "role_keys": membership_stmt.excluded.role_keys,
+                            "department": membership_stmt.excluded.department,
+                        },
                     )
                 )
 
@@ -230,8 +263,11 @@ def main() -> int:
     for name, count in counts.items():
         print(f"  {name:14s} {count}")
     print("\nDemo identities (issue tokens with scripts/issue_dev_token.py):")
-    for subject, _email, display_name, tenant_slug, roles in USERS:
-        print(f"  {subject:18s} {display_name:18s} {tenant_slug:14s} roles={','.join(roles)}")
+    for subject, _email, display_name, tenant_slug, roles, department in USERS:
+        print(
+            f"  {subject:18s} {display_name:18s} {tenant_slug:14s} "
+            f"dept={department:10s} roles={','.join(roles)}"
+        )
     print(f"\n  tenant-alpha id: {sid('tenant', 'tenant-alpha')}")
     print(f"  tenant-alpha workspace: {sid('workspace', 'tenant-alpha:main')}")
     print(f"  tenant-beta id: {sid('tenant', 'tenant-beta')}")

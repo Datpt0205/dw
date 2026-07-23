@@ -112,13 +112,10 @@ test-eval-smoke: eval-smoke ## Alias for eval-smoke
 test-all: test-unit test-architecture test-contract test-integration test-e2e ## Everything except evals
 
 # ---------------------------------------------------------------- contracts --
-generate-contracts: ## Export OpenAPI snapshot + regenerate TS client (phase 3)
-	@if [ -f scripts/generate_contracts.py ]; then \
-		uv run python scripts/generate_contracts.py; \
-	else \
-		echo "ERROR: scripts/generate_contracts.py arrives in phase 3"; \
-		exit 1; \
-	fi
+generate-contracts: ## Export OpenAPI snapshot + regenerate TS types
+	uv run python scripts/generate_contracts.py
+	pnpm exec openapi-typescript contracts/openapi/openapi.json \
+		-o packages/typescript/api-client/src/generated/schema.d.ts
 
 release-manifest: ## Generate the immutable release manifest (phase 5)
 	@if [ -f scripts/release_manifest.py ]; then \

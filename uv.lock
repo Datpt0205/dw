@@ -487,9 +487,15 @@ source = { editable = "apps/api" }
 dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
+    { name = "dw-agent-runtime" },
+    { name = "dw-connectors" },
     { name = "dw-kernel" },
+    { name = "dw-knowledge" },
+    { name = "dw-memory" },
     { name = "dw-platform" },
+    { name = "dw-work-ops" },
     { name = "fastapi" },
+    { name = "minio" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -500,9 +506,15 @@ dependencies = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.14,<2" },
     { name = "asyncpg", specifier = ">=0.30,<1" },
+    { name = "dw-agent-runtime", editable = "packages/python/dw_agent_runtime" },
+    { name = "dw-connectors", editable = "packages/python/dw_connectors" },
     { name = "dw-kernel", editable = "packages/python/dw_kernel" },
+    { name = "dw-knowledge", editable = "packages/python/dw_knowledge" },
+    { name = "dw-memory", editable = "packages/python/dw_memory" },
     { name = "dw-platform", editable = "packages/python/dw_platform" },
+    { name = "dw-work-ops", editable = "packages/python/dw_work_ops" },
     { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "minio", specifier = ">=7.2,<8" },
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pydantic-settings", specifier = ">=2.7,<3" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36,<2.1" },
@@ -634,11 +646,33 @@ name = "dw-work-ops"
 version = "0.1.0"
 source = { editable = "packages/python/dw_work_ops" }
 dependencies = [
+    { name = "dw-agent-runtime" },
+    { name = "dw-connectors" },
     { name = "dw-kernel" },
+    { name = "dw-knowledge" },
+    { name = "dw-memory" },
+    { name = "dw-platform" },
+    { name = "fastapi" },
+    { name = "langchain-core" },
+    { name = "langgraph" },
+    { name = "pydantic" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "dw-kernel", editable = "packages/python/dw_kernel" }]
+requires-dist = [
+    { name = "dw-agent-runtime", editable = "packages/python/dw_agent_runtime" },
+    { name = "dw-connectors", editable = "packages/python/dw_connectors" },
+    { name = "dw-kernel", editable = "packages/python/dw_kernel" },
+    { name = "dw-knowledge", editable = "packages/python/dw_knowledge" },
+    { name = "dw-memory", editable = "packages/python/dw_memory" },
+    { name = "dw-platform", editable = "packages/python/dw_platform" },
+    { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "langchain-core", specifier = ">=1,<2" },
+    { name = "langgraph", specifier = ">=0.6,<2" },
+    { name = "pydantic", specifier = ">=2.10,<3" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36,<2.1" },
+]
 
 [[package]]
 name = "dw-worker"

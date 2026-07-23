@@ -1,0 +1,22 @@
+{
+  "actions": [
+    {
+      "title": "Soạn hồ sơ RFQ vật tư quý 3",
+      "description": "Chuẩn bị hồ sơ RFQ cho nhóm vật tư quý 3, gồm tiêu chí đánh giá và biểu mẫu báo giá.",
+      "assignee_name": "Trần Thị Bình",
+      "due_date": "2026-07-30T10:00:00+07:00",
+      "due_date_explicit": true,
+      "risk_level": "low",
+      "source_quote": "Bình soạn hồ sơ RFQ, hạn chót sáng 30/07 nhé."
+    },
+    {
+      "title": "Tổng hợp dự báo nhu cầu vật tư từ Kinh doanh",
+      "description": "Tổng hợp dự báo nhu cầu vật tư quý 3 từ các nhóm kinh doanh và gửi cho phòng Mua hàng.",
+      "assignee_name": "Nguyễn Văn An",
+      "due_date": null,
+      "due_date_explicit": false,
+      "risk_level": "low",
+      "source_quote": "An tổng hợp dự báo nhu cầu gửi chị Bình trước khi phát hành RFQ."
+    }
+  ]
+}

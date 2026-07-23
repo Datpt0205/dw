@@ -92,6 +92,8 @@ class ApprovalRepositoryPort(Protocol):
 
     async def add_decision(self, decision: ApprovalDecision) -> None: ...
 
+    async def list_pending(self, limit: int = 50) -> list[ApprovalRequest]: ...
+
 
 class AuditRepositoryPort(Protocol):
     """Append-only audit trail; no update/delete exists by design."""
@@ -99,6 +101,8 @@ class AuditRepositoryPort(Protocol):
     async def append(self, event: AuditEvent) -> None: ...
 
     async def list_recent(self, limit: int = 50) -> list[AuditEvent]: ...
+
+    async def list_for_run(self, run_id: UUID, limit: int = 100) -> list[AuditEvent]: ...
 
 
 class OutboxRepositoryPort(Protocol):

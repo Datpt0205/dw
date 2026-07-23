@@ -75,6 +75,7 @@ memberships = sa.Table(
     sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=False),
     sa.Column("role_keys", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
     sa.Column("clearance", sa.Text, nullable=False, server_default="internal"),
+    sa.Column("department", sa.Text, nullable=False, server_default="general"),
     sa.Column(
         "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
     ),

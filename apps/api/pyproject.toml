@@ -6,6 +6,12 @@ requires-python = ">=3.12"
 dependencies = [
     "dw-kernel",
     "dw-platform",
+    "dw-agent-runtime",
+    "dw-knowledge",
+    "dw-memory",
+    "dw-connectors",
+    "dw-work-ops",
+    "minio>=7.2,<8",
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.34,<1",
     "pydantic>=2.10,<3",

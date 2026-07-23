@@ -1,0 +1,14 @@
+{
+  "decisions": [
+    {
+      "statement": "Phát hành RFQ vật tư quý 3 trước ngày 31/07",
+      "decided_by_name": "Lê Thị Chi",
+      "evidence_quote": "Chốt lại: chúng ta phát hành RFQ vật tư quý 3 trước ngày 31 tháng 7."
+    },
+    {
+      "statement": "Yêu cầu tối thiểu 3 báo giá nhà cung cấp cho mỗi nhóm vật tư",
+      "decided_by_name": "Trần Thị Bình",
+      "evidence_quote": "Mỗi nhóm vật tư phải có ít nhất ba báo giá để so sánh."
+    }
+  ]
+}

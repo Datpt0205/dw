@@ -91,6 +91,15 @@ class SqlApprovalRepository:
                 details={"request_id": str(request.id)},
             )
 
+    async def list_pending(self, limit: int = 50) -> list[ApprovalRequest]:
+        result = await self.session.execute(
+            sa.select(tables.approval_requests)
+            .where(tables.approval_requests.c.status == "pending")
+            .order_by(tables.approval_requests.c.created_at.desc())
+            .limit(limit)
+        )
+        return [_approval_from_row(row) for row in result]
+
     async def add_decision(self, decision: ApprovalDecision) -> None:
         await self.session.execute(
             sa.insert(tables.approval_decisions).values(
@@ -130,12 +139,25 @@ class SqlAuditRepository:
             )
         )
 
+    async def list_for_run(self, run_id: uuid.UUID, limit: int = 100) -> list[AuditEvent]:
+        result = await self.session.execute(
+            sa.select(tables.audit_events)
+            .where(tables.audit_events.c.run_id == run_id)
+            .order_by(tables.audit_events.c.occurred_at)
+            .limit(limit)
+        )
+        return self._map_rows(result)
+
     async def list_recent(self, limit: int = 50) -> list[AuditEvent]:
         result = await self.session.execute(
             sa.select(tables.audit_events)
             .order_by(tables.audit_events.c.occurred_at.desc())
             .limit(limit)
         )
+        return self._map_rows(result)
+
+    @staticmethod
+    def _map_rows(result: sa.engine.Result[tuple]) -> list[AuditEvent]:  # type: ignore[type-arg]
         return [
             AuditEvent(
                 id=row.id,

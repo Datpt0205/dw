@@ -15,7 +15,7 @@ from sqlalchemy.pool import NullPool
 # reuse the runtime harness (same infra, own database)
 sys.path.insert(
     0,
-    str(Path(__file__).resolve().parents[4] / "dw_agent_runtime" / "tests" / "integration"),
+    str(Path(__file__).resolve().parents[3] / "dw_agent_runtime" / "tests" / "integration"),
 )
 from runtime_harness import (
     RuntimeUrls,
