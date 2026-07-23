@@ -100,7 +100,13 @@ services:
       - "127.0.0.1:9001:9001"
     networks: [dw-internal, dw-edge]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      # UBI-micro image has no curl/grep; use bash /dev/tcp HTTP probe.
+      test:
+        - CMD-SHELL
+        - >
+          bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000;
+          printf "GET /minio/health/live HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3;
+          read -r status <&3; [[ "$$status" == *"200"* ]]'
       interval: 10s
       timeout: 5s
       retries: 6

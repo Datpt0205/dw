@@ -8,6 +8,12 @@ SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
 
+# Load local .env (if present) and export its variables to all recipes.
+ifneq (,$(wildcard .env))
+include .env
+export
+endif
+
 COMPOSE := docker compose --env-file .env -f infra/compose/docker-compose.yml
 
 .PHONY: help bootstrap infra-up infra-down dev docker-up docker-down \
@@ -42,8 +48,7 @@ docker-down: ## Stop the full stack
 
 # ----------------------------------------------------------------- database --
 db-migrate: ## Run database migrations (alias: migrate)
-	DW_DATABASE_URL="$${DW_DATABASE_URL:-$$(grep -E '^DW_DATABASE_URL=' .env | cut -d= -f2-)}" \
-		uv run alembic -c db/alembic.ini upgrade head
+	uv run alembic -c db/alembic.ini upgrade head
 
 migrate: db-migrate ## Alias for db-migrate
 

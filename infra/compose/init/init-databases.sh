@@ -5,7 +5,9 @@
 set -euo pipefail
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    CREATE ROLE dw_migrator LOGIN PASSWORD '${DW_DB_MIGRATOR_PASSWORD}' NOSUPERUSER NOBYPASSRLS CREATEDB;
+    -- Maintenance role: owns schema, runs migrations/seeds (may bypass RLS).
+    CREATE ROLE dw_migrator LOGIN PASSWORD '${DW_DB_MIGRATOR_PASSWORD}' NOSUPERUSER BYPASSRLS CREATEDB;
+    -- Runtime role: RLS ALWAYS applies (blueprint §15.3).
     CREATE ROLE dw_app LOGIN PASSWORD '${DW_DB_APP_PASSWORD}' NOSUPERUSER NOBYPASSRLS;
 
     CREATE DATABASE dw OWNER dw_migrator;

@@ -12,6 +12,7 @@ from dw_api.bootstrap import ApiContainer, build_container
 from dw_api.exception_handlers import register_exception_handlers
 from dw_api.middleware.request_id import RequestIdMiddleware
 from dw_api.routes.v1.health import build_health_router
+from dw_api.routes.v1.me import router as me_router
 
 
 def create_app(container: ApiContainer | None = None) -> FastAPI:
@@ -35,6 +36,7 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
     register_exception_handlers(app)
     app.include_router(build_health_router(container.health_service), prefix="/api/v1")
+    app.include_router(me_router, prefix="/api/v1")
     return app
 
 

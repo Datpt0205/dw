@@ -112,6 +112,7 @@ mypy_path = [
     "packages/python/dw_evals/src",
     "apps/api/src",
     "apps/worker/src",
+    "packages/python/dw_platform/tests/integration",
 ]
 explicit_package_bases = true
 namespace_packages = true
@@ -195,10 +196,10 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 name = "Domain layers never import frameworks or providers"
 type = "forbidden"
-# NOTE: add "dw_platform.domain" here when it is created in phase 1.
 source_modules = [
     "dw_tender.domain",
     "dw_work_ops.domain",
+    "dw_platform.domain",
 ]
 forbidden_modules = [
     "fastapi",

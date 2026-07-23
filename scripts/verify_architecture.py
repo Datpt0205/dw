@@ -35,6 +35,7 @@ IMPORT_TO_DIST = {
     "boto3": "boto3",
     "opentelemetry": "opentelemetry-api",
     "langfuse": "langfuse",
+    "jwt": "pyjwt",
     "dw_kernel": "dw-kernel",
     "dw_platform": "dw-platform",
     "dw_agent_runtime": "dw-agent-runtime",

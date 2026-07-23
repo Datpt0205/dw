@@ -1,0 +1,65 @@
+{
+  "realm": "dw",
+  "enabled": true,
+  "registrationAllowed": false,
+  "sslRequired": "external",
+  "defaultSignatureAlgorithm": "RS256",
+  "accessTokenLifespan": 900,
+  "clients": [
+    {
+      "clientId": "dw-web",
+      "name": "Digital Worker Web",
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": ["openid", "profile", "email", "dw-audience"]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "dw-audience",
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "dw-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "dw-api",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "an.nguyen",
+      "email": "an.nguyen@alpha.local",
+      "firstName": "An",
+      "lastName": "Nguyễn",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "demo-password", "temporary": false }
+      ]
+    },
+    {
+      "username": "binh.tran",
+      "email": "binh.tran@alpha.local",
+      "firstName": "Bình",
+      "lastName": "Trần",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "demo-password", "temporary": false }
+      ]
+    }
+  ]
+}

@@ -8,13 +8,14 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Profile = Literal["local", "test", "production"]
+AuthMode = Literal["dev", "oidc"]
 
 
 class ApiSettings(BaseSettings):
     """API process configuration, validated at startup.
 
-    In the production profile unknown critical conditions fail fast; mocks are
-    forbidden there (ADR-012).
+    In the production profile unknown critical conditions fail fast; mocks and
+    the dev identity adapter are forbidden there (ADR-012, ADR-013).
     """
 
     model_config = SettingsConfigDict(env_prefix="DW_API_", extra="ignore")
@@ -25,9 +26,26 @@ class ApiSettings(BaseSettings):
     database_url: str | None = None
     cors_origins: list[str] = []
 
+    # --- authentication (ADR-013) ---
+    auth_mode: AuthMode = "dev"
+    dev_secret: str | None = None
+    oidc_issuer_url: str | None = None
+    oidc_audience: str = "dw-api"
+
     def require_database_url(self) -> str:
         if not self.database_url:
             raise RuntimeError(
                 "DW_API_DATABASE_URL is not configured; the API cannot serve tenant data"
             )
         return self.database_url
+
+    def validate_for_profile(self) -> None:
+        """Fail fast on configurations that must never reach production."""
+        if self.profile == "production":
+            if self.auth_mode == "dev":
+                raise RuntimeError("dev auth mode is forbidden in the production profile")
+            if not self.oidc_issuer_url:
+                raise RuntimeError("OIDC issuer must be configured in production")
+            self.require_database_url()
+        if self.auth_mode == "oidc" and not self.oidc_issuer_url:
+            raise RuntimeError("auth_mode=oidc requires DW_API_OIDC_ISSUER_URL")

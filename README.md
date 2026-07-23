@@ -101,4 +101,23 @@ Chạy `make test-architecture` để kiểm tra. Chi tiết quyết định: [d
 
 ## Demo credentials
 
-Sẽ được bổ sung ở Phase 1 (seed 2 tenant + users + Keycloak realm).
+Sau `make db-migrate && make db-seed` có 2 tenant demo:
+
+| Tenant                         | Plan         | User (subject)   | Roles                  |
+| ------------------------------ | ------------ | ---------------- | ---------------------- |
+| `tenant-alpha` (Công ty Alpha) | professional | `dev\|an.nguyen` | member                 |
+|                                |              | `dev\|binh.tran` | approver               |
+|                                |              | `dev\|chi.le`    | platform_admin, member |
+| `tenant-beta` (Công ty Beta)   | basic        | `dev\|bao.pham`  | member                 |
+|                                |              | `dev\|dung.vo`   | approver               |
+
+Seed in ra tenant/workspace UUID. Gọi API bằng dev token (ADR-013):
+
+```bash
+TOKEN=$(uv run python scripts/issue_dev_token.py "dev|an.nguyen")
+curl -H "Authorization: Bearer $TOKEN" \
+     -H "X-Tenant-Id: <tenant-uuid>" -H "X-Workspace-Id: <workspace-uuid>" \
+     http://localhost:8000/api/v1/me
+```
+
+Keycloak (OIDC mode): realm `dw` được import từ [infra/keycloak/dw-realm.json](infra/keycloak/dw-realm.json); user demo `an.nguyen` / `demo-password`; bật bằng `DW_API_AUTH_MODE=oidc`.
