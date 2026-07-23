@@ -1,8 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LogIn, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
 import type { DemoUser } from "@dw/contracts";
-import { Button, Card, CardContent, CardHeader, CardTitle } from "@dw/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Textarea,
+} from "@dw/ui";
 import {
   apiClient,
   clearSession,
@@ -12,10 +24,13 @@ import {
   type DevSession,
 } from "../../lib/session";
 
-const ROLE_LABELS: Record<string, string> = {
-  member: "Nhân viên",
-  approver: "Người phê duyệt",
-  platform_admin: "Quản trị",
+const ROLE_BADGES: Record<
+  string,
+  { label: string; variant: "secondary" | "success" | "warning" }
+> = {
+  member: { label: "Nhân viên", variant: "secondary" },
+  approver: { label: "Người phê duyệt", variant: "success" },
+  platform_admin: { label: "Quản trị", variant: "warning" },
 };
 
 export default function AdminPage() {
@@ -38,55 +53,59 @@ export default function AdminPage() {
       );
   }, []);
 
-  async function handleLogin(subject: string) {
-    setBusy(subject);
+  async function handleLogin(user: DemoUser) {
+    setBusy(user.subject);
     setError(null);
     try {
-      setSession(await loginAs(subject));
+      setSession(await loginAs(user.subject));
+      toast.success(`Đã đăng nhập với vai ${user.display_name}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "lỗi không rõ");
+      const message = e instanceof Error ? e.message : "lỗi không rõ";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(null);
     }
   }
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Đăng nhập demo</h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          Chọn một nhân vật để trải nghiệm nền tảng. Backend luôn xác minh token
-          + membership trong DB trên mọi request — nút này chỉ thay cho việc dán
-          token thủ công (chỉ có ở môi trường dev).
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Đăng nhập demo
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Chọn một nhân vật. Backend vẫn xác minh token + membership trong DB
+          trên mọi request — nút này chỉ có ở môi trường dev.
         </p>
       </div>
 
       {session && (
-        <Card>
-          <CardContent className="flex items-center justify-between pt-4">
-            <div className="text-sm">
+        <Card className="border-success/40">
+          <CardContent className="flex items-center justify-between pt-5 text-sm">
+            <span className="flex items-center gap-2">
+              <ShieldCheck className="size-4 text-success" />
               Đang đăng nhập:{" "}
               <strong>
                 {session.displayName ?? session.subject ?? "thủ công"}
               </strong>
               {session.tenantName && (
-                <span className="text-slate-500"> · {session.tenantName}</span>
-              )}
-              {session.roles && (
-                <span className="ml-2 space-x-1">
-                  {session.roles.map((role) => (
-                    <span
-                      key={role}
-                      className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                    >
-                      {ROLE_LABELS[role] ?? role}
-                    </span>
-                  ))}
+                <span className="text-muted-foreground">
+                  · {session.tenantName}
                 </span>
               )}
-            </div>
+              {session.roles?.map((role) => {
+                const badge = ROLE_BADGES[role];
+                return (
+                  <Badge key={role} variant={badge?.variant ?? "secondary"}>
+                    {badge?.label ?? role}
+                  </Badge>
+                );
+              })}
+            </span>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 clearSession();
                 setSession(null);
@@ -98,41 +117,39 @@ export default function AdminPage() {
         </Card>
       )}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {users === null && !error && (
-        <p className="text-sm">Đang tải danh sách…</p>
-      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         {users?.map((user) => (
-          <Card key={user.subject}>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between text-base">
-                {user.display_name}
-                <span className="text-xs font-normal text-slate-500">
-                  {user.tenant_name}
-                </span>
-              </CardTitle>
+          <Card key={user.subject} className="flex flex-col">
+            <CardHeader className="flex-row items-center gap-3 space-y-0">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                {user.display_name.split(" ").at(-1)?.charAt(0)}
+              </span>
+              <div>
+                <CardTitle className="text-base">{user.display_name}</CardTitle>
+                <CardDescription>{user.tenant_name}</CardDescription>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <p className="text-slate-600 dark:text-slate-400">
-                {user.description}
-              </p>
-              <div className="flex items-center justify-between">
-                <span className="space-x-1">
-                  {user.roles.map((role) => (
-                    <span
-                      key={role}
-                      className="rounded bg-slate-100 px-2 py-0.5 text-xs dark:bg-slate-800"
-                    >
-                      {ROLE_LABELS[role] ?? role}
-                    </span>
-                  ))}
+            <CardContent className="flex flex-1 flex-col justify-between gap-3 text-sm">
+              <p className="text-muted-foreground">{user.description}</p>
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex flex-wrap gap-1">
+                  {user.roles.map((role) => {
+                    const badge = ROLE_BADGES[role];
+                    return (
+                      <Badge key={role} variant={badge?.variant ?? "secondary"}>
+                        {badge?.label ?? role}
+                      </Badge>
+                    );
+                  })}
                 </span>
                 <Button
-                  onClick={() => void handleLogin(user.subject)}
+                  size="sm"
+                  onClick={() => void handleLogin(user)}
                   disabled={busy !== null}
                 >
+                  <LogIn />
                   {busy === user.subject ? "Đang vào…" : "Đăng nhập"}
                 </Button>
               </div>
@@ -142,7 +159,7 @@ export default function AdminPage() {
       </div>
 
       <button
-        className="text-xs text-slate-500 underline"
+        className="text-xs text-muted-foreground underline"
         onClick={() => setShowManual((v) => !v)}
       >
         {showManual ? "Ẩn" : "Nâng cao: dán token thủ công"}
@@ -155,8 +172,8 @@ export default function AdminPage() {
           <CardContent className="space-y-3">
             <label className="block text-sm">
               Bearer token
-              <textarea
-                className="mt-1 w-full rounded-md border border-slate-300 p-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950"
+              <Textarea
+                className="mt-1 font-mono text-xs"
                 rows={3}
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
@@ -164,16 +181,16 @@ export default function AdminPage() {
             </label>
             <label className="block text-sm">
               Tenant ID
-              <input
-                className="mt-1 w-full rounded-md border border-slate-300 p-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950"
+              <Input
+                className="mt-1 font-mono text-xs"
                 value={tenantId}
                 onChange={(e) => setTenantId(e.target.value)}
               />
             </label>
             <label className="block text-sm">
               Workspace ID
-              <input
-                className="mt-1 w-full rounded-md border border-slate-300 p-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950"
+              <Input
+                className="mt-1 font-mono text-xs"
                 value={workspaceId}
                 onChange={(e) => setWorkspaceId(e.target.value)}
               />

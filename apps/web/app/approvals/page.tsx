@@ -1,9 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { BadgeCheck, CircleX, Hourglass } from "lucide-react";
+import { toast } from "sonner";
 import type { Approval } from "@dw/contracts";
-import { Button, Card, CardContent, CardHeader, CardTitle } from "@dw/ui";
-import { apiClient } from "../../lib/session";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Separator,
+} from "@dw/ui";
+import { apiClient, loadSession } from "../../lib/session";
 
 interface ApprovalActionRow {
   action_id?: string;
@@ -14,11 +26,25 @@ interface ApprovalActionRow {
   approval_reasons?: string[];
 }
 
+const STATUS_BADGE: Record<
+  Approval["status"],
+  {
+    label: string;
+    variant: "warning" | "success" | "destructive" | "secondary";
+  }
+> = {
+  pending: { label: "chờ duyệt", variant: "warning" },
+  approved: { label: "đã duyệt", variant: "success" },
+  rejected: { label: "đã từ chối", variant: "destructive" },
+  cancelled: { label: "đã huỷ", variant: "secondary" },
+};
+
 export default function ApprovalsPage() {
   const [approvals, setApprovals] = useState<Approval[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [comment, setComment] = useState("");
+  const canDecide = loadSession()?.roles?.includes("approver") ?? true;
 
   const refresh = useCallback(() => {
     apiClient()
@@ -39,59 +65,88 @@ export default function ApprovalsPage() {
     try {
       await apiClient().decideApproval(approval.id, { approve, comment });
       setComment("");
+      toast.success(
+        approve
+          ? "Đã phê duyệt — worker tiếp tục chạy và hoàn tất."
+          : "Đã từ chối — worker dừng, không có hành động nào được thực hiện.",
+      );
       refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "lỗi không rõ");
+      const message = e instanceof Error ? e.message : "lỗi không rõ";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusyId(null);
     }
   }
 
+  const pending = approvals?.filter((a) => a.status === "pending") ?? [];
+  const decided = approvals?.filter((a) => a.status !== "pending") ?? [];
+
   return (
-    <div className="max-w-4xl space-y-6">
-      <h1 className="text-2xl font-bold">Approval inbox</h1>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {approvals === null && !error && <p className="text-sm">Đang tải…</p>}
-      {approvals?.length === 0 && (
-        <p className="text-sm">Không có yêu cầu phê duyệt nào. ✨</p>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Phê duyệt</h1>
+        <p className="text-sm text-muted-foreground">
+          Worker luôn dừng tại đây trước khi thực hiện hành động thật.
+        </p>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {approvals !== null && pending.length === 0 && (
+        <Card>
+          <CardContent className="flex items-center gap-3 pt-5 text-sm text-muted-foreground">
+            <Hourglass className="size-4" />
+            Không có yêu cầu nào đang chờ — chạy một demo ở Trang chủ trước.
+          </CardContent>
+        </Card>
       )}
 
-      {approvals?.map((approval) => {
+      {pending.map((approval) => {
         const actions = (approval.payload["actions"] ??
           []) as ApprovalActionRow[];
+        const badge = STATUS_BADGE[approval.status];
         return (
-          <Card key={approval.id}>
+          <Card key={approval.id} className="border-warning/50">
             <CardHeader>
-              <CardTitle className="text-base">
-                {approval.approval_type}{" "}
-                <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
-                  {approval.status}
-                </span>
+              <CardTitle className="flex items-center justify-between text-base">
+                {approval.approval_type}
+                <Badge variant={badge.variant}>{badge.label}</Badge>
               </CardTitle>
+              <CardDescription>{approval.reason}</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <p>{approval.reason}</p>
+            <CardContent className="space-y-4 text-sm">
               {actions.length > 0 && (
-                <ul className="space-y-1 rounded-md bg-slate-50 p-3 text-xs dark:bg-slate-800/50">
+                <div className="space-y-2 rounded-lg bg-muted/50 p-3">
                   {actions.map((action, index) => (
-                    <li key={index}>
-                      <strong>{action.title}</strong> →{" "}
-                      {action.assignee ?? "chưa xác định"}
-                      {action.department ? ` (${action.department})` : ""}
-                      {action.due_date
-                        ? ` · hạn ${new Date(action.due_date).toLocaleDateString("vi-VN")}`
-                        : ""}
-                      {(action.approval_reasons?.length ?? 0) > 0 && (
-                        <span className="ml-1 text-amber-600">
-                          [{action.approval_reasons?.join(", ")}]
-                        </span>
-                      )}
-                    </li>
+                    <div
+                      key={index}
+                      className="flex flex-wrap items-center gap-2 text-xs"
+                    >
+                      <span className="font-medium">{action.title}</span>
+                      <span className="text-muted-foreground">
+                        → {action.assignee ?? "chưa xác định"}
+                        {action.department ? ` (${action.department})` : ""}
+                        {action.due_date
+                          ? ` · hạn ${new Date(action.due_date).toLocaleDateString("vi-VN")}`
+                          : ""}
+                      </span>
+                      {action.approval_reasons?.map((reason) => (
+                        <Badge key={reason} variant="warning">
+                          {reason}
+                        </Badge>
+                      ))}
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
-              <input
-                className="w-full rounded-md border border-slate-300 p-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+              {!canDecide && (
+                <p className="text-xs text-warning">
+                  Vai hiện tại không có quyền duyệt — đăng nhập lại bằng{" "}
+                  <strong>Trần Thanh Bình</strong> (Người phê duyệt).
+                </p>
+              )}
+              <Input
                 placeholder="Ghi chú quyết định (tuỳ chọn)"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
@@ -101,22 +156,50 @@ export default function ApprovalsPage() {
                   onClick={() => void decide(approval, true)}
                   disabled={busyId === approval.id}
                 >
-                  {busyId === approval.id
-                    ? "Đang xử lý…"
-                    : "Phê duyệt & giao việc"}
+                  <BadgeCheck />
+                  {busyId === approval.id ? "Đang xử lý…" : "Phê duyệt"}
                 </Button>
                 <Button
                   variant="destructive"
                   onClick={() => void decide(approval, false)}
                   disabled={busyId === approval.id}
                 >
-                  Từ chối
+                  <CircleX /> Từ chối
                 </Button>
               </div>
             </CardContent>
           </Card>
         );
       })}
+
+      {decided.length > 0 && (
+        <>
+          <Separator />
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Đã quyết định gần đây
+          </h2>
+          <div className="space-y-2">
+            {decided.slice(0, 8).map((approval) => {
+              const badge = STATUS_BADGE[approval.status];
+              return (
+                <Card key={approval.id}>
+                  <CardContent className="flex items-center justify-between pt-4 text-sm">
+                    <div>
+                      <span className="font-medium">
+                        {approval.approval_type}
+                      </span>
+                      <p className="text-xs text-muted-foreground">
+                        {approval.reason}
+                      </p>
+                    </div>
+                    <Badge variant={badge.variant}>{badge.label}</Badge>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

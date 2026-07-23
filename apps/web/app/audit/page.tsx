@@ -1,17 +1,34 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { RefreshCw, ScrollText } from "lucide-react";
 import type { AuditEvent } from "@dw/contracts";
-import { Button } from "@dw/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Input,
+  Skeleton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@dw/ui";
 import { apiClient } from "../../lib/session";
 
-const ACTION_COLORS: Record<string, string> = {
-  "run.started": "text-blue-600 dark:text-blue-400",
-  "run.waiting_approval": "text-amber-600",
-  "run.resumed": "text-blue-600 dark:text-blue-400",
-  "run.completed": "text-green-700 dark:text-green-400",
-  "approval.decided": "text-purple-600 dark:text-purple-400",
-  "tool.executed": "text-slate-700 dark:text-slate-300",
+const ACTION_VARIANTS: Record<
+  string,
+  "secondary" | "warning" | "success" | "default"
+> = {
+  "run.started": "default",
+  "run.waiting_approval": "warning",
+  "run.resumed": "default",
+  "run.completed": "success",
+  "approval.decided": "success",
+  "tool.executed": "secondary",
 };
 
 export default function AuditPage() {
@@ -41,79 +58,89 @@ export default function AuditPage() {
   );
 
   return (
-    <div className="max-w-6xl space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-6xl space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Audit trail</h1>
-          <p className="text-xs text-slate-500">
-            Chuỗi sự kiện bất biến (append-only) trong tenant hiện tại
+          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+            <ScrollText className="size-6 text-muted-foreground" />
+            Nhật ký audit
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Chuỗi sự kiện append-only trong tenant — kể cả admin cũng không sửa
+            được.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <input
+          <Input
+            className="w-56"
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            placeholder="lọc theo action / resource…"
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+            placeholder="Lọc theo action / resource…"
           />
-          <Button variant="outline" onClick={() => void refresh()}>
-            Làm mới
+          <Button variant="outline" size="icon" onClick={() => void refresh()}>
+            <RefreshCw />
           </Button>
         </div>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {events === null && !error && <p className="text-sm">Đang tải…</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {events === null && !error && <Skeleton className="h-64 w-full" />}
       {visible?.length === 0 && (
-        <p className="text-sm">Không có sự kiện audit nào khớp.</p>
+        <p className="text-sm text-muted-foreground">
+          Không có sự kiện nào khớp.
+        </p>
       )}
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-3 py-2">Thời điểm</th>
-              <th className="px-3 py-2">Action</th>
-              <th className="px-3 py-2">Resource</th>
-              <th className="px-3 py-2">Policy</th>
-              <th className="px-3 py-2">Trace</th>
-              <th className="px-3 py-2">Chi tiết</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible?.map((event, index) => (
-              <tr
-                key={index}
-                className="border-t border-slate-100 align-top dark:border-slate-800"
-              >
-                <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
-                  {new Date(event.occurred_at).toLocaleString("vi-VN")}
-                </td>
-                <td
-                  className={`px-3 py-2 font-medium ${ACTION_COLORS[event.action] ?? ""}`}
-                >
-                  {event.action}
-                </td>
-                <td className="px-3 py-2">
-                  <span className="text-xs text-slate-500">
-                    {event.resource_type}
-                  </span>
-                  <p className="font-mono text-xs">{event.resource_id}</p>
-                </td>
-                <td className="px-3 py-2 text-xs">
-                  {event.policy_decision ?? "—"}
-                </td>
-                <td className="px-3 py-2 font-mono text-xs">
-                  {event.trace_id ?? "—"}
-                </td>
-                <td className="px-3 py-2 text-xs text-slate-500">
-                  {Object.keys(event.details).length > 0
-                    ? JSON.stringify(event.details)
-                    : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+
+      {visible && visible.length > 0 && (
+        <Card>
+          <CardContent className="pt-5">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Thời điểm</TableHead>
+                  <TableHead>Hành động</TableHead>
+                  <TableHead>Đối tượng</TableHead>
+                  <TableHead>Policy</TableHead>
+                  <TableHead>Trace</TableHead>
+                  <TableHead>Chi tiết</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visible.map((event, index) => (
+                  <TableRow key={index} className="align-top">
+                    <TableCell className="whitespace-nowrap font-mono text-xs">
+                      {new Date(event.occurred_at).toLocaleString("vi-VN")}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={ACTION_VARIANTS[event.action] ?? "secondary"}
+                      >
+                        {event.action}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs text-muted-foreground">
+                        {event.resource_type}
+                      </span>
+                      <p className="font-mono text-xs">{event.resource_id}</p>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {event.policy_decision ?? "—"}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {event.trace_id ?? "—"}
+                    </TableCell>
+                    <TableCell className="max-w-64 truncate text-xs text-muted-foreground">
+                      {Object.keys(event.details).length > 0
+                        ? JSON.stringify(event.details)
+                        : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -3,9 +3,51 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import {
+  ArrowRight,
+  BadgeCheck,
+  ClipboardList,
+  ListChecks,
+  PauseCircle,
+  Play,
+  RefreshCw,
+} from "lucide-react";
+import { toast } from "sonner";
 import type { Meeting, Run, TimelineEvent } from "@dw/contracts";
-import { Button, Card, CardContent, CardHeader, CardTitle } from "@dw/ui";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Skeleton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@dw/ui";
 import { apiClient } from "../../../../lib/session";
+
+const ACTION_STATUS: Record<
+  string,
+  {
+    label: string;
+    variant: "secondary" | "warning" | "success" | "destructive";
+  }
+> = {
+  proposed: { label: "đề xuất", variant: "secondary" },
+  pending_approval: { label: "chờ duyệt", variant: "warning" },
+  approved: { label: "đã duyệt", variant: "success" },
+  dispatched: { label: "đã giao việc", variant: "success" },
+  rejected: { label: "bị từ chối", variant: "destructive" },
+};
 
 export default function MeetingDetailPage() {
   const params = useParams<{ meetingId: string }>();
@@ -25,6 +67,7 @@ export default function MeetingDetailPage() {
         setRun(await client.getRun(loaded.last_run_id));
         setTimeline(await client.getRunTimeline(loaded.last_run_id));
       }
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "lỗi không rõ");
     }
@@ -36,34 +79,52 @@ export default function MeetingDetailPage() {
 
   async function generate() {
     setBusy(true);
-    setError(null);
     try {
       await apiClient().generateActions(meetingId);
+      toast.success("Đã xử lý cuộc họp — action items đang chờ phê duyệt");
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "lỗi không rõ");
+      toast.error(e instanceof Error ? e.message : "lỗi không rõ");
     } finally {
       setBusy(false);
     }
   }
 
   if (!meeting) {
-    return <p className="text-sm">{error ?? "Đang tải…"}</p>;
+    return (
+      <div className="mx-auto max-w-5xl space-y-4">
+        {error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Không tải được cuộc họp</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : (
+          <>
+            <Skeleton className="h-8 w-1/2" />
+            <Skeleton className="h-48 w-full" />
+          </>
+        )}
+      </div>
+    );
   }
 
   const headline =
     meeting.summary && typeof meeting.summary["headline"] === "string"
       ? (meeting.summary["headline"] as string)
       : null;
+  const notProcessed = !headline && meeting.actions.length === 0;
 
   return (
-    <div className="max-w-5xl space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{meeting.title}</h1>
-          <p className="text-xs text-slate-500">
-            {new Date(meeting.occurred_at).toLocaleString("vi-VN")} · trạng
-            thái: <strong>{meeting.status}</strong>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+            <ClipboardList className="size-6 text-muted-foreground" />
+            {meeting.title}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {new Date(meeting.occurred_at).toLocaleString("vi-VN")} ·{" "}
+            <Badge variant="secondary">{meeting.status}</Badge>
           </p>
         </div>
         <div className="flex gap-2">
@@ -71,91 +132,94 @@ export default function MeetingDetailPage() {
             onClick={generate}
             disabled={busy || meeting.status === "processing"}
           >
-            {busy ? "Đang chạy…" : "Sinh action items"}
+            <Play />
+            {busy ? "Đang xử lý…" : "Sinh action items"}
           </Button>
-          <Button variant="outline" onClick={() => void refresh()}>
-            Làm mới
+          <Button variant="outline" size="icon" onClick={() => void refresh()}>
+            <RefreshCw />
           </Button>
         </div>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {run && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Worker run</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p>
-              <code className="text-xs">{run.id}</code> —{" "}
-              <strong>{run.status}</strong> ({run.worker_id}@
-              {run.worker_version}, graph {run.graph_version})
-            </p>
-            {run.status === "waiting_approval" && run.approval_request_id && (
-              <p>
-                ⏸ Đang chờ phê duyệt —{" "}
-                <Link className="text-blue-600 underline" href="/approvals">
-                  mở Approval inbox
-                </Link>
-              </p>
-            )}
-            {timeline.length > 0 && (
-              <ol className="mt-2 space-y-1 border-l border-slate-300 pl-3 text-xs dark:border-slate-700">
-                {timeline.map((event, index) => (
-                  <li key={index}>
-                    <span className="font-mono">
-                      {event.occurred_at.slice(11, 19)}
-                    </span>{" "}
-                    <strong>{event.action}</strong>
-                    {event.policy_decision ? ` · ${event.policy_decision}` : ""}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </CardContent>
-        </Card>
+      {notProcessed && (
+        <Alert variant="info">
+          <ListChecks className="size-4" />
+          <AlertTitle>Transcript đã sẵn sàng</AlertTitle>
+          <AlertDescription>
+            Bấm <strong>Sinh action items</strong> — máy sẽ tóm tắt, nhặt quyết
+            định và công việc kèm người phụ trách.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {run?.status === "waiting_approval" && (
+        <Alert variant="warning">
+          <PauseCircle className="size-4" />
+          <AlertTitle>Đang chờ phê duyệt</AlertTitle>
+          <AlertDescription className="flex items-center justify-between gap-3">
+            Action items đã sẵn sàng — chưa có việc nào được giao cho đến khi
+            người có quyền duyệt.
+            <Button size="sm" variant="outline" asChild>
+              <Link href="/approvals">
+                Mở Phê duyệt <ArrowRight />
+              </Link>
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {run?.status === "completed" && (
+        <Alert variant="success">
+          <BadgeCheck className="size-4" />
+          <AlertTitle>Hoàn tất</AlertTitle>
+          <AlertDescription>
+            Các việc được duyệt đã dispatch qua connector (có mã tham chiếu bên
+            dưới) và ghi vào Nhật ký.
+          </AlertDescription>
+        </Alert>
       )}
 
       {headline && (
         <Card>
           <CardHeader>
-            <CardTitle>Tóm tắt</CardTitle>
+            <CardTitle className="text-base">Tóm tắt</CardTitle>
+            <CardDescription>{headline}</CardDescription>
           </CardHeader>
-          <CardContent className="text-sm">
-            <p className="font-medium">{headline}</p>
-            {Array.isArray(meeting.summary?.["key_points"]) && (
-              <ul className="mt-2 list-disc pl-5 text-slate-600 dark:text-slate-400">
+          {Array.isArray(meeting.summary?.["key_points"]) && (
+            <CardContent>
+              <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                 {(meeting.summary["key_points"] as string[]).map((point, i) => (
                   <li key={i}>{point}</li>
                 ))}
               </ul>
-            )}
-          </CardContent>
+            </CardContent>
+          )}
         </Card>
       )}
 
       {meeting.decisions.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Quyết định ({meeting.decisions.length})</CardTitle>
+            <CardTitle className="text-base">
+              Quyết định ({meeting.decisions.length})
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <ul className="space-y-2 text-sm">
-              {meeting.decisions.map((decision) => (
-                <li
-                  key={decision.id}
-                  className="border-l-2 border-slate-300 pl-3"
-                >
-                  <p>{decision.statement}</p>
-                  {decision.evidence_quote && (
-                    <p className="text-xs italic text-slate-500">
-                      “{decision.evidence_quote}” —{" "}
-                      {decision.decided_by_name ?? "?"}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
+          <CardContent className="space-y-3 text-sm">
+            {meeting.decisions.map((decision) => (
+              <div
+                key={decision.id}
+                className="border-l-2 border-primary/40 pl-3"
+              >
+                <p>{decision.statement}</p>
+                {decision.evidence_quote && (
+                  <p className="mt-0.5 text-xs italic text-muted-foreground">
+                    “{decision.evidence_quote}” —{" "}
+                    {decision.decided_by_name ?? "?"}
+                  </p>
+                )}
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}
@@ -163,72 +227,107 @@ export default function MeetingDetailPage() {
       {meeting.actions.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Action items ({meeting.actions.length})</CardTitle>
+            <CardTitle className="text-base">
+              Action items ({meeting.actions.length})
+            </CardTitle>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="py-1 pr-3">Công việc</th>
-                  <th className="py-1 pr-3">Người nhận</th>
-                  <th className="py-1 pr-3">Hạn</th>
-                  <th className="py-1 pr-3">Trạng thái</th>
-                  <th className="py-1">External ref</th>
-                </tr>
-              </thead>
-              <tbody>
-                {meeting.actions.map((action) => (
-                  <tr
-                    key={action.id}
-                    className="border-t border-slate-200 dark:border-slate-800"
-                  >
-                    <td className="py-2 pr-3">
-                      {action.title}
-                      {action.approval_reasons.length > 0 && (
-                        <p className="text-xs text-amber-600">
-                          {action.approval_reasons.join(", ")}
-                        </p>
-                      )}
-                    </td>
-                    <td className="py-2 pr-3">
-                      {action.assignee_display_name ?? "—"}
-                      {action.assignee_department && (
-                        <span className="block text-xs text-slate-500">
-                          {action.assignee_department}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 pr-3 text-xs">
-                      {action.due_date
-                        ? new Date(action.due_date).toLocaleDateString("vi-VN")
-                        : "—"}
-                      {action.due_date_inferred && (
-                        <span className="block text-amber-600">suy đoán</span>
-                      )}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs dark:bg-slate-800">
-                        {action.status}
-                      </span>
-                    </td>
-                    <td className="py-2 font-mono text-xs">
-                      {action.external_url ? (
-                        <a
-                          className="text-blue-600 underline"
-                          href={action.external_url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {action.external_ref}
-                        </a>
-                      ) : (
-                        (action.external_ref ?? "—")
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Công việc</TableHead>
+                  <TableHead>Người nhận</TableHead>
+                  <TableHead>Hạn</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead>Mã giao việc</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {meeting.actions.map((action) => {
+                  const status = ACTION_STATUS[action.status] ?? {
+                    label: action.status,
+                    variant: "secondary" as const,
+                  };
+                  return (
+                    <TableRow key={action.id}>
+                      <TableCell>
+                        {action.title}
+                        {action.approval_reasons.length > 0 && (
+                          <span className="mt-1 flex flex-wrap gap-1">
+                            {action.approval_reasons.map((reason) => (
+                              <Badge key={reason} variant="warning">
+                                {reason}
+                              </Badge>
+                            ))}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {action.assignee_display_name ?? "—"}
+                        {action.assignee_department && (
+                          <span className="block text-xs text-muted-foreground">
+                            {action.assignee_department}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {action.due_date
+                          ? new Date(action.due_date).toLocaleDateString(
+                              "vi-VN",
+                            )
+                          : "—"}
+                        {action.due_date_inferred && (
+                          <span className="block text-warning">suy đoán</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {action.external_url ? (
+                          <a
+                            className="text-primary underline"
+                            href={action.external_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {action.external_ref}
+                          </a>
+                        ) : (
+                          (action.external_ref ?? "—")
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {timeline.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Dòng thời gian run</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ol className="space-y-2 border-l pl-4 text-sm">
+              {timeline.map((event, index) => (
+                <li key={index} className="relative">
+                  <span className="absolute -left-[21px] top-1.5 size-2 rounded-full bg-primary" />
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {event.occurred_at.slice(11, 19)}
+                  </span>{" "}
+                  <span className="font-medium">{event.action}</span>
+                  {event.policy_decision && (
+                    <Badge variant="outline" className="ml-2">
+                      {event.policy_decision}
+                    </Badge>
+                  )}
+                </li>
+              ))}
+            </ol>
           </CardContent>
         </Card>
       )}

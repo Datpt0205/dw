@@ -3,8 +3,32 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  ArrowRight,
+  BadgeCheck,
+  BookOpen,
+  Brain,
+  ClipboardList,
+  FileSearch,
+  Plug,
+  ScrollText,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
+import { toast } from "sonner";
 import type { Approval } from "@dw/contracts";
-import { Button, Card, CardContent, CardHeader, CardTitle } from "@dw/ui";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@dw/ui";
 import {
   apiClient,
   loadSession,
@@ -14,13 +38,26 @@ import {
 
 type ApiState = "checking" | "ok" | "down";
 
+function StepBadge({ done, number }: { done: boolean; number: number }) {
+  return (
+    <span
+      className={
+        done
+          ? "flex size-6 shrink-0 items-center justify-center rounded-full bg-success text-xs font-bold text-white"
+          : "flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground"
+      }
+    >
+      {done ? "✓" : number}
+    </span>
+  );
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [apiState, setApiState] = useState<ApiState>("checking");
   const [session, setSession] = useState<DevSession | null>(null);
   const [pending, setPending] = useState<Approval[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const current = loadSession();
@@ -48,11 +85,10 @@ export default function HomePage() {
 
   async function run(label: string, action: () => Promise<void>) {
     setBusy(label);
-    setError(null);
     try {
       await action();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "lỗi không rõ");
+      toast.error(e instanceof Error ? e.message : "lỗi không rõ");
     } finally {
       setBusy(null);
     }
@@ -62,201 +98,235 @@ export default function HomePage() {
   const isApprover = session?.roles?.includes("approver") ?? false;
 
   return (
-    <div className="max-w-4xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Digital Worker Platform</h1>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Hai «nhân viên số»: phân tích hồ sơ thầu và biến cuộc họp thành công
-          việc — luôn có con người phê duyệt trước mọi hành động thật.
+    <div className="mx-auto max-w-4xl space-y-6">
+      <div className="rounded-xl border bg-gradient-to-br from-primary/5 via-card to-card p-6">
+        <div className="flex items-center gap-2 text-primary">
+          <Sparkles className="size-5" />
+          <span className="text-xs font-semibold uppercase tracking-wider">
+            Digital Worker Platform
+          </span>
+        </div>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight">
+          Nhân viên số cho mua sắm &amp; vận hành
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          Máy phân tích hồ sơ thầu và biến cuộc họp thành công việc — nhưng mọi
+          hành động thật đều dừng lại chờ con người phê duyệt.
         </p>
       </div>
 
       {apiState === "down" && (
-        <Card>
-          <CardContent className="pt-4 text-sm text-red-600">
-            Không kết nối được API — chạy <code>make docker-up</code> hoặc{" "}
-            <code>make dev</code> rồi tải lại trang.
-          </CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertTitle>Không kết nối được API</AlertTitle>
+          <AlertDescription>
+            Chạy <code>make docker-up</code> hoặc <code>make dev</code> rồi tải
+            lại trang.
+          </AlertDescription>
+        </Alert>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
 
-      {/* ---------------------------------------------------------- Bước 1 */}
+      {/* Bước 1 — đăng nhập */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
-            {loggedIn ? "✅" : "1️⃣"} Đăng nhập
+          <CardTitle className="flex items-center gap-3 text-base">
+            <StepBadge done={loggedIn} number={1} />
+            Đăng nhập
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex items-center justify-between text-sm">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm">
           {loggedIn ? (
-            <span>
-              Xin chào <strong>{session.displayName ?? "bạn"}</strong>
+            <span className="flex items-center gap-2">
+              <UserRound className="size-4 text-muted-foreground" />
+              <strong>{session.displayName ?? "Phiên thủ công"}</strong>
               {session.tenantName && (
-                <span className="text-slate-500"> · {session.tenantName}</span>
-              )}{" "}
-              {session.roles?.map((r) => (
-                <span
-                  key={r}
-                  className="ml-1 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                >
-                  {r}
+                <span className="text-muted-foreground">
+                  · {session.tenantName}
                 </span>
+              )}
+              {session.roles?.map((role) => (
+                <Badge key={role} variant="secondary">
+                  {role}
+                </Badge>
               ))}
             </span>
           ) : (
-            <span>
-              Vào nhanh bằng nhân vật demo — <strong>An</strong> (nhân viên) tạo
-              hồ sơ, <strong>Bình</strong> (trưởng phòng) phê duyệt.
+            <span className="text-muted-foreground">
+              <strong className="text-foreground">An</strong> (nhân viên) tạo hồ
+              sơ và chạy phân tích ·{" "}
+              <strong className="text-foreground">Bình</strong> (trưởng phòng)
+              phê duyệt.
             </span>
           )}
-          <span className="flex shrink-0 gap-2">
+          <span className="flex gap-2">
             {!loggedIn && apiState === "ok" && (
               <Button
                 onClick={() =>
                   void run("login", async () => {
                     await loginAs("dev|an.nguyen");
+                    toast.success("Đã đăng nhập với vai Nguyễn Văn An");
                     await refresh();
                   })
                 }
                 disabled={busy !== null}
               >
-                {busy === "login" ? "Đang vào…" : "Vào với vai An (nhân viên)"}
+                <UserRound />
+                {busy === "login" ? "Đang vào…" : "Vào với vai An"}
               </Button>
             )}
-            <Link href="/admin">
-              <Button variant="outline">Chọn người khác</Button>
-            </Link>
+            <Button variant="outline" asChild>
+              <Link href="/admin">Chọn người khác</Link>
+            </Button>
           </span>
         </CardContent>
       </Card>
 
-      {/* ---------------------------------------------------------- Bước 2 */}
+      {/* Bước 2 — chạy demo */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">2️⃣ Demo Phân tích thầu</CardTitle>
+            <CardTitle className="flex items-center gap-3 text-base">
+              <StepBadge done={false} number={2} />
+              <FileSearch className="size-4" /> Phân tích hồ sơ thầu
+            </CardTitle>
+            <CardDescription>
+              1 RFQ + 2 chào giá → trích yêu cầu, ma trận tuân thủ kèm trích
+              dẫn, chấm điểm deterministic → chờ duyệt.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <p className="text-slate-600 dark:text-slate-400">
-              Tạo hồ sơ mẫu (1 RFQ + 2 chào giá) → máy trích yêu cầu, đối chiếu
-              từng nhà cung cấp kèm trích dẫn, chấm điểm deterministic → bạn phê
-              duyệt đề xuất.
-            </p>
+          <CardContent>
             <Button
+              className="w-full"
               onClick={() =>
                 void run("tender", async () => {
                   const { case_id } = await apiClient().createDemoTenderCase();
+                  toast.success(
+                    "Đã tạo hồ sơ mẫu — bấm Phân tích ở trang case",
+                  );
                   router.push(`/procurement/cases/${case_id}`);
                 })
               }
               disabled={!loggedIn || busy !== null}
             >
               {busy === "tender" ? "Đang tạo…" : "Tạo hồ sơ thầu mẫu"}
+              <ArrowRight />
             </Button>
-            {!loggedIn && (
-              <p className="text-xs text-slate-500">Cần đăng nhập trước.</p>
-            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">2️⃣ Demo Họp → Việc</CardTitle>
+            <CardTitle className="flex items-center gap-3 text-base">
+              <StepBadge done={false} number={2} />
+              <ClipboardList className="size-4" /> Họp → công việc
+            </CardTitle>
+            <CardDescription>
+              Transcript cuộc họp → tóm tắt, quyết định, action item có người
+              phụ trách → duyệt xong mới giao việc.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <p className="text-slate-600 dark:text-slate-400">
-              Tạo cuộc họp mẫu từ transcript → máy tóm tắt, nhặt quyết định và
-              action item, tìm người phụ trách → duyệt xong mới giao việc.
-            </p>
+          <CardContent>
             <Button
+              className="w-full"
               onClick={() =>
                 void run("meeting", async () => {
                   const { meeting_id } = await apiClient().createDemoMeeting();
+                  toast.success("Đã tạo cuộc họp mẫu — bấm Sinh action items");
                   router.push(`/work-ops/meetings/${meeting_id}`);
                 })
               }
               disabled={!loggedIn || busy !== null}
             >
               {busy === "meeting" ? "Đang tạo…" : "Tạo cuộc họp mẫu"}
+              <ArrowRight />
             </Button>
-            {!loggedIn && (
-              <p className="text-xs text-slate-500">Cần đăng nhập trước.</p>
-            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* ---------------------------------------------------------- Bước 3 */}
+      {/* Bước 3 — phê duyệt */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">3️⃣ Phê duyệt</CardTitle>
+          <CardTitle className="flex items-center gap-3 text-base">
+            <StepBadge done={false} number={3} />
+            <BadgeCheck className="size-4" /> Phê duyệt
+          </CardTitle>
         </CardHeader>
-        <CardContent className="flex items-center justify-between text-sm">
-          <span>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm">
+          <span className="text-muted-foreground">
             {pending === null
-              ? "Máy dừng lại và chờ con người quyết định trước mọi hành động."
+              ? "Máy dừng và chờ con người quyết định trước mọi hành động."
               : pending.length > 0
                 ? `Đang có ${pending.length} yêu cầu chờ phê duyệt.`
-                : "Chưa có yêu cầu nào chờ — chạy một demo ở bước 2 trước."}
+                : "Chưa có yêu cầu nào chờ — chạy một demo ở bước 2."}
             {loggedIn && !isApprover && (
-              <span className="block text-xs text-slate-500">
-                Vai hiện tại không có quyền duyệt — sang Admin đổi sang{" "}
-                <strong>Trần Thanh Bình</strong>.
+              <span className="block text-xs">
+                Vai hiện tại không duyệt được — sang Đăng nhập chọn{" "}
+                <strong className="text-foreground">Trần Thanh Bình</strong>.
               </span>
             )}
           </span>
-          <Link href="/approvals">
-            <Button variant="outline">
-              Mở Approvals{pending?.length ? ` (${pending.length})` : ""}
-            </Button>
-          </Link>
+          <Button variant={pending?.length ? "default" : "outline"} asChild>
+            <Link href="/approvals">
+              Mở Phê duyệt
+              {pending?.length ? (
+                <Badge className="ml-1 bg-background text-foreground">
+                  {pending.length}
+                </Badge>
+              ) : null}
+            </Link>
+          </Button>
         </CardContent>
       </Card>
 
-      {/* ---------------------------------------------------------- Bước 4 */}
+      {/* Bước 4 — hậu trường */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">4️⃣ Soi «hậu trường»</CardTitle>
+          <CardTitle className="flex items-center gap-3 text-base">
+            <StepBadge done={false} number={4} />
+            Soi «hậu trường»
+          </CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-2 text-sm md:grid-cols-2">
-          <Link
-            className="rounded-md border border-slate-200 p-3 hover:border-slate-400 dark:border-slate-800"
-            href="/audit"
-          >
-            <strong>Audit</strong>
-            <p className="text-xs text-slate-500">
-              Chuỗi sự kiện bất biến: ai chạy gì, duyệt gì, lúc nào.
-            </p>
-          </Link>
-          <Link
-            className="rounded-md border border-slate-200 p-3 hover:border-slate-400 dark:border-slate-800"
-            href="/knowledge"
-          >
-            <strong>Knowledge</strong>
-            <p className="text-xs text-slate-500">
-              Tài liệu đã ingest vào chỉ mục tri thức (luôn cách ly theo
-              tenant).
-            </p>
-          </Link>
-          <Link
-            className="rounded-md border border-slate-200 p-3 hover:border-slate-400 dark:border-slate-800"
-            href="/memory"
-          >
-            <strong>Memory</strong>
-            <p className="text-xs text-slate-500">
-              Điều máy «nhớ» lâu dài — chỉ fact có bằng chứng mới được ghi.
-            </p>
-          </Link>
-          <Link
-            className="rounded-md border border-slate-200 p-3 hover:border-slate-400 dark:border-slate-800"
-            href="/integrations"
-          >
-            <strong>Integrations</strong>
-            <p className="text-xs text-slate-500">
-              Tool được phép dùng + chính sách phê duyệt của từng tool.
-            </p>
-          </Link>
+        <CardContent className="grid gap-2 text-sm sm:grid-cols-2">
+          {[
+            {
+              href: "/audit",
+              icon: ScrollText,
+              label: "Nhật ký",
+              hint: "Ai chạy gì, duyệt gì, lúc nào — không sửa được.",
+            },
+            {
+              href: "/knowledge",
+              icon: BookOpen,
+              label: "Tri thức",
+              hint: "Tài liệu đã ingest, luôn cách ly theo tenant.",
+            },
+            {
+              href: "/memory",
+              icon: Brain,
+              label: "Trí nhớ",
+              hint: "Máy chỉ nhớ fact có bằng chứng.",
+            },
+            {
+              href: "/integrations",
+              icon: Plug,
+              label: "Tích hợp",
+              hint: "Tool được phép dùng + chính sách duyệt.",
+            },
+          ].map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="group flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-accent"
+            >
+              <item.icon className="mt-0.5 size-4 text-muted-foreground group-hover:text-foreground" />
+              <span>
+                <span className="font-medium">{item.label}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {item.hint}
+                </span>
+              </span>
+            </Link>
+          ))}
         </CardContent>
       </Card>
     </div>
