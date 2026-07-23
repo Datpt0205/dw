@@ -43,6 +43,7 @@ class MeetingSession:
     transcript_artifact_id: TranscriptArtifactId | None = None
     last_run_id: uuid.UUID | None = None
     summary: dict[str, object] | None = None
+    analysis: dict[str, object] | None = None
     version: int = 1
 
     def __post_init__(self) -> None:
@@ -62,9 +63,13 @@ class MeetingSession:
         self.last_run_id = run_id
         self.version += 1
 
-    def mark_actions_ready(self, summary: dict[str, object]) -> None:
+    def mark_actions_ready(
+        self, summary: dict[str, object], analysis: dict[str, object] | None = None
+    ) -> None:
         self.status = MeetingStatus.ACTIONS_READY
         self.summary = summary
+        if analysis is not None:
+            self.analysis = analysis
         self.version += 1
 
     def complete(self) -> None:

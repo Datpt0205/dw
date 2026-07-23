@@ -58,6 +58,7 @@ def _meeting_from_row(row: Row[tuple]) -> MeetingSession:  # type: ignore[type-a
         ),
         last_run_id=row.last_run_id,
         summary=dict(row.summary) if row.summary is not None else None,
+        analysis=dict(row.analysis) if row.analysis is not None else None,
         version=row.version,
     )
 
@@ -106,6 +107,7 @@ class SqlMeetingRepository(MeetingRepositoryPort):
                     meeting.transcript_artifact_id.value if meeting.transcript_artifact_id else None
                 ),
                 summary=meeting.summary,
+                analysis=meeting.analysis,
                 last_run_id=meeting.last_run_id,
                 created_by=meeting.created_by.value,
                 version=meeting.version,
@@ -135,6 +137,7 @@ class SqlMeetingRepository(MeetingRepositoryPort):
                     meeting.transcript_artifact_id.value if meeting.transcript_artifact_id else None
                 ),
                 summary=meeting.summary,
+                analysis=meeting.analysis,
                 last_run_id=meeting.last_run_id,
                 version=meeting.version,
                 updated_at=_now(),

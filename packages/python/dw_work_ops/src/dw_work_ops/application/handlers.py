@@ -140,7 +140,7 @@ class GenerateActionsHandler:
     entitlement: PlanEntitlementService
     id_generator: IdGenerator
     worker_id: str = "work_ops"
-    worker_version: str = "1.0.0"
+    worker_version: str = "1.1.0"
 
     async def handle(self, meeting_id: uuid.UUID, context: AccessContext) -> uuid.UUID:
         await self.authorization.require(

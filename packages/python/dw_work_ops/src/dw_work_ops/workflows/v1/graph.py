@@ -10,13 +10,14 @@ from dw_work_ops.workflows.v1.nodes import WorkOpsNodes
 from dw_work_ops.workflows.v1.services import WorkOpsWorkflowServices
 from dw_work_ops.workflows.v1.state import WorkOpsState
 
-GRAPH_VERSION = "1.0.0"
+GRAPH_VERSION = "1.1.0"  # 1.1.0: + analyze_meeting (grounded quality analysis)
 
 _NODE_ORDER = (
     "ingest_transcript",
     "normalize_transcript",
     "resolve_speakers",
     "summarize_meeting",
+    "analyze_meeting",
     "extract_decisions",
     "extract_action_items",
     "resolve_assignees",

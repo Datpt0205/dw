@@ -18,6 +18,7 @@ meetings = sa.Table(
     sa.Column("status", sa.Text, nullable=False),
     sa.Column("transcript_artifact_id", UUID(as_uuid=True), nullable=True),
     sa.Column("summary", JSONB, nullable=True),
+    sa.Column("analysis", JSONB, nullable=True),
     sa.Column("last_run_id", UUID(as_uuid=True), nullable=True),
     sa.Column("created_by", UUID(as_uuid=True), nullable=False),
     sa.Column("version", sa.Integer, nullable=False),

@@ -20,6 +20,27 @@ class MeetingSummaryModel(BaseModel):
     language: str = "vi"
 
 
+class AnalysisPoint(BaseModel):
+    """One observation with its grounding quote from the transcript."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    point: str
+    evidence_quote: str | None = None
+
+
+class MeetingAnalysisModel(BaseModel):
+    """LLM output schema for ANALYZE_MEETING (validated, versioned by prompt)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    overall_assessment: str
+    effectiveness_score: int = Field(ge=1, le=10)
+    went_well: list[AnalysisPoint] = Field(default_factory=list)
+    needs_improvement: list[AnalysisPoint] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+
+
 class ExtractedDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -115,6 +136,7 @@ class MeetingView(BaseModel):
     occurred_at: datetime
     status: str
     summary: dict[str, object] | None
+    analysis: dict[str, object] | None = None
     last_run_id: uuid.UUID | None
     decisions: list[DecisionView] = Field(default_factory=list)
     actions: list[ActionItemView] = Field(default_factory=list)
@@ -132,6 +154,7 @@ class MeetingView(BaseModel):
             occurred_at=meeting.occurred_at,
             status=meeting.status.value,
             summary=meeting.summary,
+            analysis=meeting.analysis,
             last_run_id=meeting.last_run_id,
             decisions=[DecisionView.from_domain(d) for d in decisions],
             actions=actions,

@@ -149,6 +149,14 @@ async def test_meeting_to_action_end_to_end(client: httpx.AsyncClient) -> None:
     meeting = (await client.get(f"/api/v1/work-ops/meetings/{meeting_id}", headers=member)).json()
     assert meeting["status"] == "actions_ready"
     assert meeting["summary"]["headline"].startswith("Họp giao ban")
+    # phase 7B: grounded quality analysis persisted alongside the summary
+    analysis = meeting["analysis"]
+    assert analysis is not None, "meeting analysis must be persisted"
+    assert 1 <= analysis["effectiveness_score"] <= 10
+    assert len(analysis["went_well"]) >= 1
+    assert len(analysis["recommendations"]) >= 1
+    for point in analysis["went_well"] + analysis["needs_improvement"]:
+        assert point["evidence_quote"], "analysis points must be grounded"
     assert len(meeting["decisions"]) == 2
     assert len(meeting["actions"]) == 2
     titles = {a["title"] for a in meeting["actions"]}

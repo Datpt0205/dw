@@ -8,6 +8,12 @@ from dw_work_ops.workflows.v1.services import WorkOpsWorkflowServices
 
 WORKER_ID = "work_ops"
 
+# Older graph versions kept resumable: runs checkpointed under these versions
+# resolve to the current builder (state is additive-compatible TypedDict).
+_COMPAT_VERSIONS = ("1.0.0",)
+
 
 def register_work_ops_graphs(registry: GraphRegistry, services: WorkOpsWorkflowServices) -> None:
     registry.register(WORKER_ID, GRAPH_VERSION, lambda: build_work_ops_graph(services))
+    for version in _COMPAT_VERSIONS:
+        registry.register(WORKER_ID, version, lambda: build_work_ops_graph(services))

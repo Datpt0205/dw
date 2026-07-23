@@ -18,6 +18,7 @@ class WorkOpsState(TypedDict, total=False):
     normalized_segments: list[dict[str, Any]]  # TranscriptSegment dicts
     speaker_mapping: dict[str, str | None]
     summary: dict[str, Any] | None  # MeetingSummaryModel dict
+    analysis: dict[str, Any] | None  # MeetingAnalysisModel dict
     decisions: list[dict[str, Any]]  # ExtractedDecision dicts
     action_candidates: list[dict[str, Any]]  # ActionItemCandidate dicts
     resolved_action_ids: list[str]

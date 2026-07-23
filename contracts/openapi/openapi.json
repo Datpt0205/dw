@@ -898,6 +898,18 @@
             "title": "Actions",
             "type": "array"
           },
+          "analysis": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis"
+          },
           "decisions": {
             "items": {
               "$ref": "#/components/schemas/DecisionView"

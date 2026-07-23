@@ -7,10 +7,13 @@ import {
   ArrowRight,
   BadgeCheck,
   ClipboardList,
+  Lightbulb,
   ListChecks,
   PauseCircle,
   Play,
   RefreshCw,
+  ThumbsUp,
+  TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Meeting, Run, TimelineEvent } from "@dw/contracts";
@@ -195,6 +198,86 @@ export default function MeetingDetailPage() {
               </ul>
             </CardContent>
           )}
+        </Card>
+      )}
+
+      {meeting.analysis && (
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center gap-4 border-b bg-muted/40 p-5">
+            <div className="relative flex size-16 shrink-0 items-center justify-center rounded-full border-4 border-primary/20">
+              <span className="text-xl font-bold">
+                {meeting.analysis.effectiveness_score}
+              </span>
+              <span className="absolute -bottom-1 rounded-full bg-primary px-1.5 text-[10px] font-medium text-primary-foreground">
+                /10
+              </span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">
+                Phân tích chất lượng cuộc họp
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {meeting.analysis.overall_assessment}
+              </p>
+            </div>
+          </div>
+          <CardContent className="grid gap-5 pt-5 md:grid-cols-3">
+            <div>
+              <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-success">
+                <ThumbsUp className="size-4" /> Điểm tốt (
+                {meeting.analysis.went_well.length})
+              </p>
+              <div className="space-y-3">
+                {meeting.analysis.went_well.map((item, i) => (
+                  <div key={i} className="text-sm">
+                    <p>{item.point}</p>
+                    {item.evidence_quote && (
+                      <p className="mt-1 border-l-2 border-success/40 pl-2 text-xs italic text-muted-foreground">
+                        “{item.evidence_quote}”
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {meeting.analysis.went_well.length === 0 && (
+                  <p className="text-xs text-muted-foreground">—</p>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-warning">
+                <TriangleAlert className="size-4" /> Cần cải thiện (
+                {meeting.analysis.needs_improvement.length})
+              </p>
+              <div className="space-y-3">
+                {meeting.analysis.needs_improvement.map((item, i) => (
+                  <div key={i} className="text-sm">
+                    <p>{item.point}</p>
+                    {item.evidence_quote && (
+                      <p className="mt-1 border-l-2 border-warning/40 pl-2 text-xs italic text-muted-foreground">
+                        “{item.evidence_quote}”
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {meeting.analysis.needs_improvement.length === 0 && (
+                  <p className="text-xs text-muted-foreground">—</p>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-primary">
+                <Lightbulb className="size-4" /> Lần sau nên
+              </p>
+              <ul className="space-y-2 text-sm">
+                {meeting.analysis.recommendations.map((rec, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
+                    {rec}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </CardContent>
         </Card>
       )}
 

@@ -1,0 +1,29 @@
+{
+  "overall_assessment": "Cuộc họp hiệu quả: chốt được mốc phát hành RFQ và phân công rõ người, rõ hạn; tuy nhiên số liệu dự báo chưa sẵn sàng tại thời điểm họp.",
+  "effectiveness_score": 8,
+  "went_well": [
+    {
+      "point": "Chốt được quyết định quan trọng với mốc thời gian cụ thể",
+      "evidence_quote": "Chốt lại: chúng ta phát hành RFQ vật tư quý 3 trước ngày 31 tháng 7."
+    },
+    {
+      "point": "Phân công có người nhận việc và hạn hoàn thành rõ ràng",
+      "evidence_quote": "Bình soạn hồ sơ RFQ, hạn chót sáng 30/07 nhé."
+    },
+    {
+      "point": "Có tiêu chí kiểm soát chất lượng mua hàng ngay từ đầu",
+      "evidence_quote": "Mỗi nhóm vật tư phải có ít nhất ba báo giá để so sánh."
+    }
+  ],
+  "needs_improvement": [
+    {
+      "point": "Số liệu dự báo nhu cầu chưa được chuẩn bị trước cuộc họp",
+      "evidence_quote": "em sẽ có số liệu chi tiết trong tuần"
+    }
+  ],
+  "recommendations": [
+    "Gửi số liệu dự báo trước cuộc họp để quyết định dựa trên dữ liệu đầy đủ",
+    "Ghi lại rủi ro nếu RFQ trễ mốc 31/07 và người chịu trách nhiệm leo thang",
+    "Đặt lịch checkpoint giữa tuần để theo dõi hạn 30/07 của hồ sơ RFQ"
+  ]
+}

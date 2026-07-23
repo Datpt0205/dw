@@ -27,6 +27,7 @@ from dw_work_ops.application.dto import (
     ActionItemCandidate,
     ExtractedActions,
     ExtractedDecisions,
+    MeetingAnalysisModel,
     MeetingSummaryModel,
 )
 from dw_work_ops.domain.entities import (
@@ -122,6 +123,42 @@ class WorkOpsNodes:
             run_context=run_context,
         )
         return {"summary": summary.model_dump(mode="json")}
+
+    # 4b -----------------------------------------------------------------
+    async def analyze_meeting(self, state: WorkOpsState, config: RunnableConfig) -> WorkOpsState:
+        """Meeting quality analysis: went well / needs improvement / next time.
+
+        Every point must carry a verbatim transcript quote; ungrounded points
+        are dropped (fail closed — same evidence discipline as tender)."""
+        run_context = _run_context(config)
+        analysis = await self.services.model_gateway.generate_structured(
+            ModelRequest(
+                task="structured_extraction",
+                prompt_id="work_ops.analyze_meeting",
+                prompt_version=self.services.prompt_bundle_version,
+                variables={"transcript": state.get("transcript_text", "")},
+                model_profile=self.services.model_profile,
+            ),
+            MeetingAnalysisModel,
+            run_context=run_context,
+        )
+        transcript = state.get("transcript_text", "")
+        normalized = " ".join(transcript.split()).casefold()
+
+        def grounded(quote: str | None) -> bool:
+            if not quote:
+                return False
+            return " ".join(quote.split()).casefold() in normalized
+
+        cleaned = analysis.model_copy(
+            update={
+                "went_well": [p for p in analysis.went_well if grounded(p.evidence_quote)],
+                "needs_improvement": [
+                    p for p in analysis.needs_improvement if grounded(p.evidence_quote)
+                ],
+            }
+        )
+        return {"analysis": cleaned.model_dump(mode="json")}
 
     # 5 ------------------------------------------------------------------
     async def extract_decisions(self, state: WorkOpsState, config: RunnableConfig) -> WorkOpsState:
@@ -294,7 +331,8 @@ class WorkOpsNodes:
             if meeting is None:
                 raise NotFoundError("meeting disappeared during run")
             summary = state.get("summary") or {}
-            meeting.mark_actions_ready(dict(summary))
+            analysis = state.get("analysis")
+            meeting.mark_actions_ready(dict(summary), dict(analysis) if analysis else None)
             await uow.meetings.save(meeting)
             await uow.decisions.replace_for_meeting(meeting_id, decisions)
             await uow.actions.replace_for_meeting(meeting_id, actions)

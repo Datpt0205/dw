@@ -1,0 +1,6 @@
+# Map chat-channel identities to platform demo subjects (dev-only).
+# Nhắn /start cho bot Telegram để biết ID của bạn, rồi thêm dòng map vào đây.
+# Backend vẫn xác minh membership trong DB — map sai tenant sẽ bị từ chối.
+schema_version: "1.0"
+telegram:
+  # "123456789": dev|an.nguyen

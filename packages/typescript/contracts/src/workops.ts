@@ -27,12 +27,28 @@ export const decisionSchema = z.object({
 });
 export type Decision = z.infer<typeof decisionSchema>;
 
+export const analysisPointSchema = z.object({
+  point: z.string(),
+  evidence_quote: z.string().nullable(),
+});
+export type AnalysisPoint = z.infer<typeof analysisPointSchema>;
+
+export const meetingAnalysisSchema = z.object({
+  overall_assessment: z.string(),
+  effectiveness_score: z.number().int().min(1).max(10),
+  went_well: z.array(analysisPointSchema),
+  needs_improvement: z.array(analysisPointSchema),
+  recommendations: z.array(z.string()),
+});
+export type MeetingAnalysis = z.infer<typeof meetingAnalysisSchema>;
+
 export const meetingSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
   occurred_at: z.string(),
   status: z.enum(["created", "processing", "actions_ready", "completed"]),
   summary: z.record(z.string(), z.unknown()).nullable(),
+  analysis: meetingAnalysisSchema.nullable(),
   last_run_id: z.string().uuid().nullable(),
   decisions: z.array(decisionSchema),
   actions: z.array(actionItemSchema),

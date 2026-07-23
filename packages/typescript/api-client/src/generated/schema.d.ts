@@ -751,6 +751,10 @@ export interface components {
         MeetingView: {
             /** Actions */
             actions?: components["schemas"]["ActionItemView"][];
+            /** Analysis */
+            analysis?: {
+                [key: string]: unknown;
+            } | null;
             /** Decisions */
             decisions?: components["schemas"]["DecisionView"][];
             /**

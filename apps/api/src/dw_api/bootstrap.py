@@ -280,8 +280,22 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
             )
 
             # ---- tools ----------------------------------------------------
+            if settings.task_connector == "slack":
+                from dw_connectors.adapters.slack_task_connector import (
+                    SlackTaskConnectorAdapter,
+                )
+
+                assert settings.slack_bot_token is not None  # validate_for_profile
+                assert settings.slack_default_channel is not None
+                task_connector: object = SlackTaskConnectorAdapter(
+                    bot_token=settings.slack_bot_token,
+                    default_channel=settings.slack_default_channel,
+                    breaker=CircuitBreaker(clock=clock, name="connector.slack"),
+                )
+            else:
+                task_connector = MockTaskConnectorAdapter()
             tool_registry = ToolRegistry()
-            tool_registry.register(DispatchToolFactory(MockTaskConnectorAdapter()).build())
+            tool_registry.register(DispatchToolFactory(task_connector).build())  # type: ignore[arg-type]
             tool_executor = ToolExecutor(
                 registry=tool_registry,
                 execution_store=SqlToolExecutionStore(session_factory),

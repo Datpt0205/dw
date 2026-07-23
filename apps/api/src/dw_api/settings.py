@@ -87,6 +87,23 @@ class ApiSettings(BaseSettings):
         """Local/test may call localhost providers (Ollama, vLLM); prod never."""
         return self.profile != "production"
 
+    # --- channels & connectors (phase 7) ---
+    task_connector: str = Field(
+        default="mock",
+        validation_alias=AliasChoices("DW_API_TASK_CONNECTOR", "DW_TASK_CONNECTOR"),
+    )
+    slack_bot_token: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_SLACK_BOT_TOKEN", "SLACK_BOT_TOKEN")
+    )
+    slack_default_channel: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DW_API_SLACK_DEFAULT_CHANNEL", "SLACK_DEFAULT_CHANNEL"),
+    )
+    telegram_bot_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DW_API_TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN"),
+    )
+
     # --- observability (§21; Langfuse optional behind configuration) ---
     otel_endpoint: str | None = Field(
         default=None,
@@ -131,3 +148,13 @@ class ApiSettings(BaseSettings):
                 "LANGFUSE_ENABLED requires LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY "
                 "and LANGFUSE_SECRET_KEY"
             )
+        if self.task_connector not in ("mock", "slack"):
+            raise RuntimeError("DW_TASK_CONNECTOR must be 'mock' or 'slack'")
+        if self.task_connector == "slack" and not (
+            self.slack_bot_token and self.slack_default_channel
+        ):
+            raise RuntimeError(
+                "DW_TASK_CONNECTOR=slack requires SLACK_BOT_TOKEN and SLACK_DEFAULT_CHANNEL"
+            )
+        if self.profile == "production" and self.task_connector == "mock":
+            raise RuntimeError("the mock task connector is forbidden in production")

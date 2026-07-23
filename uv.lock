@@ -497,9 +497,11 @@ dependencies = [
     { name = "dw-tender" },
     { name = "dw-work-ops" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "minio" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyyaml" },
     { name = "qdrant-client" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
@@ -519,9 +521,11 @@ requires-dist = [
     { name = "dw-tender", editable = "packages/python/dw_tender" },
     { name = "dw-work-ops", editable = "packages/python/dw_work_ops" },
     { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "minio", specifier = ">=7.2,<8" },
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pydantic-settings", specifier = ">=2.7,<3" },
+    { name = "pyyaml", specifier = ">=6.0,<7" },
     { name = "qdrant-client", specifier = ">=1.12,<1.15" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36,<2.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34,<1" },
@@ -533,12 +537,14 @@ version = "0.1.0"
 source = { editable = "packages/python/dw_connectors" }
 dependencies = [
     { name = "dw-kernel" },
+    { name = "httpx" },
     { name = "pydantic" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "dw-kernel", editable = "packages/python/dw_kernel" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "pydantic", specifier = ">=2.10,<3" },
 ]
 

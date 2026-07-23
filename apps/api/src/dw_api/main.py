@@ -27,9 +27,22 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        bot_task = None
+        settings = container.settings
+        if (
+            settings.telegram_bot_token
+            and settings.profile != "test"
+            and container.work_ops is not None
+        ):
+            from dw_api.bootstrap import REPO_ROOT
+            from dw_api.channels.telegram import start_telegram_bot
+
+            bot_task = start_telegram_bot(container, settings.telegram_bot_token, REPO_ROOT)
         try:
             yield
         finally:
+            if bot_task is not None:
+                bot_task.cancel()
             await container.shutdown()
 
     app = FastAPI(
