@@ -8,7 +8,7 @@ RUN corepack enable
 
 WORKDIR /build
 
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json tsconfig.base.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/typescript/ui/package.json packages/typescript/ui/package.json
 COPY packages/typescript/contracts/package.json packages/typescript/contracts/package.json

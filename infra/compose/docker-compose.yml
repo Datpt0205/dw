@@ -200,6 +200,8 @@ services:
     environment:
       DW_API_PROFILE: local
       DW_API_DATABASE_URL: postgresql+asyncpg://dw_app:${DW_DB_APP_PASSWORD:?}@postgres:5432/dw
+      DW_API_DEV_SECRET: ${DW_API_DEV_SECRET:-}
+      DW_MODEL_PROVIDER: ${DW_MODEL_PROVIDER:-mock}
       QDRANT_URL: http://qdrant:6333
       REDIS_URL: redis://valkey:6379/0
       S3_ENDPOINT_URL: http://minio:9000

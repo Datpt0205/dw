@@ -5,6 +5,7 @@ Tests build their own container with fake ports; production wiring lives here.
 
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,7 +83,10 @@ from dw_work_ops.domain.policies import CanAutoDispatchAction
 from dw_work_ops.workflows.registry import register_work_ops_graphs
 from dw_work_ops.workflows.v1.services import WorkOpsWorkflowServices
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
+# In dev the repo root is derived from the source tree; in containers the
+# package lives in site-packages, so the image sets DW_REPO_ROOT=/app and
+# ships configs/, evals/fixtures/ and contracts/release/ at that root.
+REPO_ROOT = Path(os.environ.get("DW_REPO_ROOT", str(Path(__file__).resolve().parents[4])))
 
 
 def _release_manifest_ref() -> str:

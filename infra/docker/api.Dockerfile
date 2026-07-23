@@ -2,13 +2,17 @@
 # ---------------------------------------------------------------------------
 # Stage 1 — builder: resolve the uv workspace and install only dw-api deps
 # ---------------------------------------------------------------------------
-FROM ghcr.io/astral-sh/uv:0.11.31-python3.12-bookworm-slim AS builder
+FROM python:3.12-slim-bookworm AS builder
+# uv binary from the pinned distroless release image
+COPY --from=ghcr.io/astral-sh/uv:0.11.31 /uv /uvx /usr/local/bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
 
-WORKDIR /build
+# Venv must be created at its final runtime path (/app/.venv) — entry-point
+# scripts embed absolute shebangs, so building elsewhere breaks them.
+WORKDIR /app
 
 # Dependency layers first for cache efficiency
 COPY pyproject.toml uv.lock ./
@@ -42,14 +46,19 @@ FROM python:3.12-slim-bookworm AS runtime
 RUN groupadd --gid 1001 dw && useradd --uid 1001 --gid dw --create-home dw
 
 WORKDIR /app
-COPY --from=builder --chown=dw:dw /build/.venv /app/.venv
+COPY --from=builder --chown=dw:dw /app/.venv /app/.venv
 # Migration entrypoint assets (alembic config + versions)
 COPY --chown=dw:dw db/alembic.ini /app/db/alembic.ini
 COPY --chown=dw:dw db/migrations /app/db/migrations
+# Versioned runtime artifacts the composition root loads from DW_REPO_ROOT
+COPY --chown=dw:dw configs /app/configs
+COPY --chown=dw:dw evals/fixtures /app/evals/fixtures
+COPY --chown=dw:dw contracts/release /app/contracts/release
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    DW_REPO_ROOT=/app
 
 USER dw
 EXPOSE 8000
