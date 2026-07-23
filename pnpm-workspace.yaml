@@ -1,0 +1,6 @@
+packages:
+  - apps/web
+  - packages/typescript/*
+allowBuilds:
+  sharp: true
+  unrs-resolver: true

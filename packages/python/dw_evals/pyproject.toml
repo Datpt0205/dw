@@ -1,0 +1,16 @@
+[project]
+name = "dw-evals"
+version = "0.1.0"
+description = "Evaluation: versioned dataset schema, graders and regression runner"
+requires-python = ">=3.12"
+dependencies = [
+    "dw-kernel",
+    "pydantic>=2.10,<3",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dw_evals"]

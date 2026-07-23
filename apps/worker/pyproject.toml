@@ -1,0 +1,17 @@
+[project]
+name = "dw-worker"
+version = "0.1.0"
+description = "Async worker process: outbox processing, workflow consumers, schedulers"
+requires-python = ">=3.12"
+dependencies = [
+    "dw-kernel",
+    "pydantic>=2.10,<3",
+    "pydantic-settings>=2.7,<3",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dw_worker"]

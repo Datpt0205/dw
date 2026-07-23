@@ -1,0 +1,39 @@
+# VCS
+.git
+.github
+
+# Environments / secrets
+.env
+.env.*
+!.env.example
+
+# Python caches and venvs
+**/__pycache__
+**/*.pyc
+.venv
+**/.venv
+.mypy_cache
+.ruff_cache
+.pytest_cache
+htmlcov
+.coverage
+
+# Node
+**/node_modules
+**/.next
+**/.turbo
+**/out
+**/*.tsbuildinfo
+
+# Docs and local-only files
+docs
+*.md
+!README.md
+.idea
+.vscode
+.DS_Store
+
+# Infra not needed inside images
+infra/helm
+infra/terraform
+evals/reports

@@ -1,0 +1,17 @@
+[project]
+name = "dw-memory"
+version = "0.1.0"
+description = "Long-term memory: memory items, write-candidate policy, retention (adapters arrive in phase 2)"
+requires-python = ">=3.12"
+dependencies = [
+    "dw-kernel",
+    "dw-knowledge",
+    "pydantic>=2.10,<3",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dw_memory"]

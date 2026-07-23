@@ -1,0 +1,322 @@
+# ===========================================================================
+# Digital Worker Platform — Docker Compose
+#
+# Profiles:
+#   infra          → data plane only (Postgres, Qdrant, Valkey, MinIO, Keycloak)
+#                    for local development where API/worker/web run on the host
+#   full           → everything: infra + migration job + API + worker + web
+#   observability  → optional Langfuse stack (web/worker/ClickHouse)
+#
+# Examples:
+#   docker compose --profile infra up -d --wait
+#   docker compose --profile full up --build -d --wait
+#   docker compose --profile full --profile observability up --build -d
+# ===========================================================================
+
+networks:
+  dw-internal:
+    internal: true
+  dw-edge: {}
+
+volumes:
+  postgres-data:
+  qdrant-data:
+  valkey-data:
+  minio-data:
+  keycloak-data:
+  clickhouse-data:
+
+services:
+  # ------------------------------------------------------------------ data --
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["infra", "full", "observability"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      DW_DB_MIGRATOR_PASSWORD: ${DW_DB_MIGRATOR_PASSWORD:?}
+      DW_DB_APP_PASSWORD: ${DW_DB_APP_PASSWORD:?}
+    command: ["postgres", "-c", "wal_level=logical"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks: [dw-internal, dw-edge]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d dw || pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    profiles: ["infra", "full"]
+    volumes:
+      - qdrant-data:/qdrant/storage
+    ports:
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    networks: [dw-internal, dw-edge]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    profiles: ["infra", "full", "observability"]
+    command: ["valkey-server", "--maxmemory-policy", "noeviction", "--save", "60", "1"]
+    volumes:
+      - valkey-data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks: [dw-internal, dw-edge]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2024-01-16T16-07-38Z
+    profiles: ["infra", "full", "observability"]
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    networks: [dw-internal, dw-edge]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  minio-setup:
+    image: minio/mc:RELEASE.2024-01-13T08-44-48Z
+    profiles: ["infra", "full", "observability"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set dw http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+      mc mb --ignore-existing dw/$${S3_BUCKET_ARTIFACTS} &&
+      mc mb --ignore-existing dw/$${S3_BUCKET_EXPORTS} &&
+      mc mb --ignore-existing dw/langfuse
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      S3_BUCKET_ARTIFACTS: ${S3_BUCKET_ARTIFACTS:-dw-artifacts}
+      S3_BUCKET_EXPORTS: ${S3_BUCKET_EXPORTS:-dw-exports}
+    networks: [dw-internal]
+    restart: "no"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    profiles: ["infra", "full"]
+    command: ["start-dev", "--import-realm", "--health-enabled=true"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:?}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER:?}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?}
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: http://localhost:8080
+    volumes:
+      - keycloak-data:/opt/keycloak/data/export
+      - ../keycloak:/opt/keycloak/data/import:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks: [dw-internal, dw-edge]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '200' <&3
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # ------------------------------------------------------------ migrations --
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    image: dw-api:local
+    profiles: ["full"]
+    command: ["alembic", "-c", "/app/db/alembic.ini", "upgrade", "head"]
+    environment:
+      DW_DATABASE_URL: postgresql+asyncpg://dw_migrator:${DW_DB_MIGRATOR_PASSWORD:?}@postgres:5432/dw
+    networks: [dw-internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ------------------------------------------------------------------ apps --
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    image: dw-api:local
+    profiles: ["full"]
+    environment:
+      DW_API_PROFILE: local
+      DW_API_DATABASE_URL: postgresql+asyncpg://dw_app:${DW_DB_APP_PASSWORD:?}@postgres:5432/dw
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://valkey:6379/0
+      S3_ENDPOINT_URL: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      OIDC_ISSUER_URL: http://keycloak:8080/realms/dw
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks: [dw-internal, dw-edge]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infra/docker/worker.Dockerfile
+    image: dw-worker:local
+    profiles: ["full"]
+    environment:
+      DW_DATABASE_URL: postgresql+asyncpg://dw_app:${DW_DB_APP_PASSWORD:?}@postgres:5432/dw
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://valkey:6379/0
+      S3_ENDPOINT_URL: http://minio:9000
+    networks: [dw-internal, dw-edge]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/web.Dockerfile
+    image: dw-web:local
+    profiles: ["full"]
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      API_INTERNAL_BASE_URL: http://api:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks: [dw-internal, dw-edge]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ------------------------------------------------- optional observability --
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    profiles: ["observability"]
+    environment:
+      CLICKHOUSE_DB: langfuse
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    networks: [dw-internal]
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user langfuse --password $${CLICKHOUSE_PASSWORD} -q 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    profiles: ["observability"]
+    environment: &langfuse-env
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/langfuse
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
+      REDIS_CONNECTION_STRING: redis://valkey:6379/1
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:?}
+      SALT: ${LANGFUSE_SALT:?}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:?}
+      TELEMETRY_ENABLED: "false"
+    networks: [dw-internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  langfuse-web:
+    image: langfuse/langfuse:3
+    profiles: ["observability"]
+    environment:
+      <<: *langfuse-env
+      NEXTAUTH_URL: http://localhost:3001
+    ports:
+      - "127.0.0.1:3001:3000"
+    networks: [dw-internal, dw-edge]
+    depends_on:
+      langfuse-worker:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/public/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped

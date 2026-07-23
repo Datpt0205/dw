@@ -1,0 +1,15 @@
+[project]
+name = "dw-work-ops"
+version = "0.1.0"
+description = "Work Operations bounded context: meeting-to-action Digital Worker"
+requires-python = ">=3.12"
+dependencies = [
+    "dw-kernel",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dw_work_ops"]
