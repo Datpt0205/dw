@@ -91,21 +91,29 @@ def upgrade() -> None:
     )
     op.execute("ALTER TABLE knowledge.ingest_jobs ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE knowledge.ingest_jobs FORCE ROW LEVEL SECURITY")
+    # NULLIF(...,'') guards the ::uuid cast: a custom GUC touched by
+    # set_config(...,true) reverts to '' (not NULL) after the transaction, and
+    # the cross-tenant drain (claim_next) reads ingest_jobs WITHOUT setting
+    # app.tenant_id — so '' must compare as no-match, never raise on ''::uuid.
     op.execute(
         """
         CREATE POLICY tenant_isolation_ingest_jobs ON knowledge.ingest_jobs
-        USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
-        WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid)
+        USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
         """
     )
     # The worker drains the queue across tenants; it sets app.tenant_id per job,
     # but the initial "claim" scan reads all tenants. Allow a dedicated worker
     # bypass via a GUC flag so the durable queue can be polled globally.
+    # FOR ALL (not FOR SELECT): claim_next uses SELECT ... FOR UPDATE SKIP LOCKED,
+    # and under RLS a locking read also requires an UPDATE-applicable USING policy
+    # to pass — a SELECT-only policy would filter every row out of the lock.
     op.execute(
         """
         CREATE POLICY worker_drain_ingest_jobs ON knowledge.ingest_jobs
-        FOR SELECT
+        FOR ALL
         USING (current_setting('app.worker_drain', true) = 'on')
+        WITH CHECK (current_setting('app.worker_drain', true) = 'on')
         """
     )
     # The 0002 grant was a one-time snapshot; a table created later needs its own.
