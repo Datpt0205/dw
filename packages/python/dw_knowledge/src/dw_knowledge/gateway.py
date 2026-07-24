@@ -77,6 +77,7 @@ class DocumentInfo:
     index_version: str | None
     chunk_count: int
     created_at: datetime
+    scope: str = "tenant"
 
 
 def build_trusted_filter(context: AccessContext, domain: str) -> TrustedSearchFilter:
@@ -191,6 +192,7 @@ class KnowledgeGateway:
                 status="active",
                 is_current=True,
                 effective_from=now,
+                scope=command.scope,
             )
             await session.execute(
                 doc_stmt.on_conflict_do_update(
@@ -199,6 +201,7 @@ class KnowledgeGateway:
                         "title": doc_stmt.excluded.title,
                         "index_version": doc_stmt.excluded.index_version,
                         "classification": doc_stmt.excluded.classification,
+                        "scope": doc_stmt.excluded.scope,
                         # Re-ingesting a previously superseded/deleted version reactivates it.
                         "status": "active",
                         "is_current": True,
@@ -284,7 +287,12 @@ class KnowledgeGateway:
                     .label("chunk_count"),
                 )
                 .where(
-                    tables.documents.c.workspace_id == context.workspace_id,
+                    # Own workspace OR any global (legal) doc — RLS permits the
+                    # cross-tenant read only for scope='global' rows.
+                    sa.or_(
+                        tables.documents.c.workspace_id == context.workspace_id,
+                        tables.documents.c.scope == "global",
+                    ),
                     tables.documents.c.status == "active",
                 )
                 .order_by(tables.documents.c.created_at.desc())
@@ -300,6 +308,7 @@ class KnowledgeGateway:
                     index_version=row.index_version,
                     chunk_count=row.chunk_count,
                     created_at=row.created_at,
+                    scope=row.scope,
                 )
                 for row in rows
             ]

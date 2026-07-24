@@ -44,6 +44,8 @@ from dw_kernel.net_guard import ensure_allowed_outbound_url
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_kernel.resilience import CircuitBreaker
 from dw_knowledge.gateway import KnowledgeGateway
+from dw_knowledge.ingest_jobs import IngestJobStore
+from dw_knowledge.ports import ObjectStoragePort
 from dw_memory.policy import MemoryWritePolicy
 from dw_memory.service import MemoryService
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
@@ -157,6 +159,8 @@ class ApiContainer:
     tender: TenderHandlers | None = None
     preparation: PreparationHandlers | None = None
     knowledge_gateway: KnowledgeGateway | None = None
+    ingest_job_store: IngestJobStore | None = None
+    object_storage: ObjectStoragePort | None = None
     memory_service: MemoryService | None = None
     tool_registry: ToolRegistry | None = None
 
@@ -277,6 +281,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
     tender: TenderHandlers | None = None
     preparation: PreparationHandlers | None = None
     knowledge_gateway: KnowledgeGateway | None = None
+    ingest_job_store: IngestJobStore | None = None
+    object_storage: ObjectStoragePort | None = None
     memory_service: MemoryService | None = None
     tool_registry: ToolRegistry | None = None
 
@@ -403,6 +409,13 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 clock=clock,
                 id_generator=id_generator,
                 reranker=reranker,
+            )
+            # Upload path: API stages the raw file + enqueues; the worker ingests.
+            object_storage = storage  # type: ignore[assignment]
+            ingest_job_store = IngestJobStore(
+                session_factory=session_factory,
+                clock=clock,
+                id_generator=id_generator,
             )
 
             # ---- tender workflow -----------------------------------------
@@ -553,6 +566,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         tender=tender,
         preparation=preparation,
         knowledge_gateway=knowledge_gateway,
+        ingest_job_store=ingest_job_store,
+        object_storage=object_storage,
         memory_service=memory_service,
         tool_registry=tool_registry,
     )

@@ -7,6 +7,7 @@ import {
   devSessionSchema,
   integrationSchema,
   knowledgeDocumentSchema,
+  ingestJobSchema,
   memoryItemSchema,
   errorResponseSchema,
   healthResponseSchema,
@@ -22,6 +23,7 @@ import {
   type ErrorResponse,
   type Integration,
   type KnowledgeDocument,
+  type IngestJob,
   type MemoryItem,
   type HealthResponse,
   type Meeting,
@@ -244,6 +246,80 @@ export class ApiClient {
       `/api/v1/knowledge/documents?limit=${limit}`,
       z.array(knowledgeDocumentSchema),
     );
+  }
+
+  /** Upload a raw file for async ingestion (multipart). Returns the queued job. */
+  async uploadKnowledgeDocument(
+    file: File | Blob,
+    meta: {
+      title: string;
+      filename?: string;
+      domain?: string;
+      classification?: string;
+      source_version?: string;
+      scope?: "tenant" | "global";
+    },
+  ): Promise<IngestJob> {
+    const fetchImpl = this.options.fetchImpl ?? fetch;
+    const form = new FormData();
+    const filename =
+      meta.filename ?? (file instanceof File ? file.name : "document");
+    form.append("file", file, filename);
+    form.append("title", meta.title);
+    if (meta.domain) form.append("domain", meta.domain);
+    if (meta.classification) form.append("classification", meta.classification);
+    if (meta.source_version) form.append("source_version", meta.source_version);
+    if (meta.scope) form.append("scope", meta.scope);
+
+    // No Content-Type header: the browser sets multipart boundary itself.
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const token = await this.options.getAccessToken?.();
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const response = await fetchImpl(
+      `${this.options.baseUrl}/api/v1/knowledge/documents`,
+      { method: "POST", headers, body: form },
+    );
+    const json: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const parsed = errorResponseSchema.safeParse(json);
+      throw new ApiError(
+        response.status,
+        parsed.success
+          ? parsed.data
+          : { code: "internal", message: `HTTP ${response.status}`, details: {} },
+      );
+    }
+    return ingestJobSchema.parse(json);
+  }
+
+  getIngestJob(jobId: string): Promise<IngestJob> {
+    return this.request(
+      "GET",
+      `/api/v1/knowledge/documents/jobs/${jobId}`,
+      ingestJobSchema,
+    );
+  }
+
+  async deleteKnowledgeDocument(documentId: string): Promise<void> {
+    const fetchImpl = this.options.fetchImpl ?? fetch;
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const token = await this.options.getAccessToken?.();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetchImpl(
+      `${this.options.baseUrl}/api/v1/knowledge/documents/${documentId}`,
+      { method: "DELETE", headers },
+    );
+    if (!response.ok && response.status !== 204) {
+      const json: unknown = await response.json().catch(() => null);
+      const parsed = errorResponseSchema.safeParse(json);
+      throw new ApiError(
+        response.status,
+        parsed.success
+          ? parsed.data
+          : { code: "internal", message: `HTTP ${response.status}`, details: {} },
+      );
+    }
   }
 
   listMemoryItems(limit = 100): Promise<MemoryItem[]> {

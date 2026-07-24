@@ -16,6 +16,7 @@ dependencies = [
     "minio>=7.2,<8",
     "qdrant-client>=1.12,<1.15",
     "fastapi>=0.115,<1",
+    "python-multipart>=0.0.18,<1",
     "uvicorn[standard]>=0.34,<1",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.7,<3",

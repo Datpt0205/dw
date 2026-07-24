@@ -301,6 +301,13 @@ services:
       QDRANT_URL: http://qdrant:6333
       REDIS_URL: redis://valkey:6379/0
       S3_ENDPOINT_URL: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      # Knowledge ingest consumer: embed with the same self-hosted BGE-M3 as the
+      # API so uploaded docs land in the same 1024-dim Qdrant collection.
+      DW_WORKER_EMBEDDING_PROVIDER: ${DW_API_EMBEDDING_PROVIDER:-tei}
+      DW_WORKER_EMBED_URL: ${DW_API_EMBED_URL:-http://tei-embed:80}
+      DW_WORKER_EMBED_DIMENSION: ${DW_API_EMBED_DIMENSION:-1024}
     networks: [dw-internal, dw-edge]
     depends_on:
       migrate:
@@ -309,6 +316,12 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      tei-embed:
+        condition: service_started
     restart: unless-stopped
 
   web:

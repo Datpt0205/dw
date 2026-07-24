@@ -9,8 +9,24 @@ export const knowledgeDocumentSchema = z.object({
   index_version: z.string().nullable(),
   chunk_count: z.number().int(),
   created_at: z.string(),
+  scope: z.string(),
 });
 export type KnowledgeDocument = z.infer<typeof knowledgeDocumentSchema>;
+
+export const ingestJobSchema = z.object({
+  job_id: z.string().uuid(),
+  status: z.string(),
+  title: z.string(),
+  filename: z.string(),
+  scope: z.string(),
+  attempts: z.number().int(),
+  error: z.string().nullable(),
+  document_id: z.string().uuid().nullable(),
+  chunk_count: z.number().int().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type IngestJob = z.infer<typeof ingestJobSchema>;
 
 export const memoryItemSchema = z.object({
   memory_id: z.string().uuid(),

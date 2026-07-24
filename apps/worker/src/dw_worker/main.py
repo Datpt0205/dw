@@ -11,11 +11,27 @@ import contextlib
 import logging
 import signal
 
+from dw_worker.composition import build_ingest_components
 from dw_worker.consumers import ConsumerRegistry
+from dw_worker.consumers.ingest import build_ingest_consumer
 from dw_worker.health import beat
 from dw_worker.settings import WorkerSettings
 
 logger = logging.getLogger("dw_worker")
+
+
+def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
+    registry = ConsumerRegistry()
+    components = build_ingest_components(settings)
+    if components is not None:
+        registry.register(
+            "knowledge_ingest",
+            build_ingest_consumer(components, batch_size=settings.ingest_batch_size),
+        )
+        logger.info("knowledge ingest consumer registered")
+    else:
+        logger.info("knowledge ingest disabled (database_url / s3_endpoint_url unset)")
+    return registry
 
 
 async def run_worker(
@@ -59,7 +75,7 @@ async def run_worker(
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     settings = WorkerSettings()
-    registry = ConsumerRegistry()
+    registry = build_registry(settings)
     shutdown_event = asyncio.Event()
 
     async def runner() -> None:

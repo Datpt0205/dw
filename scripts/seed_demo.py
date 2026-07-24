@@ -57,6 +57,7 @@ ROLES = [
             "tender.write",
             "approvals.read",
             "knowledge.read",
+            "knowledge.write",
             "memory.read",
         ],
     },
