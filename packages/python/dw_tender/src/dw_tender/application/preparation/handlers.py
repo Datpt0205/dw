@@ -14,9 +14,9 @@ from dw_kernel.ports import IdGenerator
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.entitlement import PlanEntitlementService
+from dw_tender.application.ports import DocumentStoragePort
 from dw_tender.application.preparation.dto import PreparationCaseView
 from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
-from dw_tender.application.ports import DocumentStoragePort
 from dw_tender.domain.preparation.entities import (
     DocumentKind,
     PreparationCase,
@@ -50,7 +50,9 @@ class CreatePreparationCaseHandler:
     entitlement: PlanEntitlementService
     id_generator: IdGenerator
 
-    async def handle(self, command: CreatePreparationCaseCommand, context: AccessContext) -> uuid.UUID:
+    async def handle(
+        self, command: CreatePreparationCaseCommand, context: AccessContext
+    ) -> uuid.UUID:
         await self.authorization.require(
             context=context, action="tender.write", resource_type="preparation_case"
         )

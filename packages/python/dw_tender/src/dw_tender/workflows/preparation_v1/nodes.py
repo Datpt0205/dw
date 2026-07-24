@@ -15,9 +15,11 @@ from typing import Any
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import interrupt
 
+from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext
 from dw_kernel.errors import DomainError
 from dw_kernel.ids import TenantId
+from dw_knowledge.contracts import SearchQuery
 from dw_tender.application.preparation.rules import approach_gate, solicitation_gate
 from dw_tender.domain.preparation.entities import (
     ArtifactStatus,
@@ -62,6 +64,45 @@ def _fmt_vnd(minor: int) -> str:
 class PreparationNodes:
     def __init__(self, services: PreparationServices) -> None:
         self.services = services
+
+    async def _cite(
+        self,
+        run_context: RunContext,
+        query: str,
+        *,
+        domain: str,
+        top_k: int = 3,
+    ) -> list[dict[str, Any]]:
+        """Retrieve grounding evidence via the knowledge gateway (RAG).
+
+        Returns compact citations for the drafted artifact. Degrades to an empty
+        list when no gateway is wired or retrieval fails — drafting is never
+        blocked by knowledge availability. The gateway injects tenant/workspace/
+        global ACL filters from the context; nodes never build filters.
+        """
+        gateway = self.services.knowledge
+        if gateway is None:
+            return []
+        try:
+            context = access_context_from_run(run_context)
+            hits = await gateway.search(
+                SearchQuery(text=query, domain=domain, top_k=top_k), context
+            )
+        except Exception:  # retrieval is best-effort grounding, not a gate
+            return []
+        citations: list[dict[str, Any]] = []
+        for chunk in hits:
+            ev = chunk.evidence
+            citations.append(
+                {
+                    "source_document_id": str(ev.source_document_id),
+                    "source_version": ev.source_version,
+                    "quote": chunk.content[:280],
+                    "relevance_score": round(ev.relevance_score, 4),
+                    "classification": ev.classification,
+                }
+            )
+        return citations
 
     async def _add_artifact(
         self,
@@ -208,6 +249,18 @@ class PreparationNodes:
                 f"v{rules.version}."
             ),
         }
+        # RAG grounding: legal basis for the chosen method + internal policy on
+        # approval limits. Global legal docs + this tenant's policies only.
+        content["legal_basis"] = await self._cite(
+            rc,
+            f"hình thức lựa chọn nhà thầu {method.label} điều kiện áp dụng",
+            domain="legal",
+        )
+        content["policy_basis"] = await self._cite(
+            rc,
+            f"hạn mức phê duyệt phương án mua sắm giá trị {_fmt_vnd(value)}",
+            domain="policy",
+        )
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
@@ -322,6 +375,12 @@ class PreparationNodes:
             ],
             "confidentiality": "Thông tin hồ sơ được bảo mật theo quy định.",
         }
+        # RAG grounding: legal/template basis for the solicitation structure.
+        content["references"] = await self._cite(
+            rc,
+            "nội dung hồ sơ mời thầu yêu cầu về năng lực kỹ thuật thương mại",
+            domain="legal",
+        )
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
@@ -354,6 +413,12 @@ class PreparationNodes:
             "weighted_total": sum(int(c["weight"]) for c in criteria["weighted"]),
             "has_mandatory": bool(criteria["mandatory"]),
         }
+        # RAG grounding: legal basis for evaluation criteria/method.
+        content["references"] = await self._cite(
+            rc,
+            "tiêu chí đánh giá hồ sơ dự thầu phương pháp chấm điểm",
+            domain="legal",
+        )
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None

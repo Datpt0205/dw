@@ -451,6 +451,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 suppliers=tuple(supplier_dir["suppliers"]),
                 clock=clock,
                 id_generator=id_generator,
+                knowledge=knowledge_gateway,
             )
 
             graph_registry = GraphRegistry()

@@ -6,9 +6,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_knowledge.ports import KnowledgeGatewayPort
+from dw_tender.application.ports import DocumentStoragePort
 from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
 from dw_tender.application.preparation.rules import ProcurementRules
-from dw_tender.application.ports import DocumentStoragePort
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,10 @@ class PreparationServices:
 
     Drafting is deterministic (rule-pack + template) in the POC; a model gateway
     can be plugged into the draft_* nodes later without touching the graph.
+
+    ``knowledge`` (optional) grounds the draft_* nodes with retrieved legal /
+    policy / template evidence (RAG). When absent, drafting degrades gracefully
+    to the rule-pack output with no citations.
     """
 
     uow_factory: PreparationUnitOfWorkFactory
@@ -25,5 +30,6 @@ class PreparationServices:
     suppliers: tuple[dict[str, Any], ...]
     clock: UtcClock
     id_generator: IdGenerator
+    knowledge: KnowledgeGatewayPort | None = None
     schema_version: str = "1.0"
     exports_bucket_prefix: str = "exports"

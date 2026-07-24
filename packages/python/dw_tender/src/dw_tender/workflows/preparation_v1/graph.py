@@ -8,7 +8,6 @@ runner compiles it with the SQL checkpointer (durable pause/resume).
 from __future__ import annotations
 
 from itertools import pairwise
-from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
@@ -39,7 +38,8 @@ _CP1_TO_CP2 = (
 
 
 def _route_after_cp1(state: PreparationState) -> str:
-    return "draft_solicitation_package" if state.get("cp1_decision", {}).get("approved") else "close_failed"
+    approved = state.get("cp1_decision", {}).get("approved")
+    return "draft_solicitation_package" if approved else "close_failed"
 
 
 def _route_after_cp2(state: PreparationState) -> str:
@@ -61,7 +61,10 @@ def build_preparation_graph(services: PreparationServices) -> StateGraph:
     graph.add_conditional_edges(
         "apply_cp1",
         _route_after_cp1,
-        {"draft_solicitation_package": "draft_solicitation_package", "close_failed": "close_failed"},
+        {
+            "draft_solicitation_package": "draft_solicitation_package",
+            "close_failed": "close_failed",
+        },
     )
     for previous, current in pairwise(_CP1_TO_CP2):
         graph.add_edge(previous, current)
