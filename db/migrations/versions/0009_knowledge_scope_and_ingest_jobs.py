@@ -108,6 +108,18 @@ def upgrade() -> None:
         USING (current_setting('app.worker_drain', true) = 'on')
         """
     )
+    # The 0002 grant was a one-time snapshot; a table created later needs its own.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'dw_app') THEN
+                GRANT SELECT, INSERT, UPDATE, DELETE
+                    ON knowledge.ingest_jobs TO dw_app;
+            END IF;
+        END $$;
+        """
+    )
 
 
 def downgrade() -> None:
