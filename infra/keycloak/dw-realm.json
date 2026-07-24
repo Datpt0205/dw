@@ -1,7 +1,10 @@
 {
   "realm": "dw",
   "enabled": true,
-  "registrationAllowed": false,
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": false,
+  "loginWithEmailAllowed": true,
+  "resetPasswordAllowed": true,
   "sslRequired": "external",
   "defaultSignatureAlgorithm": "RS256",
   "accessTokenLifespan": 900,
@@ -16,15 +19,9 @@
       "redirectUris": ["http://localhost:3000/*"],
       "webOrigins": ["http://localhost:3000"],
       "attributes": {
-        "pkce.code.challenge.method": "S256"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*"
       },
-      "defaultClientScopes": ["openid", "profile", "email", "dw-audience"]
-    }
-  ],
-  "clientScopes": [
-    {
-      "name": "dw-audience",
-      "protocol": "openid-connect",
       "protocolMappers": [
         {
           "name": "dw-api-audience",
@@ -32,7 +29,8 @@
           "protocolMapper": "oidc-audience-mapper",
           "config": {
             "included.custom.audience": "dw-api",
-            "access.token.claim": "true"
+            "access.token.claim": "true",
+            "id.token.claim": "false"
           }
         }
       ]
@@ -40,6 +38,7 @@
   ],
   "users": [
     {
+      "id": "a0000000-0000-4000-8000-0000000000a1",
       "username": "an.nguyen",
       "email": "an.nguyen@alpha.local",
       "firstName": "An",
@@ -51,10 +50,23 @@
       ]
     },
     {
+      "id": "b0000000-0000-4000-8000-0000000000b2",
       "username": "binh.tran",
       "email": "binh.tran@alpha.local",
       "firstName": "Bình",
       "lastName": "Trần",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "demo-password", "temporary": false }
+      ]
+    },
+    {
+      "id": "c0000000-0000-4000-8000-0000000000c3",
+      "username": "chi.le",
+      "email": "chi.le@alpha.local",
+      "firstName": "Chi",
+      "lastName": "Lê",
       "enabled": true,
       "emailVerified": true,
       "credentials": [

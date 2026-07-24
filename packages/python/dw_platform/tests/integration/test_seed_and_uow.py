@@ -117,15 +117,15 @@ async def test_membership_lookup_confirms_and_denies(
         async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
     )
 
-    access = await lookup.find_access("dev|an.nguyen", alpha_id, alpha_ws)
+    access = await lookup.find_access("dev|an.nguyen", "dw-dev", alpha_id, alpha_ws)
     assert access is not None
     assert access.plan_id == "professional"
     assert "work_ops.write" in access.scopes
     assert "work_ops_worker" in access.feature_flags
 
     # Same verified subject, foreign tenant → fail closed.
-    assert await lookup.find_access("dev|an.nguyen", beta_id, beta_ws) is None
-    assert await lookup.find_access("dev|nobody", alpha_id, alpha_ws) is None
+    assert await lookup.find_access("dev|an.nguyen", "dw-dev", beta_id, beta_ws) is None
+    assert await lookup.find_access("dev|nobody", "dw-dev", alpha_id, alpha_ws) is None
 
 
 async def test_uow_persists_approval_audit_outbox_under_rls(

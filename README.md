@@ -100,32 +100,36 @@ docs/            architecture · adr · runbooks · threat-model · implementati
 
 Chạy `make test-architecture` để kiểm tra. Chi tiết quyết định: [docs/adr/](docs/adr/).
 
-## Demo credentials
+## Đăng nhập & phân quyền (OIDC — mặc định)
 
-Sau `make db-migrate && make db-seed` có 2 tenant demo:
+Mặc định hệ thống chạy **Keycloak OIDC** (`DW_API_AUTH_MODE=oidc`,
+`NEXT_PUBLIC_AUTH_MODE=oidc`). Mở web `http://localhost:3000` → màn hình đăng
+nhập có **Đăng nhập** và **Đăng ký tài khoản mới** (ADR-019).
 
-| Tenant                         | Plan         | User (subject)   | Roles                  |
-| ------------------------------ | ------------ | ---------------- | ---------------------- |
-| `tenant-alpha` (Công ty Alpha) | professional | `dev\|an.nguyen` | member                 |
-|                                |              | `dev\|binh.tran` | approver               |
-|                                |              | `dev\|chi.le`    | platform_admin, member |
-| `tenant-beta` (Công ty Beta)   | basic        | `dev\|bao.pham`  | member                 |
-|                                |              | `dev\|dung.vo`   | approver               |
+Tài khoản demo (realm import từ [infra/keycloak/dw-realm.json](infra/keycloak/dw-realm.json), mật khẩu `demo-password`):
 
-Seed in ra tenant/workspace UUID. Gọi API bằng dev token (ADR-013):
+| User Keycloak | Role trong workspace     | Thấy được gì trên UI                          |
+| ------------- | ------------------------ | --------------------------------------------- |
+| `an.nguyen`   | member                   | Đấu thầu, Cuộc họp, Phê duyệt (không duyệt được) |
+| `binh.tran`   | approver, member         | + nút Phê duyệt/Từ chối                        |
+| `chi.le`      | platform_admin, member   | + link **Quản trị** (bỏ qua mọi kiểm tra scope) |
 
-```bash
-TOKEN=$(uv run python scripts/issue_dev_token.py "dev|an.nguyen")
-curl -H "Authorization: Bearer $TOKEN" \
-     -H "X-Tenant-Id: <tenant-uuid>" -H "X-Workspace-Id: <workspace-uuid>" \
-     http://localhost:8000/api/v1/me
-```
+**Đăng ký:** bấm «Đăng ký tài khoản mới» → tạo tài khoản trong Keycloak → lần
+đăng nhập đầu, tài khoản được **lưu thật vào Postgres** (`platform.users` +
+`external_identities` + `memberships`) và tự vào workspace demo **Công ty Alpha**
+với vai **member**. Nâng/hạ vai trò do quản trị viên thao tác (bước sau).
 
-Keycloak (OIDC mode): realm `dw` được import từ [infra/keycloak/dw-realm.json](infra/keycloak/dw-realm.json); user demo `an.nguyen` / `demo-password`; bật bằng `DW_API_AUTH_MODE=oidc`.
+UI ẩn/khoá theo `scope` cho gọn, nhưng **backend là nơi enforce duy nhất** —
+mọi request đều được xác minh token + membership trong DB (cross-tenant/không đủ
+quyền → 403).
+
+Sau `make db-seed` cũng có 2 tenant + 5 user dùng cho **dev mode** và API test
+qua dev token (`scripts/issue_dev_token.py`, ADR-013). Bật dev mode bằng
+`DW_API_AUTH_MODE=dev` + `NEXT_PUBLIC_AUTH_MODE=dev` (trang `/dev-login`).
 
 ## Luồng demo end-to-end
 
-Mở web → **Trang chủ** → bấm «Vào với vai An» (đăng nhập 1-click).
+Mở web → **Đăng nhập** bằng `an.nguyen` / `demo-password` (hoặc «Đăng ký» tài khoản mới).
 
 1. **Đấu thầu** (`/tender`): «Tạo hồ sơ mẫu» → «Phân tích hồ sơ» → ma trận
    tuân thủ + điểm deterministic (Thiết bị Việt 87.00 thắng; Vật tư Miền Nam

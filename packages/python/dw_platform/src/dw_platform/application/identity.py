@@ -23,6 +23,7 @@ class VerifiedClaims:
     subject: str
     email: str | None
     issuer: str
+    name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +47,7 @@ class MembershipLookupPort(Protocol):
     async def find_access(
         self,
         subject: str,
+        issuer: str,
         tenant_id: UUID,
         workspace_id: UUID,
     ) -> MembershipAccess | None: ...
@@ -67,6 +69,7 @@ class DbAccessContextFactory:
             raise TenantContextMissingError("X-Tenant-Id and X-Workspace-Id headers are required")
         access = await self.membership_lookup.find_access(
             subject=identity.subject,
+            issuer=identity.issuer,
             tenant_id=requested_tenant_id,
             workspace_id=requested_workspace_id,
         )

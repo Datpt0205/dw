@@ -14,6 +14,7 @@ from dw_api.middleware.rate_limit import RateLimitMiddleware
 from dw_api.middleware.request_id import RequestIdMiddleware
 from dw_api.routes.v1.approvals import router as approvals_router
 from dw_api.routes.v1.audit import router as audit_router
+from dw_api.routes.v1.auth import router as auth_router
 from dw_api.routes.v1.health import build_health_router
 from dw_api.routes.v1.integrations import router as integrations_router
 from dw_api.routes.v1.knowledge import router as knowledge_router
@@ -81,6 +82,7 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
         )
     register_exception_handlers(app)
     app.include_router(build_health_router(container.health_service), prefix="/api/v1")
+    app.include_router(auth_router, prefix="/api/v1")
     app.include_router(me_router, prefix="/api/v1")
     app.include_router(approvals_router, prefix="/api/v1")
     app.include_router(runs_router, prefix="/api/v1")
@@ -88,13 +90,22 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
     app.include_router(knowledge_router, prefix="/api/v1")
     app.include_router(memory_router, prefix="/api/v1")
     app.include_router(integrations_router, prefix="/api/v1")
-    # Dev-only demo login/data — never mounted in production (ADR-013).
+    # Demo helpers — never mounted in production (ADR-013). The sample-data
+    # endpoints use the normal authenticated context, so they also work under
+    # OIDC; the dev-token issuer (/dev/session) stays gated to dev auth mode so
+    # it is never a Keycloak bypass.
     settings = container.settings
-    if settings.profile != "production" and settings.auth_mode == "dev" and settings.dev_secret:
+    if settings.profile != "production":
         from dw_api.bootstrap import REPO_ROOT
         from dw_api.routes.v1.dev import build_dev_router
 
-        app.include_router(build_dev_router(REPO_ROOT, settings.dev_secret), prefix="/api/v1")
+        include_session = settings.auth_mode == "dev" and bool(settings.dev_secret)
+        app.include_router(
+            build_dev_router(
+                REPO_ROOT, settings.dev_secret or "", include_session=include_session
+            ),
+            prefix="/api/v1",
+        )
     if container.work_ops is not None:
         from dw_api.dependencies.auth import get_access_context
         from dw_work_ops.presentation.api import build_work_ops_router
@@ -120,6 +131,20 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
                 list_cases=container.tender.list_cases,
                 analyze_case=container.tender.analyze_case,
                 access_context_dependency=get_ctx,
+            ),
+            prefix="/api/v1",
+        )
+    if container.preparation is not None:
+        from dw_api.dependencies.auth import get_access_context as get_prep_ctx
+        from dw_tender.presentation.preparation_api import build_preparation_router
+
+        app.include_router(
+            build_preparation_router(
+                create_case=container.preparation.create_case,
+                get_case=container.preparation.get_case,
+                list_cases=container.preparation.list_cases,
+                run_case=container.preparation.run_case,
+                access_context_dependency=get_prep_ctx,
             ),
             prefix="/api/v1",
         )

@@ -14,16 +14,20 @@ from datetime import datetime
 import sqlalchemy as sa
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_knowledge import tables
-from dw_knowledge.chunking import chunk_text
+from dw_knowledge.chunking import structure_aware_chunks
 from dw_knowledge.contracts import EvidenceChunk, EvidenceRef, SearchQuery
+from dw_knowledge.identity import chunk_id_for, doc_key_for, document_id_for
 from dw_knowledge.ports import (
     EmbeddingPort,
     IndexableChunk,
     ObjectStoragePort,
+    RerankCandidate,
+    RerankPort,
     TrustedSearchFilter,
     VectorIndexPort,
 )
@@ -38,7 +42,8 @@ _CLEARANCE_ALLOWS: dict[str, tuple[str, ...]] = {
     "restricted": ("internal", "confidential", "restricted"),
 }
 
-INDEX_VERSION = "2026-07-23.1"
+# Bumped for structure-aware chunking + contextual embedding (Phase A).
+INDEX_VERSION = "2026-07-25.structure-1"
 
 
 class IngestDocumentCommand(BaseModel):
@@ -50,6 +55,7 @@ class IngestDocumentCommand(BaseModel):
     classification: str = "internal"
     source_version: str = "1"
     content_type: str = "text/plain"
+    scope: str = "tenant"  # "tenant" | "global" (global RLS/read wired in Phase B)
 
 
 @dataclass(frozen=True)
@@ -97,6 +103,9 @@ class KnowledgeGateway:
     object_storage: ObjectStoragePort
     clock: UtcClock
     id_generator: IdGenerator
+    reranker: RerankPort | None = None
+    # Over-fetch this many x top_k for the reranker to reorder (recall->precision).
+    rerank_fetch_multiplier: int = 4
     _ready: bool = field(default=False, init=False)
 
     async def ensure_ready(self) -> None:
@@ -109,50 +118,128 @@ class KnowledgeGateway:
         self, command: IngestDocumentCommand, context: AccessContext
     ) -> IngestedDocument:
         await self.ensure_ready()
-        document_id = self.id_generator.new_uuid()
+        # Deterministic id → re-ingesting the same logical document OVERWRITES it
+        # (idempotent), instead of creating a duplicate (see identity.py).
+        document_id = document_id_for(
+            tenant_id=context.tenant_id,
+            workspace_id=context.workspace_id,
+            domain=command.domain,
+            title=command.title,
+            source_version=command.source_version,
+            scope=command.scope,
+        )
         storage_key = f"{context.tenant_id}/{context.workspace_id}/documents/{document_id}"
         source_uri = await self.object_storage.put_object(
             storage_key, command.content.encode("utf-8"), command.content_type
         )
 
-        text_chunks = chunk_text(command.content)
-        chunk_ids = [self.id_generator.new_uuid() for _ in text_chunks]
+        # Structure-aware, parent-child chunking; leaves carry section_path + global seq.
+        result = structure_aware_chunks(command.content)
+        leaves = result.chunks
+        chunk_ids = [
+            chunk_id_for(document_id=document_id, index_version=INDEX_VERSION, seq=leaf.seq)
+            for leaf in leaves
+        ]
 
+        doc_key = doc_key_for(
+            tenant_id=context.tenant_id,
+            workspace_id=context.workspace_id,
+            domain=command.domain,
+            title=command.title,
+            scope=command.scope,
+        )
+        now = self.clock.now()
+        superseded_ids: list[uuid.UUID] = []
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_TENANT, {"tenant_id": str(context.tenant_id)})
+            # A new version SUPERSEDES the previous current one (kept, not deleted).
+            superseded = await session.execute(
+                sa.update(tables.documents)
+                .where(
+                    tables.documents.c.doc_key == doc_key,
+                    tables.documents.c.is_current.is_(True),
+                    tables.documents.c.id != document_id,
+                )
+                .values(
+                    is_current=False,
+                    status="superseded",
+                    effective_to=now,
+                    superseded_by=document_id,
+                )
+                .returning(tables.documents.c.id)
+            )
+            superseded_ids = [row.id for row in superseded]
+            if superseded_ids:
+                await session.execute(
+                    sa.update(tables.chunks)
+                    .where(tables.chunks.c.document_id.in_(superseded_ids))
+                    .values(status="superseded")
+                )
+            doc_stmt = pg_insert(tables.documents).values(
+                id=document_id,
+                tenant_id=context.tenant_id,
+                workspace_id=context.workspace_id,
+                title=command.title,
+                domain=command.domain,
+                source_uri=source_uri,
+                classification=command.classification,
+                source_version=command.source_version,
+                index_version=INDEX_VERSION,
+                created_by=context.principal_id,
+                created_at=now,
+                doc_key=doc_key,
+                status="active",
+                is_current=True,
+                effective_from=now,
+            )
             await session.execute(
-                sa.insert(tables.documents).values(
-                    id=document_id,
-                    tenant_id=context.tenant_id,
-                    workspace_id=context.workspace_id,
-                    title=command.title,
-                    domain=command.domain,
-                    source_uri=source_uri,
-                    classification=command.classification,
-                    source_version=command.source_version,
-                    index_version=INDEX_VERSION,
-                    created_by=context.principal_id,
-                    created_at=self.clock.now(),
+                doc_stmt.on_conflict_do_update(
+                    index_elements=["id"],
+                    set_={
+                        "title": doc_stmt.excluded.title,
+                        "index_version": doc_stmt.excluded.index_version,
+                        "classification": doc_stmt.excluded.classification,
+                        # Re-ingesting a previously superseded/deleted version reactivates it.
+                        "status": "active",
+                        "is_current": True,
+                        "effective_to": None,
+                        "deleted_at": None,
+                        "deleted_by": None,
+                    },
                 )
             )
-            for chunk, chunk_id in zip(text_chunks, chunk_ids, strict=True):
+            # Replace chunk set (handles shrink on re-ingest).
+            await session.execute(
+                sa.delete(tables.chunks).where(tables.chunks.c.document_id == document_id)
+            )
+            for leaf, chunk_id in zip(leaves, chunk_ids, strict=True):
                 await session.execute(
                     sa.insert(tables.chunks).values(
                         id=chunk_id,
                         tenant_id=context.tenant_id,
                         workspace_id=context.workspace_id,
                         document_id=document_id,
-                        seq=chunk.seq,
-                        content=chunk.content,
-                        start_offset=chunk.start_offset,
-                        end_offset=chunk.end_offset,
-                        provenance_hash=chunk.provenance_hash,
-                        metadata={},
+                        seq=leaf.seq,
+                        content=leaf.content,
+                        start_offset=leaf.start_offset,
+                        end_offset=leaf.end_offset,
+                        provenance_hash=leaf.provenance_hash,
+                        metadata={
+                            "section_path": leaf.section_path,
+                            "section_index": leaf.section_index,
+                        },
                     )
                 )
 
-        if text_chunks:
-            vectors = await self.embeddings.embed([c.content for c in text_chunks])
+        # Superseded versions are kept but tombstoned so search skips them.
+        for old_id in superseded_ids:
+            await self.vector_index.tombstone_document(old_id)
+        # Rebuild THIS version's vectors (delete stale then upsert deterministic points).
+        await self.vector_index.delete_document(document_id)
+        if leaves:
+            # Embed the CONTEXTUAL text (breadcrumb prepended) for better retrieval;
+            # store raw content for display/citation.
+            vectors = await self.embeddings.embed([leaf.contextual_text for leaf in leaves])
             await self.vector_index.upsert(
                 [
                     IndexableChunk(
@@ -161,20 +248,23 @@ class KnowledgeGateway:
                         tenant_id=context.tenant_id,
                         workspace_id=context.workspace_id,
                         domain=command.domain,
-                        content=chunk.content,
+                        content=leaf.content,
                         classification=command.classification,
                         source_version=command.source_version,
                         index_version=INDEX_VERSION,
-                        provenance_hash=chunk.provenance_hash,
+                        provenance_hash=leaf.provenance_hash,
                         acl_principals=("tenant:*",),
                         vector=tuple(vector),
+                        section_path=leaf.section_path,
+                        seq=leaf.seq,
+                        scope=command.scope,
                     )
-                    for chunk, chunk_id, vector in zip(text_chunks, chunk_ids, vectors, strict=True)
+                    for leaf, chunk_id, vector in zip(leaves, chunk_ids, vectors, strict=True)
                 ]
             )
         return IngestedDocument(
             document_id=document_id,
-            chunk_count=len(text_chunks),
+            chunk_count=len(leaves),
             storage_key=storage_key,
         )
 
@@ -193,7 +283,10 @@ class KnowledgeGateway:
                     .scalar_subquery()
                     .label("chunk_count"),
                 )
-                .where(tables.documents.c.workspace_id == context.workspace_id)
+                .where(
+                    tables.documents.c.workspace_id == context.workspace_id,
+                    tables.documents.c.status == "active",
+                )
                 .order_by(tables.documents.c.created_at.desc())
                 .limit(limit)
             )
@@ -211,17 +304,89 @@ class KnowledgeGateway:
                 for row in rows
             ]
 
+    # --------------------------------------------------------- soft delete --
+    async def soft_delete_document(
+        self, document_id: uuid.UUID, context: AccessContext
+    ) -> None:
+        """Tombstone a document (kept for traceability; excluded from retrieval).
+
+        A retention purge (``purge_soft_deleted``) hard-removes it later.
+        """
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_TENANT, {"tenant_id": str(context.tenant_id)})
+            await session.execute(
+                sa.update(tables.documents)
+                .where(tables.documents.c.id == document_id)
+                .values(
+                    status="deleted",
+                    is_current=False,
+                    deleted_at=self.clock.now(),
+                    deleted_by=context.principal_id,
+                )
+            )
+            await session.execute(
+                sa.update(tables.chunks)
+                .where(tables.chunks.c.document_id == document_id)
+                .values(status="deleted", deleted_at=self.clock.now())
+            )
+        await self.vector_index.tombstone_document(document_id)
+
+    async def purge_soft_deleted(
+        self, context: AccessContext, *, before: datetime
+    ) -> int:
+        """Hard-delete tombstoned rows/points older than ``before`` (worker job).
+
+        Removes from BOTH stores so nothing is orphaned. Returns purge count.
+        """
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_TENANT, {"tenant_id": str(context.tenant_id)})
+            rows = (
+                await session.execute(
+                    sa.select(tables.documents.c.id).where(
+                        tables.documents.c.status.in_(("deleted", "superseded")),
+                        sa.or_(
+                            tables.documents.c.deleted_at < before,
+                            tables.documents.c.effective_to < before,
+                        ),
+                    )
+                )
+            ).all()
+            doc_ids = [row.id for row in rows]
+            if doc_ids:
+                await session.execute(
+                    sa.delete(tables.chunks).where(tables.chunks.c.document_id.in_(doc_ids))
+                )
+                await session.execute(
+                    sa.delete(tables.documents).where(tables.documents.c.id.in_(doc_ids))
+                )
+        for doc_id in doc_ids:
+            await self.vector_index.delete_document(doc_id)
+        return len(doc_ids)
+
     # ------------------------------------------------------------ retrieval --
     async def search(self, query: SearchQuery, context: AccessContext) -> list[EvidenceChunk]:
         trusted_filter = build_trusted_filter(context, query.domain)
         vector = (await self.embeddings.embed([query.text]))[0]
-        hits = await self.vector_index.search(vector, trusted_filter, query.top_k)
+        # Over-fetch when a reranker is present: dense recall then cross-encoder precision.
+        fetch_k = query.top_k * self.rerank_fetch_multiplier if self.reranker else query.top_k
+        hits = await self.vector_index.search(vector, trusted_filter, fetch_k)
+        if query.document_ids:
+            hits = [h for h in hits if h.document_id in query.document_ids]
+
+        rerank_scores: dict[str, float] = {}
+        if self.reranker and hits:
+            candidates = [RerankCandidate(id=str(h.chunk_id), text=h.content) for h in hits]
+            ranked = await self.reranker.rerank(query.text, candidates, query.top_k)
+            by_id = {str(h.chunk_id): h for h in hits}
+            hits = [by_id[r.id] for r in ranked if r.id in by_id]
+            rerank_scores = {r.id: r.score for r in ranked}
+        else:
+            hits = hits[: query.top_k]
 
         evidence: list[EvidenceChunk] = []
         for hit in hits:
-            if hit.score < query.min_relevance:
-                continue
-            if query.document_ids and hit.document_id not in query.document_ids:
+            score = rerank_scores.get(str(hit.chunk_id), hit.score)
+            if score < query.min_relevance:
                 continue
             evidence.append(
                 EvidenceChunk(
@@ -232,7 +397,7 @@ class KnowledgeGateway:
                         source_version=hit.source_version,
                         chunk_id=hit.chunk_id,
                         quote=hit.content[:280],
-                        relevance_score=max(0.0, min(1.0, hit.score)),
+                        relevance_score=max(0.0, min(1.0, score)),
                         classification=hit.classification,
                         provenance_hash=hit.provenance_hash,
                     ),

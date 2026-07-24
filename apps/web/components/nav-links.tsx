@@ -2,14 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  BadgeCheck,
-  ClipboardList,
-  FileSearch,
-  Home,
-  type LucideIcon,
-} from "lucide-react";
+import { BadgeCheck, FileSearch, Home, type LucideIcon } from "lucide-react";
 import { cn } from "@dw/ui";
+import { useAuth } from "../lib/auth/auth-context";
 
 interface NavItem {
   href: string;
@@ -17,41 +12,41 @@ interface NavItem {
   hint: string;
   icon: LucideIcon;
   exact?: boolean;
+  /** Scope required to see this item (omit = always visible). */
+  scope?: string;
 }
 
 const ITEMS: NavItem[] = [
   {
     href: "/",
     label: "Trang chủ",
-    hint: "Đăng nhập & bắt đầu",
+    hint: "Tổng quan",
     icon: Home,
     exact: true,
   },
   {
-    href: "/tender",
-    label: "Đấu thầu",
-    hint: "Phân tích hồ sơ thầu",
+    href: "/procurement/dw01",
+    label: "Xây hồ sơ thầu",
+    hint: "DW01 — chuẩn bị hồ sơ mời thầu",
     icon: FileSearch,
-  },
-  {
-    href: "/meetings",
-    label: "Cuộc họp",
-    hint: "Họp → action item",
-    icon: ClipboardList,
+    scope: "tender.read",
   },
   {
     href: "/approvals",
     label: "Phê duyệt",
     hint: "Duyệt đề xuất & giao việc",
     icon: BadgeCheck,
+    scope: "approvals.decide",
   },
 ];
 
 export function NavLinks() {
   const pathname = usePathname();
+  const { hasScope } = useAuth();
+  const visible = ITEMS.filter((item) => !item.scope || hasScope(item.scope));
   return (
     <nav aria-label="Main navigation" className="flex flex-col gap-1">
-      {ITEMS.map((item) => {
+      {visible.map((item) => {
         const active = item.exact
           ? pathname === item.href
           : pathname === item.href || pathname.startsWith(item.href + "/");

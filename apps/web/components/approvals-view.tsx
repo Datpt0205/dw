@@ -15,7 +15,8 @@ import {
   Input,
   Separator,
 } from "@dw/ui";
-import { apiClient, loadSession } from "../lib/session";
+import { useAuth } from "../lib/auth/auth-context";
+import { apiClient } from "../lib/session";
 
 interface ApprovalActionRow {
   action_id?: string;
@@ -40,11 +41,13 @@ const STATUS_BADGE: Record<
 };
 
 const MODULE_LABEL = (approvalType: string) =>
-  approvalType.startsWith("tender.")
-    ? { label: "Đấu thầu", className: "bg-blue-50 text-blue-700" }
-    : approvalType.startsWith("work_ops.")
-      ? { label: "Cuộc họp", className: "bg-emerald-50 text-emerald-700" }
-      : null;
+  approvalType.startsWith("preparation.")
+    ? { label: "Hồ sơ thầu (DW01)", className: "bg-blue-50 text-blue-700" }
+    : approvalType.startsWith("tender.")
+      ? { label: "Đấu thầu", className: "bg-blue-50 text-blue-700" }
+      : approvalType.startsWith("work_ops.")
+        ? { label: "Cuộc họp", className: "bg-emerald-50 text-emerald-700" }
+        : null;
 
 /** Approval inbox; optionally scoped by approval_type prefix. */
 export function ApprovalsView({
@@ -58,7 +61,8 @@ export function ApprovalsView({
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [comment, setComment] = useState("");
-  const canDecide = loadSession()?.roles?.includes("approver") ?? true;
+  const { hasScope } = useAuth();
+  const canDecide = hasScope("approvals.decide");
 
   const refresh = useCallback(() => {
     apiClient()
@@ -173,32 +177,36 @@ export function ApprovalsView({
                 </div>
               )}
               {!canDecide && (
-                <p className="text-xs text-warning">
-                  Vai hiện tại không có quyền duyệt — đăng nhập lại bằng{" "}
-                  <strong>Trần Thanh Bình</strong> (Người phê duyệt).
+                <p className="rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">
+                  Vai hiện tại không có quyền phê duyệt. Cần vai{" "}
+                  <strong>Người phê duyệt</strong>.
                 </p>
               )}
-              <Input
-                placeholder="Ghi chú quyết định (tuỳ chọn)"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-              />
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => void decide(approval, true)}
-                  disabled={busyId === approval.id}
-                >
-                  <BadgeCheck />
-                  {busyId === approval.id ? "Đang xử lý…" : "Phê duyệt"}
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => void decide(approval, false)}
-                  disabled={busyId === approval.id}
-                >
-                  <CircleX /> Từ chối
-                </Button>
-              </div>
+              {canDecide && (
+                <>
+                  <Input
+                    placeholder="Ghi chú quyết định (tuỳ chọn)"
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => void decide(approval, true)}
+                      disabled={busyId === approval.id}
+                    >
+                      <BadgeCheck />
+                      {busyId === approval.id ? "Đang xử lý…" : "Phê duyệt"}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => void decide(approval, false)}
+                      disabled={busyId === approval.id}
+                    >
+                      <CircleX /> Từ chối
+                    </Button>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         );

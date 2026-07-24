@@ -28,27 +28,45 @@ class QdrantVectorIndexAdapter:
 
     async def ensure_ready(self, vector_dimension: int) -> None:
         try:
-            if not await self.client.collection_exists(self.collection):
-                await self.client.create_collection(
-                    collection_name=self.collection,
-                    vectors_config=models.VectorParams(
-                        size=vector_dimension, distance=models.Distance.COSINE
-                    ),
-                )
-                # Tenant-optimized index (blueprint §13.3, ADR-006).
+            if await self.client.collection_exists(self.collection):
+                info = await self.client.get_collection(self.collection)
+                current = info.config.params.vectors
+                size = getattr(current, "size", None)
+                if size == vector_dimension:
+                    return
+                # Embedding model changed (e.g. hash 64 -> BGE-M3 1024): recreate.
+                await self.client.delete_collection(self.collection)
+            await self.client.create_collection(
+                collection_name=self.collection,
+                vectors_config=models.VectorParams(
+                    size=vector_dimension, distance=models.Distance.COSINE
+                ),
+                # Scalar quantization keeps RAM/latency low on modest hardware.
+                quantization_config=models.ScalarQuantization(
+                    scalar=models.ScalarQuantizationConfig(
+                        type=models.ScalarType.INT8, always_ram=True
+                    )
+                ),
+            )
+            # Tenant-optimized index (blueprint §13.3, ADR-006).
+            await self.client.create_payload_index(
+                self.collection,
+                field_name="tenant_id",
+                field_schema=models.KeywordIndexParams(
+                    type=models.KeywordIndexType.KEYWORD, is_tenant=True
+                ),
+            )
+            for field in ("workspace_id", "domain", "classification", "acl_principals"):
                 await self.client.create_payload_index(
                     self.collection,
-                    field_name="tenant_id",
-                    field_schema=models.KeywordIndexParams(
-                        type=models.KeywordIndexType.KEYWORD, is_tenant=True
-                    ),
+                    field_name=field,
+                    field_schema=models.PayloadSchemaType.KEYWORD,
                 )
-                for field in ("workspace_id", "domain", "classification", "acl_principals"):
-                    await self.client.create_payload_index(
-                        self.collection,
-                        field_name=field,
-                        field_schema=models.PayloadSchemaType.KEYWORD,
-                    )
+            await self.client.create_payload_index(
+                self.collection,
+                field_name="is_deleted",
+                field_schema=models.PayloadSchemaType.BOOL,
+            )
         except Exception as exc:
             raise InfrastructureError(
                 "failed to prepare Qdrant collection",
@@ -75,6 +93,10 @@ class QdrantVectorIndexAdapter:
                     "index_version": chunk.index_version,
                     "provenance_hash": chunk.provenance_hash,
                     "content": chunk.content,
+                    "section_path": chunk.section_path,
+                    "seq": chunk.seq,
+                    "scope": chunk.scope,
+                    "is_deleted": False,
                 },
             )
             for chunk in chunks
@@ -86,6 +108,41 @@ class QdrantVectorIndexAdapter:
                 "failed to upsert vectors", details={"error": type(exc).__name__}
             ) from exc
 
+    def _document_filter(self, document_id: uuid.UUID) -> models.Filter:
+        return models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="source_document_id",
+                    match=models.MatchValue(value=str(document_id)),
+                )
+            ]
+        )
+
+    async def delete_document(self, document_id: uuid.UUID) -> None:
+        try:
+            await self.client.delete(
+                self.collection,
+                points_selector=models.FilterSelector(filter=self._document_filter(document_id)),
+                wait=True,
+            )
+        except Exception as exc:
+            raise InfrastructureError(
+                "failed to delete document vectors", details={"error": type(exc).__name__}
+            ) from exc
+
+    async def tombstone_document(self, document_id: uuid.UUID) -> None:
+        try:
+            await self.client.set_payload(
+                self.collection,
+                payload={"is_deleted": True},
+                points=models.FilterSelector(filter=self._document_filter(document_id)),
+                wait=True,
+            )
+        except Exception as exc:
+            raise InfrastructureError(
+                "failed to tombstone document vectors", details={"error": type(exc).__name__}
+            ) from exc
+
     async def search(
         self,
         vector: Sequence[float],
@@ -94,14 +151,6 @@ class QdrantVectorIndexAdapter:
     ) -> list[VectorHit]:
         # Mandatory constraints come EXCLUSIVELY from the trusted filter.
         conditions: list[models.FieldCondition] = [
-            models.FieldCondition(
-                key="tenant_id",
-                match=models.MatchValue(value=str(trusted_filter.tenant_id)),
-            ),
-            models.FieldCondition(
-                key="workspace_id",
-                match=models.MatchValue(value=str(trusted_filter.workspace_id)),
-            ),
             models.FieldCondition(
                 key="classification",
                 match=models.MatchAny(any=list(trusted_filter.allowed_classifications)),
@@ -118,11 +167,38 @@ class QdrantVectorIndexAdapter:
                     match=models.MatchAny(any=[trusted_filter.domain, "shared"]),
                 )
             )
+        # Tenant isolation OR global (legal) scope: a point is visible if it is in
+        # the caller's tenant+workspace, OR it is a cross-tenant global document.
+        own_tenant = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="tenant_id",
+                    match=models.MatchValue(value=str(trusted_filter.tenant_id)),
+                ),
+                models.FieldCondition(
+                    key="workspace_id",
+                    match=models.MatchValue(value=str(trusted_filter.workspace_id)),
+                ),
+            ]
+        )
+        scope_or_tenant = [
+            own_tenant,
+            models.FieldCondition(key="scope", match=models.MatchValue(value="global")),
+        ]
         try:
             response = await self.client.query_points(
                 self.collection,
                 query=list(vector),
-                query_filter=models.Filter(must=list(conditions)),
+                query_filter=models.Filter(
+                    must=list(conditions),
+                    should=scope_or_tenant,  # at least one → (own tenant) OR (global)
+                    # Soft-deleted / superseded points are never retrieved.
+                    must_not=[
+                        models.FieldCondition(
+                            key="is_deleted", match=models.MatchValue(value=True)
+                        )
+                    ],
+                ),
                 limit=top_k,
                 with_payload=True,
             )

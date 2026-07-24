@@ -1,0 +1,57 @@
+# =============================================================================
+# DW01 Procurement Rule Pack — v1
+#
+# ⚠️  PLACEHOLDER VALUES. These thresholds/approval tiers are demo defaults, NOT
+#     a real company procurement policy. Replace with confirmed business rules.
+#     Deterministic gates read this file; the LLM never sets thresholds.
+#
+# Currency: VND (minor units = đồng, no decimals).
+# =============================================================================
+version: "1"
+currency: VND
+
+# --- Hình thức mua sắm theo giá trị gói (estimated_value) --------------------
+# Chọn method rẻ/nhanh nhất mà giá trị gói vẫn nằm trong ngưỡng.
+methods:
+  - key: direct_purchase          # Mua sắm trực tiếp / chỉ định
+    label: "Mua sắm trực tiếp"
+    max_value: 100000000          # ≤ 100 triệu
+    min_suppliers: 1
+  - key: rfq                      # Chào giá cạnh tranh
+    label: "Chào giá cạnh tranh (RFQ)"
+    max_value: 1000000000         # ≤ 1 tỷ
+    min_suppliers: 3
+  - key: open_tender              # Đấu thầu rộng rãi
+    label: "Đấu thầu rộng rãi"
+    max_value: null               # không giới hạn trên
+    min_suppliers: 3
+
+# --- Ma trận phê duyệt: role được phép quyết định theo giá trị gói ----------
+# CP1 = duyệt phương án; CP2 = duyệt bộ hồ sơ chính thức.
+approval_tiers:
+  - max_value: 500000000          # ≤ 500 triệu
+    cp1_role: procurement_manager
+    cp2_role: procurement_manager
+  - max_value: null               # > 500 triệu
+    cp1_role: procurement_manager
+    cp2_role: cp2_approver
+
+# Trong POC, cả CP1 và CP2 map về scope approvals.decide (role approver).
+# approval_tiers ở trên là dữ liệu tham chiếu cho bước sau khi có role riêng.
+checkpoint_scope: approvals.decide
+
+# --- Điều kiện cần pháp chế / tài chính tham gia ----------------------------
+legal_review_required_above: 500000000
+finance_review_required_above: 500000000
+
+# --- Ngưỡng tiêu chí đánh giá (Solicitation Gate) ---------------------------
+evaluation:
+  weighted_total_must_equal: 100  # tổng trọng số tiêu chí có trọng số = 100
+  require_mandatory_criteria: true
+
+# --- Điều kiện hợp lệ tối thiểu của case ------------------------------------
+intake:
+  require_approved_pr: true
+  require_budget: true
+  require_deadline: true
+  require_owner: true

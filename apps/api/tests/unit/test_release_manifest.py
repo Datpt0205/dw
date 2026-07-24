@@ -40,7 +40,11 @@ def test_manifest_contains_every_required_section() -> None:
         "eval_datasets",
     ):
         assert key in manifest, f"manifest missing {key}"
-    assert {w["worker_id"] for w in manifest["workers"]} == {"work_ops", "tender"}
+    assert {w["worker_id"] for w in manifest["workers"]} == {
+        "work_ops",
+        "tender",
+        "preparation",
+    }
     assert len(manifest["prompt_bundles"]) >= 6
     assert manifest["toolsets"][0]["approval_policy"] == "always"
     assert {d["dataset_id"] for d in manifest["eval_datasets"]} >= {

@@ -589,6 +589,7 @@ source = { editable = "packages/python/dw_knowledge" }
 dependencies = [
     { name = "dw-kernel" },
     { name = "dw-platform" },
+    { name = "httpx" },
     { name = "minio" },
     { name = "pydantic" },
     { name = "qdrant-client" },
@@ -599,6 +600,7 @@ dependencies = [
 requires-dist = [
     { name = "dw-kernel", editable = "packages/python/dw_kernel" },
     { name = "dw-platform", editable = "packages/python/dw_platform" },
+    { name = "httpx", specifier = ">=0.27,<0.29" },
     { name = "minio", specifier = ">=7.2,<8" },
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "qdrant-client", specifier = ">=1.12,<1.15" },

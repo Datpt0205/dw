@@ -8,6 +8,7 @@ suitable only for tests and infra-less local runs (never production).
 from __future__ import annotations
 
 import math
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
@@ -28,6 +29,7 @@ class InMemoryVectorIndexAdapter:
     """Implements ``VectorIndexPort`` in process memory."""
 
     _chunks: dict[str, IndexableChunk] = field(default_factory=dict)
+    _tombstoned: set[uuid.UUID] = field(default_factory=set)
 
     async def ensure_ready(self, vector_dimension: int) -> None:
         return None
@@ -35,6 +37,15 @@ class InMemoryVectorIndexAdapter:
     async def upsert(self, chunks: Sequence[IndexableChunk]) -> None:
         for chunk in chunks:
             self._chunks[str(chunk.chunk_id)] = chunk
+            self._tombstoned.discard(chunk.document_id)  # re-index reactivates
+
+    async def delete_document(self, document_id: uuid.UUID) -> None:
+        for key in [k for k, c in self._chunks.items() if c.document_id == document_id]:
+            del self._chunks[key]
+        self._tombstoned.discard(document_id)
+
+    async def tombstone_document(self, document_id: uuid.UUID) -> None:
+        self._tombstoned.add(document_id)
 
     async def search(
         self,
@@ -46,9 +57,14 @@ class InMemoryVectorIndexAdapter:
         allowed = set(trusted_filter.allowed_classifications)
         hits: list[VectorHit] = []
         for chunk in self._chunks.values():
-            if chunk.tenant_id != trusted_filter.tenant_id:
+            if chunk.document_id in self._tombstoned:
                 continue
-            if chunk.workspace_id != trusted_filter.workspace_id:
+            # Own tenant+workspace OR a cross-tenant global (legal) document.
+            own = (
+                chunk.tenant_id == trusted_filter.tenant_id
+                and chunk.workspace_id == trusted_filter.workspace_id
+            )
+            if not (own or chunk.scope == "global"):
                 continue
             if chunk.classification not in allowed:
                 continue

@@ -30,11 +30,24 @@ class SqlMembershipLookup:
     async def find_access(
         self,
         subject: str,
+        issuer: str,
         tenant_id: UUID,
         workspace_id: UUID,
     ) -> MembershipAccess | None:
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_LOOKUP_CONTEXT, {"tenant_id": str(tenant_id)})
+
+            # The verified identity resolves to a platform user either directly
+            # (dev tokens store the subject on users.subject) or via an external
+            # identity mapping (Keycloak sub -> platform user).
+            candidate_users = sa.select(tables.users.c.id).where(
+                tables.users.c.subject == subject
+            ).union(
+                sa.select(tables.external_identities.c.user_id).where(
+                    tables.external_identities.c.issuer == issuer,
+                    tables.external_identities.c.subject == subject,
+                )
+            )
 
             membership_row = (
                 await session.execute(
@@ -42,15 +55,8 @@ class SqlMembershipLookup:
                         tables.memberships.c.user_id,
                         tables.memberships.c.role_keys,
                         tables.memberships.c.clearance,
-                    )
-                    .select_from(
-                        tables.memberships.join(
-                            tables.users,
-                            tables.memberships.c.user_id == tables.users.c.id,
-                        )
-                    )
-                    .where(
-                        tables.users.c.subject == subject,
+                    ).where(
+                        tables.memberships.c.user_id.in_(candidate_users),
                         tables.memberships.c.tenant_id == tenant_id,
                         tables.memberships.c.workspace_id == workspace_id,
                     )

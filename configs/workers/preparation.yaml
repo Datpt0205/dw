@@ -1,0 +1,12 @@
+schema_version: "1.0"
+worker_id: preparation
+worker_version: "1.0.0"
+domain: preparation
+graph_version: "1.0.0"
+prompt_bundle_version: "1.0.0"
+toolset_version: "1.0.0"
+policy_version: "1.0.0"
+memory_policy_version: "1.0.0"
+default_model_profile: balanced
+supported_channels: [web]
+autonomy_level: A2

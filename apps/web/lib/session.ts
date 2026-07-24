@@ -1,99 +1,154 @@
 "use client";
 
 import { ApiClient } from "@dw/api-client";
+import { API_BASE_URL, AUTH_MODE } from "./auth/config";
+import { getKeycloak } from "./auth/keycloak";
 
 /**
- * Dev session (ADR-013): bearer token + tenant/workspace ids live in
- * localStorage, entered on the Admin page. The backend re-verifies everything —
- * this is convenience, never authorization.
+ * Session bridge. The access token is never persisted: in `oidc` mode it lives
+ * in the keycloak-js instance (in memory), in `dev` mode it is a local HS256
+ * token. Only the *active workspace* (tenant/workspace ids + a display profile)
+ * is kept in localStorage — those are not secrets. The backend re-verifies every
+ * request, so this is convenience, never authorization.
  */
 
 const KEYS = {
-  token: "dw.dev.token",
-  tenant: "dw.dev.tenantId",
-  workspace: "dw.dev.workspaceId",
-  profile: "dw.dev.profile",
+  tenant: "dw.active.tenantId",
+  workspace: "dw.active.workspaceId",
+  profile: "dw.active.profile",
+  devToken: "dw.dev.token",
 } as const;
 
-export interface DevSession {
-  token: string;
+export interface Session {
   tenantId: string;
   workspaceId: string;
-  /** Display info from one-click login (absent when pasted manually). */
   subject?: string;
   displayName?: string;
   tenantName?: string;
   roles?: string[];
+  scopes?: string[];
 }
 
-export function loadSession(): DevSession | null {
+/** Back-compat alias for components that still import the old name. */
+export type DevSession = Session;
+
+export interface ActiveWorkspace {
+  tenantId: string;
+  workspaceId: string;
+  subject?: string;
+  displayName?: string;
+  tenantName?: string;
+  roles: string[];
+  scopes: string[];
+}
+
+export function loadSession(): Session | null {
   if (typeof window === "undefined") return null;
-  const token = window.localStorage.getItem(KEYS.token);
   const tenantId = window.localStorage.getItem(KEYS.tenant);
   const workspaceId = window.localStorage.getItem(KEYS.workspace);
-  if (!token || !tenantId || !workspaceId) return null;
-  const session: DevSession = { token, tenantId, workspaceId };
-  const rawProfile = window.localStorage.getItem(KEYS.profile);
-  if (rawProfile) {
+  if (!tenantId || !workspaceId) return null;
+  const session: Session = { tenantId, workspaceId };
+  const raw = window.localStorage.getItem(KEYS.profile);
+  if (raw) {
     try {
-      Object.assign(session, JSON.parse(rawProfile) as Partial<DevSession>);
+      Object.assign(session, JSON.parse(raw) as Partial<Session>);
     } catch {
-      // ignore a corrupt profile blob — core session fields still work
+      // ignore a corrupt profile blob — core fields still work
     }
   }
   return session;
 }
 
-export function saveSession(session: DevSession): void {
-  window.localStorage.setItem(KEYS.token, session.token);
-  window.localStorage.setItem(KEYS.tenant, session.tenantId);
-  window.localStorage.setItem(KEYS.workspace, session.workspaceId);
-  const { subject, displayName, tenantName, roles } = session;
+export function setActiveWorkspace(active: ActiveWorkspace): void {
+  window.localStorage.setItem(KEYS.tenant, active.tenantId);
+  window.localStorage.setItem(KEYS.workspace, active.workspaceId);
+  const { subject, displayName, tenantName, roles, scopes } = active;
   window.localStorage.setItem(
     KEYS.profile,
-    JSON.stringify({ subject, displayName, tenantName, roles }),
+    JSON.stringify({ subject, displayName, tenantName, roles, scopes }),
   );
 }
 
-export function clearSession(): void {
-  for (const key of Object.values(KEYS)) window.localStorage.removeItem(key);
+export function clearActiveWorkspace(): void {
+  window.localStorage.removeItem(KEYS.tenant);
+  window.localStorage.removeItem(KEYS.workspace);
+  window.localStorage.removeItem(KEYS.profile);
 }
 
-/** One-click demo login: exchange a roster subject for a full session. */
-export async function loginAs(subject: string): Promise<DevSession> {
+/** Dev-mode only: store the local bearer token. */
+export function setDevToken(token: string): void {
+  window.localStorage.setItem(KEYS.devToken, token);
+}
+
+export function devToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(KEYS.devToken);
+}
+
+export function clearDevToken(): void {
+  window.localStorage.removeItem(KEYS.devToken);
+}
+
+/** Dev-mode one-click login: exchange a roster subject for a local token.
+ * The active workspace + scopes are then resolved via /auth/bootstrap. */
+export async function loginAsDev(subject: string): Promise<void> {
   const info = await apiClient().createDevSession(subject);
-  const session: DevSession = {
-    token: info.token,
-    tenantId: info.tenant_id,
-    workspaceId: info.workspace_id,
-    subject: info.subject,
-    displayName: info.display_name,
-    tenantName: info.tenant_name,
-    roles: info.roles,
-  };
-  saveSession(session);
-  return session;
+  setDevToken(info.token);
+}
+
+async function currentAccessToken(): Promise<string | null> {
+  if (AUTH_MODE === "dev") {
+    return typeof window === "undefined"
+      ? null
+      : window.localStorage.getItem(KEYS.devToken);
+  }
+  const kc = getKeycloak();
+  if (!kc.authenticated) return null;
+  try {
+    await kc.updateToken(30);
+  } catch {
+    return null;
+  }
+  return kc.token ?? null;
 }
 
 export function apiClient(): ApiClient {
   return new ApiClient({
-    baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000",
-    getAccessToken: () => loadSession()?.token ?? null,
+    baseUrl: API_BASE_URL,
+    getAccessToken: currentAccessToken,
     fetchImpl: (input, init) => {
-      const session = loadSession();
       const headers = new Headers(init?.headers);
-      if (session) {
-        headers.set("X-Tenant-Id", session.tenantId);
-        headers.set("X-Workspace-Id", session.workspaceId);
+      if (typeof window !== "undefined") {
+        const tenantId = window.localStorage.getItem(KEYS.tenant);
+        const workspaceId = window.localStorage.getItem(KEYS.workspace);
+        if (tenantId && workspaceId) {
+          headers.set("X-Tenant-Id", tenantId);
+          headers.set("X-Workspace-Id", workspaceId);
+        }
       }
       return fetch(input, { ...init, headers });
     },
   });
 }
 
-/** Demo roles that may create content (approver chỉ duyệt). */
-export function canCreate(session: DevSession | null): boolean {
+/**
+ * UI permission helper mirroring the backend rule: `platform_admin` bypasses
+ * scope checks; otherwise the scope must be present. This only hides/disables
+ * controls for clarity — the API is the sole authority.
+ */
+export function hasScope(session: Session | null, scope: string): boolean {
   if (!session) return false;
-  if (!session.roles) return true; // manual session: let the API decide
-  return session.roles.some((r) => r === "member" || r === "platform_admin");
+  if (session.roles?.includes("platform_admin")) return true;
+  return session.scopes?.includes(scope) ?? false;
+}
+
+export function hasRole(session: Session | null, role: string): boolean {
+  return session?.roles?.includes(role) ?? false;
+}
+
+/** May the current session create tender/work-ops content? */
+export function canCreate(session: Session | null): boolean {
+  return (
+    hasScope(session, "tender.write") || hasScope(session, "work_ops.write")
+  );
 }

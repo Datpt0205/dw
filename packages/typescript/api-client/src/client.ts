@@ -36,6 +36,36 @@ import {
  * top of this transport in phase 3; hand-written duplicate types are forbidden.
  */
 
+// ---- DW01 preparation (inline schemas; validated at the boundary) ---------
+export const preparationArtifactSchema = z.object({
+  id: z.string(),
+  artifact_type: z.string(),
+  artifact_version: z.number(),
+  status: z.string(),
+  content: z.record(z.unknown()),
+  content_hash: z.string(),
+});
+export const preparationCaseSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  source_pr_ref: z.string(),
+  estimated_value_minor: z.number(),
+  currency: z.string(),
+  deadline: z.string().nullable(),
+  owner_name: z.string(),
+  method_key: z.string().nullable(),
+  state: z.string(),
+  current_step: z.string(),
+  last_run_id: z.string().nullable(),
+  export_ref: z.string().nullable(),
+  current_official_artifact_id: z.string().nullable(),
+  version: z.number(),
+  artifacts: z.array(preparationArtifactSchema),
+});
+export type PreparationArtifact = z.infer<typeof preparationArtifactSchema>;
+export type PreparationCase = z.infer<typeof preparationCaseSchema>;
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -282,6 +312,51 @@ export class ApiClient {
     return this.request(
       "POST",
       `/api/v1/procurement/cases/${caseId}/analyze`,
+      z.object({ run_id: z.string().uuid() }),
+      { body: {} },
+    );
+  }
+
+  // ---- DW01 preparation ---------------------------------------------------
+
+  listPreparationCases(): Promise<PreparationCase[]> {
+    return this.request(
+      "GET",
+      "/api/v1/procurement/preparation/cases",
+      z.array(preparationCaseSchema),
+    );
+  }
+
+  getPreparationCase(caseId: string): Promise<PreparationCase> {
+    return this.request(
+      "GET",
+      `/api/v1/procurement/preparation/cases/${caseId}`,
+      preparationCaseSchema,
+    );
+  }
+
+  createPreparationCase(input: {
+    title: string;
+    description?: string;
+    source_pr_ref?: string;
+    estimated_value_minor?: number;
+    currency?: string;
+    deadline?: string | null;
+    owner_name?: string;
+    pr_text: string;
+  }): Promise<{ case_id: string }> {
+    return this.request(
+      "POST",
+      "/api/v1/procurement/preparation/cases",
+      z.object({ case_id: z.string().uuid() }),
+      { body: input },
+    );
+  }
+
+  runPreparation(caseId: string): Promise<{ run_id: string }> {
+    return this.request(
+      "POST",
+      `/api/v1/procurement/preparation/cases/${caseId}/run`,
       z.object({ run_id: z.string().uuid() }),
       { body: {} },
     );

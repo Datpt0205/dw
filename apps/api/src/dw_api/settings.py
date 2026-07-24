@@ -29,8 +29,32 @@ class ApiSettings(BaseSettings):
     # --- authentication (ADR-013) ---
     auth_mode: AuthMode = "dev"
     dev_secret: str | None = None
-    oidc_issuer_url: str | None = None
+    oidc_issuer_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_OIDC_ISSUER_URL", "OIDC_ISSUER_URL")
+    )
     oidc_audience: str = "dw-api"
+    # JWKS endpoint used to fetch signing keys. Decoupled from the issuer so the
+    # API (inside Docker) can reach Keycloak at http://keycloak:8080 while the
+    # token issuer stays the browser-facing http://localhost:8080. Defaults to
+    # ``{issuer}/protocol/openid-connect/certs`` when unset.
+    oidc_jwks_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_OIDC_JWKS_URL", "OIDC_JWKS_URL")
+    )
+
+    # --- first-login provisioning (ADR-021) ---
+    # New verified identities are added to this seeded demo tenant as a member.
+    # Defaults match scripts/seed_demo.py (uuid5 of tenant-alpha / main).
+    default_tenant_id: str = Field(
+        default="d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d",
+        validation_alias=AliasChoices("DW_API_DEFAULT_TENANT_ID"),
+    )
+    default_workspace_id: str = Field(
+        default="64764894-718d-5558-ba17-9a2949214063",
+        validation_alias=AliasChoices("DW_API_DEFAULT_WORKSPACE_ID"),
+    )
+    default_role: str = Field(
+        default="member", validation_alias=AliasChoices("DW_API_DEFAULT_ROLE")
+    )
 
     # --- artifact storage (MinIO/S3) ---
     s3_endpoint_url: str | None = Field(
@@ -51,6 +75,20 @@ class ApiSettings(BaseSettings):
     # --- vector store ---
     qdrant_url: str | None = Field(
         default=None, validation_alias=AliasChoices("DW_API_QDRANT_URL", "QDRANT_URL")
+    )
+
+    # --- RAG embeddings / rerank (self-hosted TEI; hash is the offline default) ---
+    embedding_provider: str = Field(
+        default="hash", validation_alias=AliasChoices("DW_API_EMBEDDING_PROVIDER")
+    )
+    embed_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_EMBED_URL", "TEI_EMBED_URL")
+    )
+    rerank_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_RERANK_URL", "TEI_RERANK_URL")
+    )
+    embed_dimension: int = Field(
+        default=1024, validation_alias=AliasChoices("DW_API_EMBED_DIMENSION")
     )
 
     # --- model provider (ADR-012) ---

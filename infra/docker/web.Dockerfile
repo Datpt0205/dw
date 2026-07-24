@@ -21,6 +21,19 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 COPY packages/typescript packages/typescript
 COPY apps/web apps/web
 
+# NEXT_PUBLIC_* are inlined at build time, so they must be present here (not just
+# at runtime). Compose passes them as build args; defaults suit local Docker.
+ARG NEXT_PUBLIC_AUTH_MODE=oidc
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+ARG NEXT_PUBLIC_KEYCLOAK_URL=http://localhost:8080
+ARG NEXT_PUBLIC_KEYCLOAK_REALM=dw
+ARG NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=dw-web
+ENV NEXT_PUBLIC_AUTH_MODE=$NEXT_PUBLIC_AUTH_MODE \
+    NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+    NEXT_PUBLIC_KEYCLOAK_URL=$NEXT_PUBLIC_KEYCLOAK_URL \
+    NEXT_PUBLIC_KEYCLOAK_REALM=$NEXT_PUBLIC_KEYCLOAK_REALM \
+    NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=$NEXT_PUBLIC_KEYCLOAK_CLIENT_ID
+
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @dw/web build
 

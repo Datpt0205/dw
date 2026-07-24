@@ -5,6 +5,7 @@ Tests build their own container with fake ports; production wiring lives here.
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from dataclasses import dataclass
@@ -48,12 +49,14 @@ from dw_memory.service import MemoryService
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.adapters.identity.keycloak import KeycloakTokenVerifier
+from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBootstrap
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory
+from dw_platform.application.identity_bootstrap import IdentityBootstrapPort
 from dw_platform.application.ports import (
     AccessContextFactoryPort,
     PlatformUnitOfWorkFactory,
@@ -61,13 +64,23 @@ from dw_platform.application.ports import (
 )
 from dw_tender.adapters.persistence.repositories import SqlTenderUnitOfWorkFactory
 from dw_tender.adapters.policy_loader import load_scoring_policy
+from dw_tender.adapters.preparation.repositories import SqlPreparationUnitOfWorkFactory
+from dw_tender.adapters.preparation.rules_loader import load_procurement_rules
 from dw_tender.application.handlers import (
     AnalyzeCaseHandler,
     CreateTenderCaseHandler,
     GetTenderCaseHandler,
     ListTenderCasesHandler,
 )
+from dw_tender.application.preparation.handlers import (
+    CreatePreparationCaseHandler,
+    GetPreparationCaseHandler,
+    ListPreparationCasesHandler,
+    RunPreparationHandler,
+)
 from dw_tender.domain.services.scoring_engine import ScoringEngine
+from dw_tender.workflows.preparation_v1.registry import register_preparation_graphs
+from dw_tender.workflows.preparation_v1.services import PreparationServices
 from dw_tender.workflows.registry import register_tender_graphs
 from dw_tender.workflows.v1.services import TenderWorkflowServices
 from dw_work_ops.adapters.dispatch.tool import DispatchToolFactory
@@ -118,6 +131,14 @@ class TenderHandlers:
 
 
 @dataclass
+class PreparationHandlers:
+    create_case: CreatePreparationCaseHandler
+    get_case: GetPreparationCaseHandler
+    list_cases: ListPreparationCasesHandler
+    run_case: RunPreparationHandler
+
+
+@dataclass
 class ApiContainer:
     """Wired dependencies for the API process."""
 
@@ -126,6 +147,7 @@ class ApiContainer:
     health_service: HealthService
     token_verifier: TokenVerifierPort | None
     access_context_factory: AccessContextFactoryPort | None
+    identity_bootstrap: IdentityBootstrapPort | None
     uow_factory: PlatformUnitOfWorkFactory | None
     authorization: ScopeAuthorizationService
     entitlement: PlanEntitlementService
@@ -133,6 +155,7 @@ class ApiContainer:
     approval_flow: ApproveAndResumeService | None = None
     work_ops: WorkOpsHandlers | None = None
     tender: TenderHandlers | None = None
+    preparation: PreparationHandlers | None = None
     knowledge_gateway: KnowledgeGateway | None = None
     memory_service: MemoryService | None = None
     tool_registry: ToolRegistry | None = None
@@ -160,7 +183,9 @@ class ApiContainer:
 def _build_token_verifier(settings: ApiSettings) -> TokenVerifierPort | None:
     if settings.auth_mode == "oidc":
         assert settings.oidc_issuer_url is not None  # validate_for_profile enforced
-        return KeycloakTokenVerifier(settings.oidc_issuer_url, settings.oidc_audience)
+        return KeycloakTokenVerifier(
+            settings.oidc_issuer_url, settings.oidc_audience, settings.oidc_jwks_url
+        )
     if settings.dev_secret:
         return DevTokenVerifier(settings.dev_secret)
     return None  # auth disabled until a secret is configured (local only)
@@ -244,11 +269,13 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
 
     engine: AsyncEngine | None = None
     access_context_factory: AccessContextFactoryPort | None = None
+    identity_bootstrap: IdentityBootstrapPort | None = None
     uow_factory: PlatformUnitOfWorkFactory | None = None
     run_store: SqlWorkerRunStore | None = None
     approval_flow: ApproveAndResumeService | None = None
     work_ops: WorkOpsHandlers | None = None
     tender: TenderHandlers | None = None
+    preparation: PreparationHandlers | None = None
     knowledge_gateway: KnowledgeGateway | None = None
     memory_service: MemoryService | None = None
     tool_registry: ToolRegistry | None = None
@@ -257,6 +284,12 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         access_context_factory = DbAccessContextFactory(SqlMembershipLookup(session_factory))
+        identity_bootstrap = SqlIdentityBootstrap(
+            session_factory=session_factory,
+            default_tenant_id=uuid.UUID(settings.default_tenant_id),
+            default_workspace_id=uuid.UUID(settings.default_workspace_id),
+            default_role=settings.default_role,
+        )
         uow_factory = SqlPlatformUnitOfWorkFactory(session_factory)
         run_store = SqlWorkerRunStore(session_factory)
 
@@ -328,8 +361,25 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 model_profile=settings.model_profile,
             )
             # ---- knowledge gateway (tender evidence retrieval) ------------
-            from dw_knowledge.adapters.hash_embedding import HashEmbeddingAdapter
-            from dw_knowledge.ports import VectorIndexPort
+            from dw_knowledge.ports import EmbeddingPort, RerankPort, VectorIndexPort
+
+            embeddings: EmbeddingPort
+            if settings.embedding_provider == "tei" and settings.embed_url:
+                from dw_knowledge.adapters.tei_embedding import TeiEmbeddingAdapter
+
+                embeddings = TeiEmbeddingAdapter(
+                    base_url=settings.embed_url, _dimension=settings.embed_dimension
+                )
+            else:
+                from dw_knowledge.adapters.hash_embedding import HashEmbeddingAdapter
+
+                embeddings = HashEmbeddingAdapter()
+
+            reranker: RerankPort | None = None
+            if settings.embedding_provider == "tei" and settings.rerank_url:
+                from dw_knowledge.adapters.tei_rerank import TeiRerankAdapter
+
+                reranker = TeiRerankAdapter(base_url=settings.rerank_url)
 
             vector_index: VectorIndexPort
             if settings.qdrant_url:
@@ -348,10 +398,11 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
             knowledge_gateway = KnowledgeGateway(
                 session_factory=session_factory,
                 vector_index=vector_index,
-                embeddings=HashEmbeddingAdapter(),
+                embeddings=embeddings,
                 object_storage=storage,  # type: ignore[arg-type]
                 clock=clock,
                 id_generator=id_generator,
+                reranker=reranker,
             )
 
             # ---- tender workflow -----------------------------------------
@@ -371,9 +422,28 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 model_profile=settings.model_profile,
             )
 
+            # ---- DW01 preparation slice ----------------------------------
+            preparation_uow_factory = SqlPreparationUnitOfWorkFactory(session_factory)
+            supplier_dir = json.loads(
+                (
+                    REPO_ROOT / "db" / "fixtures" / "preparation" / "supplier_directory.json"
+                ).read_text(encoding="utf-8")
+            )
+            preparation_services = PreparationServices(
+                uow_factory=preparation_uow_factory,
+                storage=storage,  # type: ignore[arg-type]
+                rules=load_procurement_rules(
+                    REPO_ROOT / "configs" / "policies" / "dw01" / "procurement_rules_v1.yaml"
+                ),
+                suppliers=tuple(supplier_dir["suppliers"]),
+                clock=clock,
+                id_generator=id_generator,
+            )
+
             graph_registry = GraphRegistry()
             register_work_ops_graphs(graph_registry, services)
             register_tender_graphs(graph_registry, tender_services)
+            register_preparation_graphs(graph_registry, preparation_services)
             worker_registry = WorkerRegistry(graph_registry=graph_registry)
             worker_registry.load_directory(REPO_ROOT / "configs" / "workers")
 
@@ -442,6 +512,28 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     id_generator=id_generator,
                 ),
             )
+            preparation = PreparationHandlers(
+                create_case=CreatePreparationCaseHandler(
+                    uow_factory=preparation_uow_factory,
+                    storage=storage,  # type: ignore[arg-type]
+                    authorization=authorization,
+                    entitlement=entitlement,
+                    id_generator=id_generator,
+                ),
+                get_case=GetPreparationCaseHandler(
+                    uow_factory=preparation_uow_factory, authorization=authorization
+                ),
+                list_cases=ListPreparationCasesHandler(
+                    uow_factory=preparation_uow_factory, authorization=authorization
+                ),
+                run_case=RunPreparationHandler(
+                    uow_factory=preparation_uow_factory,
+                    workflow_runner=runner,
+                    authorization=authorization,
+                    entitlement=entitlement,
+                    id_generator=id_generator,
+                ),
+            )
     elif settings.profile == "production":
         settings.require_database_url()
 
@@ -451,6 +543,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         health_service=HealthService(probes={"database": database_probe(engine)}),
         token_verifier=_build_token_verifier(settings),
         access_context_factory=access_context_factory,
+        identity_bootstrap=identity_bootstrap,
         uow_factory=uow_factory,
         authorization=authorization,
         entitlement=entitlement,
@@ -458,6 +551,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         approval_flow=approval_flow,
         work_ops=work_ops,
         tender=tender,
+        preparation=preparation,
         knowledge_gateway=knowledge_gateway,
         memory_service=memory_service,
         tool_registry=tool_registry,

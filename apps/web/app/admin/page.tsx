@@ -1,211 +1,153 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { LogIn, ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
-import type { DemoUser } from "@dw/contracts";
+import { Check, ShieldCheck } from "lucide-react";
 import {
   Badge,
-  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  Input,
-  Textarea,
 } from "@dw/ui";
-import {
-  apiClient,
-  clearSession,
-  loadSession,
-  loginAs,
-  saveSession,
-  type DevSession,
-} from "../../lib/session";
+import { useAuth } from "../../lib/auth/auth-context";
 
-const ROLE_BADGES: Record<
-  string,
-  { label: string; variant: "secondary" | "success" | "warning" }
-> = {
-  member: { label: "Nhân viên", variant: "secondary" },
-  approver: { label: "Người phê duyệt", variant: "success" },
-  platform_admin: { label: "Quản trị", variant: "warning" },
-};
+/**
+ * Access reference page. Identity is managed by Keycloak; business permissions
+ * (roles → scopes) live in the platform database. New accounts join the demo
+ * workspace as `member`; an admin adjusts roles from here in a later milestone.
+ */
+
+const ROLE_CATALOG: {
+  key: string;
+  label: string;
+  summary: string;
+  scopes: string[];
+}[] = [
+  {
+    key: "member",
+    label: "Nhân viên (member)",
+    summary: "Tạo & chạy phân tích đấu thầu, cuộc họp. Không được phê duyệt.",
+    scopes: [
+      "tender.read",
+      "tender.write",
+      "work_ops.read",
+      "work_ops.write",
+      "approvals.read",
+      "knowledge.read",
+      "memory.read",
+    ],
+  },
+  {
+    key: "approver",
+    label: "Người phê duyệt (approver)",
+    summary: "Xem và quyết định phê duyệt. Không tạo nội dung.",
+    scopes: [
+      "approvals.read",
+      "approvals.decide",
+      "tender.read",
+      "work_ops.read",
+      "knowledge.read",
+      "memory.read",
+    ],
+  },
+  {
+    key: "platform_admin",
+    label: "Quản trị (platform_admin)",
+    summary: "Toàn quyền trong workspace — bỏ qua mọi kiểm tra scope.",
+    scopes: ["platform.admin", "(bypass mọi scope)"],
+  },
+];
 
 export default function AdminPage() {
-  const [users, setUsers] = useState<DemoUser[] | null>(null);
-  const [session, setSession] = useState<DevSession | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showManual, setShowManual] = useState(false);
-  const [token, setToken] = useState("");
-  const [tenantId, setTenantId] = useState("");
-  const [workspaceId, setWorkspaceId] = useState("");
-
-  useEffect(() => {
-    setSession(loadSession());
-    apiClient()
-      .listDemoUsers()
-      .then(setUsers)
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : "lỗi không rõ"),
-      );
-  }, []);
-
-  async function handleLogin(user: DemoUser) {
-    setBusy(user.subject);
-    setError(null);
-    try {
-      setSession(await loginAs(user.subject));
-      toast.success(`Đã đăng nhập với vai ${user.display_name}`);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "lỗi không rõ";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(null);
-    }
-  }
+  const { displayName, active, roles, scopes } = useAuth();
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          Đăng nhập demo
+          Phân quyền &amp; vai trò
         </h1>
         <p className="text-sm text-muted-foreground">
-          Chọn một nhân vật. Backend vẫn xác minh token + membership trong DB
-          trên mọi request — nút này chỉ có ở môi trường dev.
+          Keycloak quản lý đăng nhập; Digital Worker quản lý quyền nghiệp vụ theo
+          vai trò trong từng workspace.
         </p>
       </div>
 
-      {session && (
-        <Card className="border-success/40">
-          <CardContent className="flex items-center justify-between pt-5 text-sm">
-            <span className="flex items-center gap-2">
-              <ShieldCheck className="size-4 text-success" />
-              Đang đăng nhập:{" "}
-              <strong>
-                {session.displayName ?? session.subject ?? "thủ công"}
-              </strong>
-              {session.tenantName && (
-                <span className="text-muted-foreground">
-                  · {session.tenantName}
-                </span>
-              )}
-              {session.roles?.map((role) => {
-                const badge = ROLE_BADGES[role];
-                return (
-                  <Badge key={role} variant={badge?.variant ?? "secondary"}>
-                    {badge?.label ?? role}
-                  </Badge>
-                );
-              })}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                clearSession();
-                setSession(null);
-              }}
-            >
-              Đăng xuất
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        {users?.map((user) => (
-          <Card key={user.subject} className="flex flex-col">
-            <CardHeader className="flex-row items-center gap-3 space-y-0">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                {user.display_name.split(" ").at(-1)?.charAt(0)}
-              </span>
-              <div>
-                <CardTitle className="text-base">{user.display_name}</CardTitle>
-                <CardDescription>{user.tenant_name}</CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent className="flex flex-1 flex-col justify-between gap-3 text-sm">
-              <p className="text-muted-foreground">{user.description}</p>
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex flex-wrap gap-1">
-                  {user.roles.map((role) => {
-                    const badge = ROLE_BADGES[role];
-                    return (
-                      <Badge key={role} variant={badge?.variant ?? "secondary"}>
-                        {badge?.label ?? role}
-                      </Badge>
-                    );
-                  })}
-                </span>
-                <Button
-                  size="sm"
-                  onClick={() => void handleLogin(user)}
-                  disabled={busy !== null}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ShieldCheck className="size-4 text-success" /> Quyền của bạn
+          </CardTitle>
+          <CardDescription>
+            {displayName}
+            {active ? ` · ${active.workspaceName} (${active.tenantName})` : ""}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-muted-foreground">Vai trò:</span>
+            {roles.length > 0 ? (
+              roles.map((r) => (
+                <Badge key={r} variant="secondary">
+                  {r}
+                </Badge>
+              ))
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-muted-foreground">Scope hiệu lực:</span>
+            {scopes.length > 0 ? (
+              scopes.map((s) => (
+                <code
+                  key={s}
+                  className="rounded bg-muted px-1.5 py-0.5 text-xs"
                 >
-                  <LogIn />
-                  {busy === user.subject ? "Đang vào…" : "Đăng nhập"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                  {s}
+                </code>
+              ))
+            ) : (
+              <span className="text-muted-foreground">
+                (platform_admin — bỏ qua kiểm tra scope)
+              </span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        {ROLE_CATALOG.map((role) => {
+          const mine = roles.includes(role.key);
+          return (
+            <Card key={role.key} className={mine ? "border-primary" : ""}>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between text-sm">
+                  {role.label}
+                  {mine && <Check className="size-4 text-primary" />}
+                </CardTitle>
+                <CardDescription>{role.summary}</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-1">
+                {role.scopes.map((s) => (
+                  <code
+                    key={s}
+                    className="rounded bg-muted px-1.5 py-0.5 text-[11px]"
+                  >
+                    {s}
+                  </code>
+                ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
-      <button
-        className="text-xs text-muted-foreground underline"
-        onClick={() => setShowManual((v) => !v)}
-      >
-        {showManual ? "Ẩn" : "Nâng cao: dán token thủ công"}
-      </button>
-      {showManual && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Phiên thủ công</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <label className="block text-sm">
-              Bearer token
-              <Textarea
-                className="mt-1 font-mono text-xs"
-                rows={3}
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm">
-              Tenant ID
-              <Input
-                className="mt-1 font-mono text-xs"
-                value={tenantId}
-                onChange={(e) => setTenantId(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm">
-              Workspace ID
-              <Input
-                className="mt-1 font-mono text-xs"
-                value={workspaceId}
-                onChange={(e) => setWorkspaceId(e.target.value)}
-              />
-            </label>
-            <Button
-              onClick={() => {
-                saveSession({ token, tenantId, workspaceId });
-                setSession(loadSession());
-              }}
-            >
-              Lưu phiên
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      <p className="text-xs text-muted-foreground">
+        Tài khoản mới đăng ký qua Keycloak sẽ tự động được thêm vào workspace demo
+        với vai <strong>Nhân viên</strong>. Việc nâng/hạ vai trò sẽ do quản trị
+        viên thao tác (bổ sung ở giai đoạn sau).
+      </p>
     </div>
   );
 }
