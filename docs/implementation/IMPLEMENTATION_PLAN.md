@@ -1,6 +1,10 @@
 # Digital Worker Platform — Implementation Plan
 
-- **Status**: ✅ COMPLETED — toàn bộ Phase 0–6 + BƯỚC 4 final acceptance PASS (xem `ACCEPTANCE_REPORT.md`)
+- **Status**: ✅ Phase 0–6 COMPLETED — BƯỚC 4 final acceptance PASS (xem `ACCEPTANCE_REPORT.md`)
+- **Lưu ý**: kế hoạch này chỉ bao Phase 0–6. Các phần bổ sung SAU đó (Keycloak OIDC
+  login/logout/**register** + auto-provisioning — xem `ADR-019`; vertical slice DW01
+  chuẩn bị gói thầu; đại tu RAG doanh nghiệp + luồng upload/ingest bất đồng bộ) không
+  nằm trong danh sách phase dưới đây.
 - **Ngày tạo**: 2026-07-23
 - **Specification nguồn**: `CLAUDE.md`, `docs/architecture/Digital_Worker_Source_Base_Blueprint_v2.md` (binding)
 - **Phase mapping**: cấu trúc 7 phase dưới đây ánh xạ lại §28 của blueprint (xem ADR-011); toàn bộ deliverable §28.1–§28.8 đều được bao phủ.

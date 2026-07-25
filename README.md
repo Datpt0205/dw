@@ -139,10 +139,9 @@ Mở web → **Đăng nhập** bằng `an.nguyen` / `demo-password` (hoặc «Đ
    tóm tắt + **phân tích chất lượng họp** (điểm /10, tốt/chưa tốt kèm trích
    dẫn) + action items → Phê duyệt → dispatch qua connector (mock hoặc
    Slack thật qua `DW_TASK_CONNECTOR=slack`).
-3. **Trợ lý chat** (nút 🤖 góc phải mọi trang): dán transcript → nhận phân
-   tích ngay trong khung chat. Cùng luồng với **bot Telegram** — điền
-   `TELEGRAM_BOT_TOKEN` vào `.env`, nhắn `/start` cho bot để lấy ID rồi map
-   trong `configs/demo/channel_identities.yaml`.
+3. **Bot Telegram**: điền `TELEGRAM_BOT_TOKEN` vào `.env`, nhắn `/start` cho
+   bot để lấy ID rồi map trong `configs/demo/channel_identities.yaml`; gửi
+   transcript cho bot → nhận phân tích qua chat.
 4. Trang hệ thống (link cuối sidebar/Trang chủ): `/audit`, `/knowledge`,
    `/memory`, `/integrations`; run detail có `release_manifest_ref`.
 

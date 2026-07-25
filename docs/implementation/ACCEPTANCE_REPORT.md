@@ -3,6 +3,10 @@
 - **Ngày**: 2026-07-23
 - **Máy**: Windows 11 + Docker Desktop (WSL2), Git Bash
 - **Nguyên tắc**: mọi kết quả dưới đây là output của lệnh THẬT đã chạy — không có mục nào được đánh dấu pass mà chưa chạy.
+- **Lưu ý (ảnh chụp thời điểm)**: báo cáo này chốt ở alembic head `0004`. Các thay đổi
+  SAU đó (migration `0006` external_identities cho OIDC-register, `0007` DW01, `0008`/`0009`
+  knowledge soft-delete + scope/ingest_jobs) làm các con số "29 bảng / head 0004" và mục
+  auth "dev token" không còn khớp hiện trạng — auth mặc định nay là Keycloak OIDC.
 
 ## 1. Tổng quan kết quả
 

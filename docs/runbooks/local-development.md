@@ -10,9 +10,11 @@ make db-seed          # seed idempotent: roles/plans/2 tenant/users/fixtures
 make dev              # API :8000 + web :3000 (mock model mặc định)
 ```
 
-Đăng nhập dev: mở web → Admin → dán token từ
-`uv run python scripts/issue_dev_token.py --subject "dev|an.nguyen"` cùng
-tenant/workspace id in ra bởi seed.
+Đăng nhập: mặc định là **Keycloak OIDC** (Authorization Code + PKCE) tại
+`http://localhost:3000` — hỗ trợ **login, logout và tự đăng ký** (tài khoản mới
+được auto-provision vào tenant demo với role `member`). Chế độ dev
+(`DW_API_AUTH_MODE=dev`) thay bằng trang một-cú-nhấp `/dev-login` để chọn nhanh
+một user roster (không cần Keycloak).
 
 ## Chạy full stack trong Docker
 

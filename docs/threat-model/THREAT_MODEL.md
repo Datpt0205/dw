@@ -13,7 +13,17 @@ thật đang cưỡng chế nó — mitigation không có test coi như không t
                                               |--(7)--> [Task connector (ngoài)]
 [Keycloak/DevToken] --(8)--> API (xác thực)
 [Transcript/RFQ upload] --(9)--> workflow (dữ liệu KHÔNG tin cậy)
+[Upload tài liệu] --(10)--> API POST /knowledge/documents --> MinIO + hàng đợi
+                            ingest_jobs --> worker parser (Docling/OCR, dữ liệu
+                            KHÔNG tin cậy) --> chunk/embed/index Qdrant
 ```
+
+> Ranh giới tin cậy mới (async ingest): file người dùng tải lên là **dữ liệu không
+> tin cậy** và bị **parse ngoài request** trong worker (Docling/OCR). Bề mặt tấn công:
+> file độc hại (decompression bomb, XXE/định dạng lỗi, tiêu hao tài nguyên OCR). Giảm
+> thiểu: giới hạn kích thước upload ở API, parser chạy trong worker cách ly + timeout,
+> `ingest_jobs` mang `tenant_id` (RLS) nên không rò rỉ chéo tenant, và scope `global`
+> chỉ platform_admin mới ghi được.
 
 ## S — Spoofing
 
