@@ -18,6 +18,11 @@ dependencies = [
 # worker image only; the ingest consumer degrades to plaintext when absent.
 parsers = [
     "docling>=2.15,<3",
+    # Declared explicitly so the CPU-only index override in the root
+    # [tool.uv.sources] applies (docling pulls torch transitively otherwise,
+    # which would resolve the multi-GB CUDA wheels from PyPI).
+    "torch>=2.2,<3",
+    "torchvision>=0.17,<1",
 ]
 
 [build-system]
