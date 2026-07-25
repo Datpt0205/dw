@@ -152,12 +152,14 @@ services:
       KC_DB_USERNAME: ${POSTGRES_USER:?}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?}
       KC_HTTP_ENABLED: "true"
-      KC_HOSTNAME: http://localhost:8080
+      # Host 8686 -> container 8080 (avoids a clash with other local apps on 8080).
+      # The frontend URL must match the mapped host port so token `iss` = :8686.
+      KC_HOSTNAME: http://localhost:8686
     volumes:
       - keycloak-data:/opt/keycloak/data/export
       - ../keycloak:/opt/keycloak/data/import:ro
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8686:8080"
     networks: [dw-internal, dw-edge]
     depends_on:
       postgres:
@@ -263,7 +265,7 @@ services:
       # OIDC: the token issuer is the browser-facing Keycloak URL, but the API
       # (inside the network) fetches JWKS via the internal service name.
       DW_API_AUTH_MODE: ${DW_API_AUTH_MODE:-oidc}
-      DW_API_OIDC_ISSUER_URL: ${DW_API_OIDC_ISSUER_URL:-http://localhost:8080/realms/dw}
+      DW_API_OIDC_ISSUER_URL: ${DW_API_OIDC_ISSUER_URL:-http://localhost:8686/realms/dw}
       DW_API_OIDC_JWKS_URL: ${DW_API_OIDC_JWKS_URL:-http://keycloak:8080/realms/dw/protocol/openid-connect/certs}
       # RAG embeddings/rerank via self-hosted TEI (BGE-M3 + BGE-reranker).
       DW_API_EMBEDDING_PROVIDER: ${DW_API_EMBEDDING_PROVIDER:-tei}
@@ -331,7 +333,7 @@ services:
       args:
         NEXT_PUBLIC_AUTH_MODE: ${NEXT_PUBLIC_AUTH_MODE:-oidc}
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
-        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8080}
+        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8686}
         NEXT_PUBLIC_KEYCLOAK_REALM: ${NEXT_PUBLIC_KEYCLOAK_REALM:-dw}
         NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ${NEXT_PUBLIC_KEYCLOAK_CLIENT_ID:-dw-web}
     image: dw-web:local

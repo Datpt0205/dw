@@ -142,7 +142,7 @@ USERS = [
 # The token 'sub' is that id and the 'iss' is the browser-facing issuer, so we map
 # (issuer, keycloak_id) -> the existing platform user. Without this, an OIDC login
 # would be treated as a brand-new identity and lose the seeded role.
-KEYCLOAK_ISSUER = os.environ.get("DW_KEYCLOAK_ISSUER", "http://localhost:8080/realms/dw")
+KEYCLOAK_ISSUER = os.environ.get("DW_KEYCLOAK_ISSUER", "http://localhost:8686/realms/dw")
 KEYCLOAK_IDENTITIES = [
     # (keycloak_user_id, platform_subject)
     ("a0000000-0000-4000-8000-0000000000a1", "dev|an.nguyen"),

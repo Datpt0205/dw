@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BadgeCheck, FileSearch, ShieldCheck } from "lucide-react";
+import { ArrowRight, BadgeCheck, FileSearch, Library, ShieldCheck } from "lucide-react";
 import { Badge, Card, CardContent } from "@dw/ui";
 import { useAuth } from "../lib/auth/auth-context";
 
@@ -29,6 +29,15 @@ const MODULES: ModuleCard[] = [
     icon: FileSearch,
     color: "bg-blue-50 text-blue-600",
     scope: "tender.read",
+  },
+  {
+    href: "/knowledge",
+    title: "Tri thức (RAG)",
+    description:
+      "Tải lên & quản lý tài liệu — luật (dùng chung), quy chế, biểu mẫu. Hỗ trợ PDF/DOCX/ảnh scan + OCR; là nguồn tri thức cho Digital Worker.",
+    icon: Library,
+    color: "bg-emerald-50 text-emerald-600",
+    scope: "knowledge.read",
   },
   {
     href: "/approvals",
@@ -99,14 +108,6 @@ export default function HomePage() {
         <Link className="underline hover:text-foreground" href="/audit">
           Nhật ký
         </Link>
-        {hasScope("knowledge.read") && (
-          <>
-            {" · "}
-            <Link className="underline hover:text-foreground" href="/knowledge">
-              Tri thức
-            </Link>
-          </>
-        )}
         {hasScope("memory.read") && (
           <>
             {" · "}

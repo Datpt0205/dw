@@ -35,7 +35,7 @@ Hai ràng buộc kiến trúc:
   provision lại (giữ nguyên role). `bootstrap` trả về danh sách workspace +
   role + scope để frontend chọn workspace và gate UI.
 - **Tách JWKS khỏi issuer**: trong Docker, token `iss` là URL browser-facing
-  (`http://localhost:8080/...`) nhưng API fetch JWKS qua service name nội bộ
+  (`http://localhost:8686/...`) nhưng API fetch JWKS qua service name nội bộ
   (`http://keycloak:8080/...`) — `KeycloakTokenVerifier` nhận `jwks_url` riêng.
 - **UI theo quyền chỉ để rõ ràng**: nav/nút được ẩn/khoá theo scope
   (platform_admin bỏ qua như backend), nhưng backend vẫn là nơi enforce duy nhất.

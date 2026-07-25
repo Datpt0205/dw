@@ -53,7 +53,7 @@ docker compose --env-file .env -f infra/compose/docker-compose.yml \
 
 - API: http://localhost:8000 (docs: `/api/docs`, health: `/api/v1/health`, ready: `/api/v1/ready`)
 - Web: http://localhost:3000
-- Keycloak: http://localhost:8080 — MinIO console: http://localhost:9001 — Langfuse: http://localhost:3001
+- Keycloak: http://localhost:8686 — MinIO console: http://localhost:9001 — Langfuse: http://localhost:3001
 
 ## Lệnh developer
 

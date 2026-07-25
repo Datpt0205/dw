@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BadgeCheck, FileSearch, Home, type LucideIcon } from "lucide-react";
+import { BadgeCheck, FileSearch, Home, Library, type LucideIcon } from "lucide-react";
 import { cn } from "@dw/ui";
 import { useAuth } from "../lib/auth/auth-context";
 
@@ -30,6 +30,13 @@ const ITEMS: NavItem[] = [
     hint: "DW01 — chuẩn bị hồ sơ mời thầu",
     icon: FileSearch,
     scope: "tender.read",
+  },
+  {
+    href: "/knowledge",
+    label: "Tri thức",
+    hint: "Tài liệu & RAG — tải lên luật, quy chế, biểu mẫu",
+    icon: Library,
+    scope: "knowledge.read",
   },
   {
     href: "/approvals",

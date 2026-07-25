@@ -11,9 +11,10 @@ duyệt (CP1/CP2) và trích dẫn bằng chứng từ RAG → cô lập đa ten
 docker compose -f infra/compose/docker-compose.yml --env-file .env --profile full up -d --wait
 ```
 
-- Web: <http://localhost:3000> · API: <http://localhost:8000> · Keycloak: <http://localhost:8080>
-- **Cổng 8080 phải trống cho Keycloak** (nếu app khác giữ 8080 → login sẽ 404;
-  giải phóng rồi `docker compose ... up -d keycloak`).
+- Web: <http://localhost:3000> · API: <http://localhost:8000> · Keycloak: <http://localhost:8686>
+- Keycloak chạy ở **8686** (đã chủ động dời khỏi 8080 để tránh đụng app khác trên máy).
+  Nếu cổng bị chiếm sau khi Docker restart: giải phóng rồi
+  `docker compose ... up -d --force-recreate keycloak`.
 - Tài khoản (mật khẩu `demo-password`, đều thuộc **tenant Alpha**):
 
   | Tài khoản    | Vai trò              | Làm được gì trong demo                         |
