@@ -65,9 +65,7 @@ def _load_roster(repo_root: Path) -> list[DemoUser]:
     return [DemoUser.model_validate(entry) for entry in raw["users"]]
 
 
-def build_dev_router(
-    repo_root: Path, dev_secret: str, include_session: bool = True
-) -> APIRouter:
+def build_dev_router(repo_root: Path, dev_secret: str, include_session: bool = True) -> APIRouter:
     router = APIRouter(prefix="/dev", tags=["dev"])
     fixtures = repo_root / "db" / "fixtures"
 

@@ -5,7 +5,6 @@ Tests build their own container with fake ports; production wiring lives here.
 
 from __future__ import annotations
 
-import json
 import os
 import uuid
 from dataclasses import dataclass
@@ -75,10 +74,19 @@ from dw_tender.application.handlers import (
     ListTenderCasesHandler,
 )
 from dw_tender.application.preparation.handlers import (
+    AnswerPreparationClarificationsHandler,
+    CompletePreparationCp4Handler,
     CreatePreparationCaseHandler,
+    DecidePreparationCp3Handler,
     GetPreparationCaseHandler,
     ListPreparationCasesHandler,
+    PreparationAuditRecorder,
+    RecordPreparationPublicationHandler,
+    RecordPreparationSubmissionHandler,
+    RejectPreparationIntakeHandler,
     RunPreparationHandler,
+    SubmitPreparationAddendumHandler,
+    VerifyPreparationIntakeHandler,
 )
 from dw_tender.domain.services.scoring_engine import ScoringEngine
 from dw_tender.workflows.preparation_v1.registry import register_preparation_graphs
@@ -138,6 +146,15 @@ class PreparationHandlers:
     get_case: GetPreparationCaseHandler
     list_cases: ListPreparationCasesHandler
     run_case: RunPreparationHandler
+    verify_intake: VerifyPreparationIntakeHandler
+    reject_intake: RejectPreparationIntakeHandler
+    answer_clarifications: AnswerPreparationClarificationsHandler
+    record_publication: RecordPreparationPublicationHandler
+    record_submission: RecordPreparationSubmissionHandler
+    complete_cp4: CompletePreparationCp4Handler
+    submit_addendum: SubmitPreparationAddendumHandler
+    decide_cp3: DecidePreparationCp3Handler
+    audit_recorder: PreparationAuditRecorder
 
 
 @dataclass
@@ -437,18 +454,14 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
 
             # ---- DW01 preparation slice ----------------------------------
             preparation_uow_factory = SqlPreparationUnitOfWorkFactory(session_factory)
-            supplier_dir = json.loads(
-                (
-                    REPO_ROOT / "db" / "fixtures" / "preparation" / "supplier_directory.json"
-                ).read_text(encoding="utf-8")
-            )
             preparation_services = PreparationServices(
                 uow_factory=preparation_uow_factory,
                 storage=storage,  # type: ignore[arg-type]
                 rules=load_procurement_rules(
                     REPO_ROOT / "configs" / "policies" / "dw01" / "procurement_rules_v1.yaml"
                 ),
-                suppliers=tuple(supplier_dir["suppliers"]),
+                # Supplier candidates are case input, never a hidden fixture.
+                suppliers=(),
                 clock=clock,
                 id_generator=id_generator,
                 knowledge=knowledge_gateway,
@@ -533,6 +546,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     authorization=authorization,
                     entitlement=entitlement,
                     id_generator=id_generator,
+                    clock=clock,
+                    reminder_seconds=settings.approval_reminder_seconds,
                 ),
                 get_case=GetPreparationCaseHandler(
                     uow_factory=preparation_uow_factory, authorization=authorization
@@ -545,6 +560,63 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     workflow_runner=runner,
                     authorization=authorization,
                     entitlement=entitlement,
+                    id_generator=id_generator,
+                ),
+                verify_intake=VerifyPreparationIntakeHandler(
+                    uow_factory=preparation_uow_factory,
+                    authorization=authorization,
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
+                reject_intake=RejectPreparationIntakeHandler(
+                    uow_factory=preparation_uow_factory,
+                    authorization=authorization,
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
+                answer_clarifications=AnswerPreparationClarificationsHandler(
+                    uow_factory=preparation_uow_factory,
+                    authorization=authorization,
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
+                record_publication=RecordPreparationPublicationHandler(
+                    uow_factory=preparation_uow_factory,
+                    storage=storage,  # type: ignore[arg-type]
+                    authorization=authorization,
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
+                record_submission=RecordPreparationSubmissionHandler(
+                    uow_factory=preparation_uow_factory,
+                    storage=storage,  # type: ignore[arg-type]
+                    authorization=authorization,
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
+                complete_cp4=CompletePreparationCp4Handler(
+                    uow_factory=preparation_uow_factory,
+                    storage=storage,  # type: ignore[arg-type]
+                    authorization=authorization,
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
+                submit_addendum=SubmitPreparationAddendumHandler(
+                    uow_factory=preparation_uow_factory,
+                    storage=storage,  # type: ignore[arg-type]
+                    authorization=authorization,
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
+                decide_cp3=DecidePreparationCp3Handler(
+                    uow_factory=preparation_uow_factory,
+                    authorization=authorization,
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
+                audit_recorder=PreparationAuditRecorder(
+                    uow_factory=uow_factory,
+                    clock=clock,
                     id_generator=id_generator,
                 ),
             )

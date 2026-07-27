@@ -26,6 +26,4 @@ class CompositeParser:
         for parser in self.parsers:
             if parser.supports(content_type, filename):
                 return await parser.parse(data, content_type, filename)
-        raise ValueError(
-            f"no parser supports content_type={content_type!r} filename={filename!r}"
-        )
+        raise ValueError(f"no parser supports content_type={content_type!r} filename={filename!r}")

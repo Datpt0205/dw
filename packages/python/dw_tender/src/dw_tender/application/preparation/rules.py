@@ -41,6 +41,11 @@ class ProcurementRules:
     require_budget: bool
     require_deadline: bool
     require_owner: bool
+    mandatory_criteria: tuple[tuple[str, str], ...] = ()
+    weighted_criteria: tuple[tuple[str, str, int], ...] = ()
+    payment_term_template: str = ""
+    tax_term_template: str = ""
+    response_structure: tuple[str, ...] = ()
 
     def select_method(self, value_minor: int) -> Method:
         """Cheapest/fastest method whose ceiling still covers the package value."""

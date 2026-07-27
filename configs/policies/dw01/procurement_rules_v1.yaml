@@ -48,6 +48,32 @@ finance_review_required_above: 500000000
 evaluation:
   weighted_total_must_equal: 100  # tổng trọng số tiêu chí có trọng số = 100
   require_mandatory_criteria: true
+  mandatory:
+    - code: M1
+      text: "Đủ tư cách pháp nhân và hồ sơ năng lực"
+    - code: M2
+      text: "Đáp ứng yêu cầu kỹ thuật tối thiểu đã được owner xác nhận"
+  weighted:
+    - code: W1
+      text: "Mức độ đáp ứng kỹ thuật"
+      weight: 50
+    - code: W2
+      text: "Giá và tổng chi phí sở hữu"
+      weight: 40
+    - code: W3
+      text: "Bảo hành và tiến độ giao hàng"
+      weight: 10
+
+# Template versioned, hiển thị rõ là cấu hình mô phỏng. Không phải output do
+# model tự bịa và phải được procurement/legal thay thế trước pilot nghiệp vụ.
+solicitation_template:
+  payment_term: "Thanh toán sau nghiệm thu; điều khoản cuối cùng cần tài chính xác nhận."
+  tax_term: "Nhà cung cấp phải tách rõ giá trước thuế, thuế và tổng giá."
+  response_structure:
+    - "Hồ sơ năng lực"
+    - "Bảng đáp ứng kỹ thuật"
+    - "Bảng giá chi tiết"
+    - "Điều khoản bảo hành và giao hàng"
 
 # --- Điều kiện hợp lệ tối thiểu của case ------------------------------------
 intake:

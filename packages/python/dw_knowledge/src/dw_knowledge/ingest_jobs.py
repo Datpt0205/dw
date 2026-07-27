@@ -11,6 +11,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 import sqlalchemy as sa
 from pydantic import BaseModel, ConfigDict, Field
@@ -60,7 +61,7 @@ class IngestJob:
     updated_at: datetime
 
 
-def _row_to_job(row: sa.Row) -> IngestJob:
+def _row_to_job(row: sa.Row[Any]) -> IngestJob:
     return IngestJob(
         id=row.id,
         tenant_id=row.tenant_id,
@@ -166,9 +167,7 @@ class IngestJobStore:
             )
             return _row_to_job(row)
 
-    async def mark_done(
-        self, job: IngestJob, *, document_id: uuid.UUID, chunk_count: int
-    ) -> None:
+    async def mark_done(self, job: IngestJob, *, document_id: uuid.UUID, chunk_count: int) -> None:
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_TENANT, {"tenant_id": str(job.tenant_id)})
             await session.execute(

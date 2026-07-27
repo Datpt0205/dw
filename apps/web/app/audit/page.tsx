@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@dw/ui";
+import { PageHeading } from "../../components/page-heading";
 import { apiClient } from "../../lib/session";
 
 const ACTION_VARIANTS: Record<
@@ -29,6 +30,15 @@ const ACTION_VARIANTS: Record<
   "run.completed": "success",
   "approval.decided": "success",
   "tool.executed": "secondary",
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  "run.started": "Bắt đầu xử lý",
+  "run.waiting_approval": "Chờ phê duyệt",
+  "run.resumed": "Tiếp tục xử lý",
+  "run.completed": "Hoàn tất xử lý",
+  "approval.decided": "Đã có quyết định",
+  "tool.executed": "Đã thực hiện tác vụ",
 };
 
 export default function AuditPage() {
@@ -59,29 +69,29 @@ export default function AuditPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            <ScrollText className="size-6 text-muted-foreground" />
-            Nhật ký audit
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Chuỗi sự kiện append-only trong tenant — kể cả admin cũng không sửa
-            được.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Input
-            className="w-56"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder="Lọc theo action / resource…"
-          />
-          <Button variant="outline" size="icon" onClick={() => void refresh()}>
-            <RefreshCw />
-          </Button>
-        </div>
-      </div>
+      <PageHeading
+        eyebrow="Kiểm soát hệ thống"
+        icon={ScrollText}
+        title="Nhật ký hoạt động"
+        description="Lịch sử được lưu liên tục và không thể chỉnh sửa, kể cả bởi quản trị viên."
+        actions={
+          <>
+            <Input
+              className="w-56"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Tìm hành động hoặc hồ sơ…"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => void refresh()}
+            >
+              <RefreshCw />
+            </Button>
+          </>
+        }
+      />
       {error && <p className="text-sm text-destructive">{error}</p>}
       {events === null && !error && <Skeleton className="h-64 w-full" />}
       {visible?.length === 0 && (
@@ -91,7 +101,7 @@ export default function AuditPage() {
       )}
 
       {visible && visible.length > 0 && (
-        <Card>
+        <Card className="overflow-hidden">
           <CardContent className="pt-5">
             <Table>
               <TableHeader>
@@ -99,8 +109,8 @@ export default function AuditPage() {
                   <TableHead>Thời điểm</TableHead>
                   <TableHead>Hành động</TableHead>
                   <TableHead>Đối tượng</TableHead>
-                  <TableHead>Policy</TableHead>
-                  <TableHead>Trace</TableHead>
+                  <TableHead>Quy tắc áp dụng</TableHead>
+                  <TableHead>Mã đối chiếu</TableHead>
                   <TableHead>Chi tiết</TableHead>
                 </TableRow>
               </TableHeader>
@@ -114,7 +124,7 @@ export default function AuditPage() {
                       <Badge
                         variant={ACTION_VARIANTS[event.action] ?? "secondary"}
                       >
-                        {event.action}
+                        {ACTION_LABELS[event.action] ?? "Hoạt động hệ thống"}
                       </Badge>
                     </TableCell>
                     <TableCell>

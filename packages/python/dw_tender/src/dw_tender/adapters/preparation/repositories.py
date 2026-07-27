@@ -4,22 +4,39 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_kernel.errors import ConflictError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
+from dw_platform.adapters.persistence import tables as platform_tables
 from dw_tender.adapters.preparation import tables
+from dw_tender.application.preparation.ports import (
+    IntakeNotificationRepositoryPort,
+    PreparationArtifactRepositoryPort,
+    PreparationCaseRepositoryPort,
+    PreparationDocumentRepositoryPort,
+    PreparationUnitOfWork,
+)
 from dw_tender.domain.preparation.entities import (
     ArtifactStatus,
     ArtifactType,
+    BusinessDomain,
     CaseState,
     DocumentKind,
     PreparationArtifact,
     PreparationCase,
     PreparationDocument,
+    ProcurementType,
+)
+from dw_tender.domain.preparation.notifications import (
+    IntakeNotificationJob,
+    IntakeNotificationType,
+    NotificationJobStatus,
 )
 from dw_tender.domain.value_objects.ids import (
     ArtifactId,
@@ -34,7 +51,7 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
-def _case_from_row(row: sa.Row) -> PreparationCase:
+def _case_from_row(row: sa.Row[Any]) -> PreparationCase:
     return PreparationCase(
         id=PreparationCaseId(row.id),
         tenant_id=TenantId(row.tenant_id),
@@ -47,17 +64,23 @@ def _case_from_row(row: sa.Row) -> PreparationCase:
         currency=row.currency,
         deadline=row.deadline,
         owner_name=row.owner_name,
+        procurement_type=ProcurementType(row.procurement_type),
+        business_domain=BusinessDomain(row.business_domain),
         method_key=row.method_key,
         state=CaseState(row.state),
         current_step=row.current_step,
         last_run_id=row.last_run_id,
         current_official_artifact_id=row.current_official_artifact_id,
         export_ref=row.export_ref,
+        intake_verified_by=(
+            UserId(row.intake_verified_by) if row.intake_verified_by is not None else None
+        ),
+        intake_verified_at=row.intake_verified_at,
         version=row.version,
     )
 
 
-def _artifact_from_row(row: sa.Row) -> PreparationArtifact:
+def _artifact_from_row(row: sa.Row[Any]) -> PreparationArtifact:
     return PreparationArtifact(
         id=ArtifactId(row.id),
         tenant_id=TenantId(row.tenant_id),
@@ -92,6 +115,8 @@ class SqlPreparationCaseRepository:
                 currency=case.currency,
                 deadline=case.deadline,
                 owner_name=case.owner_name,
+                procurement_type=case.procurement_type.value,
+                business_domain=case.business_domain.value,
                 method_key=case.method_key,
                 state=case.state.value,
                 current_step=case.current_step,
@@ -124,6 +149,10 @@ class SqlPreparationCaseRepository:
                 last_run_id=case.last_run_id,
                 current_official_artifact_id=case.current_official_artifact_id,
                 export_ref=case.export_ref,
+                intake_verified_by=(
+                    case.intake_verified_by.value if case.intake_verified_by is not None else None
+                ),
+                intake_verified_at=case.intake_verified_at,
                 version=case.version,
                 updated_at=_now(),
             )
@@ -159,6 +188,9 @@ class SqlPreparationDocumentRepository:
                 case_id=document.case_id.value,
                 kind=document.kind.value,
                 title=document.title,
+                filename=document.filename,
+                content_type=document.content_type,
+                size_bytes=document.size_bytes,
                 storage_key=document.storage_key,
                 content_hash=document.content_hash,
                 uploaded_by=document.uploaded_by.value,
@@ -181,6 +213,9 @@ class SqlPreparationDocumentRepository:
                 case_id=PreparationCaseId(row.case_id),
                 kind=DocumentKind(row.kind),
                 title=row.title,
+                filename=row.filename,
+                content_type=row.content_type,
+                size_bytes=row.size_bytes,
                 storage_key=row.storage_key,
                 content_hash=row.content_hash,
                 uploaded_by=UserId(row.uploaded_by),
@@ -256,10 +291,78 @@ class SqlPreparationArtifactRepository:
         )
 
 
+def _notification_from_row(row: sa.Row[Any]) -> IntakeNotificationJob:
+    return IntakeNotificationJob(
+        id=row.id,
+        tenant_id=TenantId(row.tenant_id),
+        workspace_id=WorkspaceId(row.workspace_id),
+        case_id=PreparationCaseId(row.case_id),
+        event_type=IntakeNotificationType(row.event_type),
+        recipient_user_id=UserId(row.recipient_user_id),
+        due_at=row.due_at,
+        idempotency_key=row.idempotency_key,
+        payload=dict(row.payload),
+        status=NotificationJobStatus(row.status),
+        attempts=row.attempts,
+        max_attempts=row.max_attempts,
+        last_error=row.last_error,
+        slack_channel_id=row.slack_channel_id,
+        slack_message_ts=row.slack_message_ts,
+        claimed_at=row.claimed_at,
+        sent_at=row.sent_at,
+        created_at=row.created_at,
+    )
+
+
+@dataclass
+class SqlIntakeNotificationRepository:
+    session: AsyncSession
+
+    async def find_recipient_for_role(self, role_key: str) -> UserId | None:
+        row = (
+            await self.session.execute(
+                sa.select(platform_tables.memberships.c.user_id)
+                .where(platform_tables.memberships.c.role_keys.op("@>")(sa.cast([role_key], JSONB)))
+                .order_by(platform_tables.memberships.c.created_at.asc())
+                .limit(1)
+            )
+        ).first()
+        return UserId(row.user_id) if row is not None else None
+
+    async def enqueue(self, job: IntakeNotificationJob) -> None:
+        await self.session.execute(
+            sa.insert(tables.approval_notification_jobs).values(
+                id=job.id,
+                tenant_id=job.tenant_id.value,
+                workspace_id=job.workspace_id.value,
+                case_id=job.case_id.value,
+                event_type=job.event_type.value,
+                recipient_user_id=job.recipient_user_id.value,
+                due_at=job.due_at,
+                idempotency_key=job.idempotency_key,
+                payload=job.payload,
+                status=job.status.value,
+                attempts=job.attempts,
+                max_attempts=job.max_attempts,
+            )
+        )
+
+    async def list_for_case(self, case_id: PreparationCaseId) -> list[IntakeNotificationJob]:
+        rows = (
+            await self.session.execute(
+                sa.select(tables.approval_notification_jobs)
+                .where(tables.approval_notification_jobs.c.case_id == case_id.value)
+                .order_by(tables.approval_notification_jobs.c.created_at.asc())
+            )
+        ).all()
+        return [_notification_from_row(row) for row in rows]
+
+
 class SqlPreparationUnitOfWork:
-    cases: SqlPreparationCaseRepository
-    documents: SqlPreparationDocumentRepository
-    artifacts: SqlPreparationArtifactRepository
+    cases: PreparationCaseRepositoryPort
+    documents: PreparationDocumentRepositoryPort
+    artifacts: PreparationArtifactRepositoryPort
+    notifications: IntakeNotificationRepositoryPort
 
     def __init__(
         self, session_factory: async_sessionmaker[AsyncSession], tenant_id: TenantId
@@ -275,6 +378,7 @@ class SqlPreparationUnitOfWork:
         self.cases = SqlPreparationCaseRepository(self._session)
         self.documents = SqlPreparationDocumentRepository(self._session)
         self.artifacts = SqlPreparationArtifactRepository(self._session)
+        self.notifications = SqlIntakeNotificationRepository(self._session)
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
@@ -299,5 +403,5 @@ class SqlPreparationUnitOfWork:
 class SqlPreparationUnitOfWorkFactory:
     session_factory: async_sessionmaker[AsyncSession]
 
-    def __call__(self, tenant_id: TenantId) -> SqlPreparationUnitOfWork:
+    def __call__(self, tenant_id: TenantId) -> PreparationUnitOfWork:
         return SqlPreparationUnitOfWork(self.session_factory, tenant_id)

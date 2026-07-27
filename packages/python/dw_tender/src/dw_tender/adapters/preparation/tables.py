@@ -23,12 +23,16 @@ preparation_cases = sa.Table(
     sa.Column("currency", sa.Text, nullable=False, server_default="VND"),
     sa.Column("deadline", sa.Text, nullable=True),
     sa.Column("owner_name", sa.Text, nullable=False, server_default=""),
+    sa.Column("procurement_type", sa.Text, nullable=False, server_default="other"),
+    sa.Column("business_domain", sa.Text, nullable=False, server_default="general"),
     sa.Column("method_key", sa.Text, nullable=True),
     sa.Column("state", sa.Text, nullable=False, server_default="draft"),
     sa.Column("current_step", sa.Text, nullable=False, server_default="intake"),
     sa.Column("last_run_id", UUID(as_uuid=True), nullable=True),
     sa.Column("current_official_artifact_id", UUID(as_uuid=True), nullable=True),
     sa.Column("export_ref", sa.Text, nullable=True),
+    sa.Column("intake_verified_by", UUID(as_uuid=True), nullable=True),
+    sa.Column("intake_verified_at", sa.TIMESTAMP(timezone=True), nullable=True),
     sa.Column("created_by", UUID(as_uuid=True), nullable=False),
     sa.Column("version", sa.Integer, nullable=False, server_default="1"),
     sa.Column(
@@ -48,6 +52,9 @@ preparation_documents = sa.Table(
     sa.Column("case_id", UUID(as_uuid=True), nullable=False),
     sa.Column("kind", sa.Text, nullable=False),
     sa.Column("title", sa.Text, nullable=False),
+    sa.Column("filename", sa.Text, nullable=False),
+    sa.Column("content_type", sa.Text, nullable=False),
+    sa.Column("size_bytes", sa.BigInteger, nullable=False),
     sa.Column("storage_key", sa.Text, nullable=False),
     sa.Column("content_hash", sa.Text, nullable=False),
     sa.Column("uploaded_by", UUID(as_uuid=True), nullable=False),
@@ -76,4 +83,37 @@ preparation_artifacts = sa.Table(
         "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
     ),
     sa.Column("approved_at", sa.TIMESTAMP(timezone=True), nullable=True),
+)
+
+approval_notification_jobs = sa.Table(
+    "approval_notification_jobs",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column(
+        "case_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("preparation_cases.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    sa.Column("event_type", sa.Text, nullable=False),
+    sa.Column("recipient_user_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("due_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("idempotency_key", sa.Text, nullable=False, unique=True),
+    sa.Column("payload", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("status", sa.Text, nullable=False, server_default="queued"),
+    sa.Column("attempts", sa.Integer, nullable=False, server_default="0"),
+    sa.Column("max_attempts", sa.Integer, nullable=False, server_default="5"),
+    sa.Column("last_error", sa.Text, nullable=True),
+    sa.Column("slack_channel_id", sa.Text, nullable=True),
+    sa.Column("slack_message_ts", sa.Text, nullable=True),
+    sa.Column("claimed_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.Column("sent_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.Column(
+        "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
+    sa.Column(
+        "updated_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
 )

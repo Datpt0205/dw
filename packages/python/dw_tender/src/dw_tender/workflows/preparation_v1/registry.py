@@ -9,7 +9,5 @@ from dw_tender.workflows.preparation_v1.services import PreparationServices
 WORKER_ID = "preparation"
 
 
-def register_preparation_graphs(
-    registry: GraphRegistry, services: PreparationServices
-) -> None:
+def register_preparation_graphs(registry: GraphRegistry, services: PreparationServices) -> None:
     registry.register(WORKER_ID, GRAPH_VERSION, lambda: build_preparation_graph(services))

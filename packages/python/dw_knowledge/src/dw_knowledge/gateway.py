@@ -314,9 +314,7 @@ class KnowledgeGateway:
             ]
 
     # --------------------------------------------------------- soft delete --
-    async def soft_delete_document(
-        self, document_id: uuid.UUID, context: AccessContext
-    ) -> None:
+    async def soft_delete_document(self, document_id: uuid.UUID, context: AccessContext) -> None:
         """Tombstone a document (kept for traceability; excluded from retrieval).
 
         A retention purge (``purge_soft_deleted``) hard-removes it later.
@@ -340,9 +338,7 @@ class KnowledgeGateway:
             )
         await self.vector_index.tombstone_document(document_id)
 
-    async def purge_soft_deleted(
-        self, context: AccessContext, *, before: datetime
-    ) -> int:
+    async def purge_soft_deleted(self, context: AccessContext, *, before: datetime) -> int:
         """Hard-delete tombstoned rows/points older than ``before`` (worker job).
 
         Removes from BOTH stores so nothing is orphaned. Returns purge count.

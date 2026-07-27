@@ -78,9 +78,14 @@ class DoclingDocumentParser:
     def _build_converter(self) -> Any:
         # Imported lazily: docling pulls in torch + OCR models and is installed
         # only in the worker image.
-        from docling.datamodel.base_models import InputFormat
-        from docling.datamodel.pipeline_options import PdfPipelineOptions
-        from docling.document_converter import DocumentConverter, PdfFormatOption
+        from docling.datamodel.base_models import InputFormat  # type: ignore[import-not-found]
+        from docling.datamodel.pipeline_options import (  # type: ignore[import-not-found]
+            PdfPipelineOptions,
+        )
+        from docling.document_converter import (  # type: ignore[import-not-found]
+            DocumentConverter,
+            PdfFormatOption,
+        )
 
         pdf_options = PdfPipelineOptions()
         pdf_options.do_ocr = self.do_ocr

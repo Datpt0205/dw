@@ -8,6 +8,7 @@ mark done/failed. Parsing runs off the event loop (see DoclingDocumentParser).
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
 from dw_knowledge.gateway import IngestDocumentCommand
 from dw_knowledge.ingest_jobs import IngestJob
@@ -56,7 +57,9 @@ async def _process(job: IngestJob, components: IngestComponents) -> None:
     )
 
 
-def build_ingest_consumer(components: IngestComponents, *, batch_size: int = 1):
+def build_ingest_consumer(
+    components: IngestComponents, *, batch_size: int = 1
+) -> Callable[[], Awaitable[None]]:
     """Return a consumer callable draining up to ``batch_size`` jobs per tick."""
 
     async def consume() -> None:

@@ -241,6 +241,18 @@ services:
         condition: service_healthy
     restart: "no"
 
+  seed:
+    image: dw-api:local
+    profiles: ["full"]
+    command: ["python", "/app/scripts/seed_demo.py"]
+    environment:
+      DW_DATABASE_URL: postgresql+asyncpg://dw_migrator:${DW_DB_MIGRATOR_PASSWORD:?}@postgres:5432/dw
+    networks: [dw-internal]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   # ------------------------------------------------------------------ apps --
   api:
     build:
@@ -272,11 +284,12 @@ services:
       DW_API_EMBED_URL: ${DW_API_EMBED_URL:-http://tei-embed:80}
       DW_API_RERANK_URL: ${DW_API_RERANK_URL:-http://tei-rerank:80}
       DW_API_EMBED_DIMENSION: ${DW_API_EMBED_DIMENSION:-1024}
+      DW_APPROVAL_REMINDER_SECONDS: ${DW_APPROVAL_REMINDER_SECONDS:-5}
     ports:
       - "127.0.0.1:8000:8000"
     networks: [dw-internal, dw-edge]
     depends_on:
-      migrate:
+      seed:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
@@ -310,6 +323,13 @@ services:
       DW_WORKER_EMBEDDING_PROVIDER: ${DW_API_EMBEDDING_PROVIDER:-tei}
       DW_WORKER_EMBED_URL: ${DW_API_EMBED_URL:-http://tei-embed:80}
       DW_WORKER_EMBED_DIMENSION: ${DW_API_EMBED_DIMENSION:-1024}
+      DW_SLACK_APPROVALS_ENABLED: ${DW_SLACK_APPROVALS_ENABLED:-false}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_USER_AN_ID: ${SLACK_USER_AN_ID:-}
+      SLACK_USER_BINH_ID: ${SLACK_USER_BINH_ID:-}
+      SLACK_USER_CHI_ID: ${SLACK_USER_CHI_ID:-}
+      SLACK_USER_MAP_JSON: ${SLACK_USER_MAP_JSON:-}
+      DW_PUBLIC_WEB_URL: ${DW_PUBLIC_WEB_URL:-http://localhost:3000}
     networks: [dw-internal, dw-edge]
     depends_on:
       migrate:

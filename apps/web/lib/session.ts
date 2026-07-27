@@ -1,7 +1,13 @@
 "use client";
 
 import { ApiClient } from "@dw/api-client";
-import { API_BASE_URL, AUTH_MODE } from "./auth/config";
+import {
+  API_BASE_URL,
+  AUTH_MODE,
+  KEYCLOAK_CLIENT_ID,
+  KEYCLOAK_REALM,
+  KEYCLOAK_URL,
+} from "./auth/config";
 import { getKeycloak } from "./auth/keycloak";
 
 /**
@@ -17,7 +23,144 @@ const KEYS = {
   workspace: "dw.active.workspaceId",
   profile: "dw.active.profile",
   devToken: "dw.dev.token",
+  quickAccounts: "dw.quick.accounts",
+  quickActive: "dw.quick.active",
 } as const;
+
+/**
+ * Fast account switcher (demo convenience, OIDC mode). Each account keeps its
+ * OIDC tokens in localStorage so the presenter can jump between An/Bình/Chi
+ * without re-entering a password. Tokens are refreshed on demand. This is a
+ * demo tool — it is NOT how production sessions should be stored.
+ */
+export interface QuickAccount {
+  username: string;
+  displayName: string;
+  roles: string[];
+  token: string;
+  refreshToken: string;
+  expiresAt: number;
+  savedAt: number;
+}
+
+const TOKEN_URL = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
+
+function readQuickAccounts(): Record<string, QuickAccount> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(KEYS.quickAccounts) || "{}") as Record<
+      string,
+      QuickAccount
+    >;
+  } catch {
+    return {};
+  }
+}
+
+function writeQuickAccounts(map: Record<string, QuickAccount>): void {
+  window.localStorage.setItem(KEYS.quickAccounts, JSON.stringify(map));
+}
+
+function decodeToken(token: string): { name?: string; preferred_username?: string; realm_access?: { roles?: string[] } } {
+  try {
+    const part = token.split(".")[1] ?? "";
+    return JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return {};
+  }
+}
+
+function toAccount(username: string, data: { access_token: string; refresh_token: string; expires_in: number }): QuickAccount {
+  const claims = decodeToken(data.access_token);
+  return {
+    username,
+    displayName: claims.name || claims.preferred_username || username,
+    roles: claims.realm_access?.roles?.filter((r) => !r.startsWith("default-") && r !== "offline_access" && r !== "uma_authorization") ?? [],
+    token: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresAt: Date.now() + (data.expires_in - 30) * 1000,
+    savedAt: Date.now(),
+  };
+}
+
+export function listQuickAccounts(): QuickAccount[] {
+  return Object.values(readQuickAccounts()).sort((a, b) => a.savedAt - b.savedAt);
+}
+
+export function activeQuickUsername(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(KEYS.quickActive);
+}
+
+/** Password-grant login for a demo persona; stores tokens + makes it active. */
+export async function quickLogin(username: string, password: string): Promise<QuickAccount> {
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "password",
+      client_id: KEYCLOAK_CLIENT_ID,
+      username,
+      password,
+      scope: "openid",
+    }),
+  });
+  if (!res.ok) throw new Error("Đăng nhập nhanh thất bại (kiểm tra mật khẩu)");
+  const account = toAccount(username, await res.json());
+  const map = readQuickAccounts();
+  map[username] = account;
+  writeQuickAccounts(map);
+  window.localStorage.setItem(KEYS.quickActive, username);
+  return account;
+}
+
+export function activateQuickAccount(username: string): void {
+  window.localStorage.setItem(KEYS.quickActive, username);
+}
+
+export function removeQuickAccount(username: string): void {
+  const map = readQuickAccounts();
+  delete map[username];
+  writeQuickAccounts(map);
+  if (activeQuickUsername() === username) window.localStorage.removeItem(KEYS.quickActive);
+}
+
+function clearQuickActive(): void {
+  if (typeof window !== "undefined") window.localStorage.removeItem(KEYS.quickActive);
+}
+
+/** Public: token for the active quick account (used by the auth bootstrap). */
+export async function activeQuickToken(): Promise<string | null> {
+  return quickAccessToken();
+}
+
+/** Token for the active quick account, refreshing via refresh_token if stale. */
+async function quickAccessToken(): Promise<string | null> {
+  const username = activeQuickUsername();
+  if (!username) return null;
+  const map = readQuickAccounts();
+  const acc = map[username];
+  if (!acc) return null;
+  if (Date.now() < acc.expiresAt) return acc.token;
+  try {
+    const res = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: KEYCLOAK_CLIENT_ID,
+        refresh_token: acc.refreshToken,
+      }),
+    });
+    if (!res.ok) return acc.token; // let a stale token 401 rather than hard-fail
+    const refreshed = toAccount(username, await res.json());
+    map[username] = refreshed;
+    writeQuickAccounts(map);
+    return refreshed.token;
+  } catch {
+    return acc.token;
+  }
+}
 
 export interface Session {
   tenantId: string;
@@ -73,6 +216,7 @@ export function clearActiveWorkspace(): void {
   window.localStorage.removeItem(KEYS.tenant);
   window.localStorage.removeItem(KEYS.workspace);
   window.localStorage.removeItem(KEYS.profile);
+  clearQuickActive();
 }
 
 /** Dev-mode only: store the local bearer token. */
@@ -102,6 +246,9 @@ async function currentAccessToken(): Promise<string | null> {
       ? null
       : window.localStorage.getItem(KEYS.devToken);
   }
+  // Fast account switcher (demo) takes precedence when a quick account is active.
+  const quick = await quickAccessToken();
+  if (quick) return quick;
   const kc = getKeycloak();
   if (!kc.authenticated) return null;
   try {

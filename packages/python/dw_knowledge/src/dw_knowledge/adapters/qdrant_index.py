@@ -194,9 +194,7 @@ class QdrantVectorIndexAdapter:
                     should=scope_or_tenant,  # at least one → (own tenant) OR (global)
                     # Soft-deleted / superseded points are never retrieved.
                     must_not=[
-                        models.FieldCondition(
-                            key="is_deleted", match=models.MatchValue(value=True)
-                        )
+                        models.FieldCondition(key="is_deleted", match=models.MatchValue(value=True))
                     ],
                 ),
                 limit=top_k,

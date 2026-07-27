@@ -91,6 +91,10 @@ class CapturingIndex:
 
     async def upsert(self, chunks) -> None: ...
 
+    async def delete_document(self, document_id: uuid.UUID) -> None: ...
+
+    async def tombstone_document(self, document_id: uuid.UUID) -> None: ...
+
     async def search(self, vector, trusted_filter, top_k):
         self.captured.append(trusted_filter)
         return self.hits

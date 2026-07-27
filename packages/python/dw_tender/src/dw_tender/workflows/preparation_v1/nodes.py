@@ -61,6 +61,12 @@ def _fmt_vnd(minor: int) -> str:
     return f"{minor:,}".replace(",", ".") + " VND"
 
 
+def _dict_items(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
 class PreparationNodes:
     def __init__(self, services: PreparationServices) -> None:
         self.services = services
@@ -145,14 +151,33 @@ class PreparationNodes:
                     raw = await self.services.storage.get_object(doc.storage_key)
                     pr_text = raw.decode("utf-8")
                     break
+            response = await uow.artifacts.latest(case_id, ArtifactType.CLARIFICATION_RESPONSE)
+            supplier_input = await uow.artifacts.latest(case_id, ArtifactType.SUPPLIER_INPUT)
+            answers = {
+                str(item.get("id", "")): str(item.get("answer", "")).strip()
+                for item in _dict_items(
+                    response.content.get("items", []) if response is not None else []
+                )
+            }
+            supplier_candidates = (
+                _dict_items(supplier_input.content.get("suppliers", []))
+                if supplier_input is not None
+                else []
+            )
         return {
             "schema_version": STATE_SCHEMA_VERSION,
             "pr_text": pr_text,
-            "has_approved_pr": bool(case.source_pr_ref) or bool(pr_text),
+            "has_approved_pr": (
+                bool(case.source_pr_ref) and bool(pr_text) and case.intake_verified_by is not None
+            ),
             "estimated_value_minor": case.estimated_value_minor,
             "currency": case.currency,
             "deadline": case.deadline,
             "owner_name": case.owner_name,
+            "procurement_type": case.procurement_type.value,
+            "business_domain": case.business_domain.value,
+            "clarification_answers": answers,
+            "supplier_candidates": supplier_candidates,
         }
 
     # -- 2. extract requirements + demand snapshot ------------------------
@@ -169,6 +194,8 @@ class PreparationNodes:
             "estimated_value": _fmt_vnd(state.get("estimated_value_minor", 0)),
             "deadline": state.get("deadline"),
             "owner": state.get("owner_name"),
+            "procurement_type": state.get("procurement_type"),
+            "business_domain": state.get("business_domain"),
             "requirement_lines": requirement_lines,
             "unknown_count": len(unknowns),
         }
@@ -186,21 +213,27 @@ class PreparationNodes:
         rc = _run_context(config)
         case_id = _case_id(state)
         unknowns = state.get("unknowns", [])
+        answers = state.get("clarification_answers", {})
         clarifications = [
             {
                 "id": f"c{i + 1}",
                 "question": u.split("(", 1)[0].strip().lstrip("-• ").strip() or u,
-                # POC: unknowns are surfaced as assumptions-to-confirm, not blocking.
-                "blocking": False,
-                "answered": False,
+                "blocking": not bool(answers.get(f"c{i + 1}", "").strip()),
+                "answered": bool(answers.get(f"c{i + 1}", "").strip()),
+                "answer": answers.get(f"c{i + 1}", ""),
             }
             for i, u in enumerate(unknowns)
         ]
+        blocking_count = sum(1 for c in clarifications if c["blocking"])
         report = {
-            "complete": True,
+            "complete": blocking_count == 0,
             "unknown_count": len(unknowns),
-            "blocking_count": sum(1 for c in clarifications if c["blocking"]),
-            "note": "Điểm chưa rõ được liệt kê để xác nhận; không chặn CP1 trong cấu hình POC.",
+            "blocking_count": blocking_count,
+            "note": (
+                "Đầu vào đã đủ điều kiện lập phương án."
+                if blocking_count == 0
+                else "Phải trả lời toàn bộ điểm chưa rõ trước khi trình CP1."
+            ),
         }
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
@@ -224,17 +257,18 @@ class PreparationNodes:
         rules = self.services.rules
         value = state.get("estimated_value_minor", 0)
         method = rules.select_method(value)
-        eligible = [s for s in self.services.suppliers if s.get("eligible")]
-        planned = max(method.min_suppliers, min(len(eligible), method.min_suppliers + 1))
+        candidates = state.get("supplier_candidates", [])
+        planned = len(candidates)
         content = {
             "method": {"key": method.key, "label": method.label},
             "estimated_value": _fmt_vnd(value),
             "min_suppliers": method.min_suppliers,
             "supplier_count_planned": planned,
             "sourcing_strategy": (
-                f"Mời {planned} nhà cung cấp đủ điều kiện chào giá cạnh tranh."
+                f"Mời {planned} nhà cung cấp ứng viên tham gia chào giá cạnh tranh; "
+                "eligibility được kiểm tra ở CP2."
                 if method.key != "direct_purchase"
-                else "Thương thảo trực tiếp với nhà cung cấp đủ điều kiện."
+                else "Mời nhà cung cấp ứng viên; eligibility được kiểm tra trước phát hành."
             ),
             "timeline": [
                 {"step": "Phát hành hồ sơ", "offset_days": 0},
@@ -261,6 +295,14 @@ class PreparationNodes:
             f"hạn mức phê duyệt phương án mua sắm giá trị {_fmt_vnd(value)}",
             domain="policy",
         )
+        content["grounding_status"] = (
+            "grounded" if content["legal_basis"] or content["policy_basis"] else "not_available"
+        )
+        if content["grounding_status"] == "not_available":
+            content["grounding_warning"] = (
+                "Không truy xuất được căn cứ Knowledge; người duyệt phải kiểm tra "
+                "rule pack và tài liệu nguồn trước CP1."
+            )
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
@@ -318,9 +360,7 @@ class PreparationNodes:
         return {"approach_gate": gate, "cp1_payload": payload}
 
     # -- 6/7. CP1 interrupt + apply --------------------------------------
-    async def cp1_review(
-        self, state: PreparationState, config: RunnableConfig
-    ) -> PreparationState:
+    async def cp1_review(self, state: PreparationState, config: RunnableConfig) -> PreparationState:
         decision: dict[str, Any] = interrupt(state.get("cp1_payload", {}))
         return {"cp1_decision": dict(decision)}
 
@@ -351,16 +391,11 @@ class PreparationNodes:
             "scope": "Cung cấp hàng hoá/dịch vụ theo yêu cầu đã phê duyệt.",
             "requirements": requirements,
             "commercial_terms": {
-                "payment": "Thanh toán sau nghiệm thu (điều khoản mẫu — cần xác nhận).",
+                "payment": self.services.rules.payment_term_template,
                 "delivery": f"Giao hàng trong {state.get('deadline') or 'thời hạn quy định'}.",
-                "tax": "Giá đã bao gồm thuế GTGT.",
+                "tax": self.services.rules.tax_term_template,
             },
-            "response_structure": [
-                "Hồ sơ năng lực",
-                "Bảng cấu hình/đề xuất kỹ thuật",
-                "Bảng giá chi tiết",
-                "Điều khoản bảo hành & giao hàng",
-            ],
+            "response_structure": list(self.services.rules.response_structure),
             "submission": {
                 "deadline_offset_days": 14,
                 "method": "Nộp hồ sơ qua cổng/email theo hướng dẫn.",
@@ -381,6 +416,7 @@ class PreparationNodes:
             "nội dung hồ sơ mời thầu yêu cầu về năng lực kỹ thuật thương mại",
             domain="legal",
         )
+        content["grounding_status"] = "grounded" if content["references"] else "not_available"
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
@@ -396,17 +432,17 @@ class PreparationNodes:
     ) -> PreparationState:
         rc = _run_context(config)
         case_id = _case_id(state)
-        criteria = {
+        criteria: dict[str, Any] = {
             "mandatory": [
-                {"code": "M1", "text": "Đủ tư cách pháp nhân & hồ sơ năng lực", "pass_fail": True},
-                {"code": "M2", "text": "Đáp ứng yêu cầu kỹ thuật tối thiểu", "pass_fail": True},
+                {"code": code, "text": text, "pass_fail": True}
+                for code, text in self.services.rules.mandatory_criteria
             ],
             "weighted": [
-                {"code": "W1", "text": "Kỹ thuật/cấu hình", "weight": 50},
-                {"code": "W2", "text": "Giá", "weight": 40},
-                {"code": "W3", "text": "Bảo hành & tiến độ giao hàng", "weight": 10},
+                {"code": code, "text": text, "weight": weight}
+                for code, text, weight in self.services.rules.weighted_criteria
             ],
             "method": "Chấm điểm có trọng số; điểm tiên quyết pass/fail.",
+            "source": f"rule_pack:{self.services.rules.version}",
         }
         content = {
             **criteria,
@@ -419,6 +455,7 @@ class PreparationNodes:
             "tiêu chí đánh giá hồ sơ dự thầu phương pháp chấm điểm",
             domain="legal",
         )
+        content["grounding_status"] = "grounded" if content["references"] else "not_available"
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
@@ -433,22 +470,22 @@ class PreparationNodes:
         rc = _run_context(config)
         case_id = _case_id(state)
         method_min = state.get("min_suppliers", 3)
-        eligible = [s for s in self.services.suppliers if s.get("eligible")]
-        excluded = [s for s in self.services.suppliers if not s.get("eligible")]
+        candidates = state.get("supplier_candidates", [])
         shortlist = [
             {
-                "name": s["name"],
-                "eligible": True,
-                "on_site_warranty": bool(s.get("on_site_warranty")),
-                "note": s.get("note", ""),
+                "name": str(s.get("name", "")),
+                "eligibility_status": "pending_verification",
+                "source": "manual_case_input",
             }
-            for s in eligible[: max(method_min, min(len(eligible), method_min + 1))]
+            for s in candidates
+            if isinstance(s, dict) and str(s.get("name", "")).strip()
         ]
         content = {
             "shortlist": shortlist,
-            "excluded": [{"name": s["name"], "reason": s.get("note", "")} for s in excluded],
+            "excluded": [],
             "count": len(shortlist),
             "min_required": method_min,
+            "warning": ("Danh sách do người lập hồ sơ cung cấp; cần xác minh eligibility tại CP2."),
         }
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
@@ -472,8 +509,8 @@ class PreparationNodes:
             },
             {
                 "check": "Xung đột lợi ích",
-                "ok": True,
-                "detail": "Không phát hiện xung đột trong dữ liệu hiện có.",
+                "ok": False,
+                "detail": "Chưa có nguồn kiểm tra xung đột; cần người phê duyệt xác nhận.",
             },
             {
                 "check": "Tiêu chí không thiên vị",
@@ -515,6 +552,16 @@ class PreparationNodes:
             "gate": gate,
             "weighted_total": int(criteria.get("weighted_total", 0)),
             "shortlist_count": len(state.get("shortlist", [])),
+            "estimated_value": _fmt_vnd(state.get("estimated_value_minor", 0)),
+            "method": {
+                "key": state.get("method_key", ""),
+                "label": state.get("method_label", ""),
+            },
+            "risk": state.get("risk", {}),
+            "decision_warning": (
+                "Shortlist do người lập nhập; eligibility và xung đột lợi ích "
+                "chưa được hệ thống bên ngoài xác minh."
+            ),
         }
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
@@ -524,9 +571,7 @@ class PreparationNodes:
             await uow.commit()
         return {"package_gate": gate, "cp2_payload": payload}
 
-    async def cp2_review(
-        self, state: PreparationState, config: RunnableConfig
-    ) -> PreparationState:
+    async def cp2_review(self, state: PreparationState, config: RunnableConfig) -> PreparationState:
         decision: dict[str, Any] = interrupt(state.get("cp2_payload", {}))
         return {"cp2_decision": dict(decision)}
 
@@ -610,6 +655,14 @@ class PreparationNodes:
         # State already reflects the rejection (CP1_REJECTED / CP2_REJECTED).
         return {}
 
+    async def close_incomplete(
+        self, state: PreparationState, config: RunnableConfig
+    ) -> PreparationState:
+        # The deterministic CP1 gate already persisted WAITING_CLARIFICATION.
+        # A user supplies answers through the application API and starts a fresh,
+        # fully traceable run; no paused workflow is silently mutated.
+        return {}
+
 
 def _render_package_markdown(
     case: PreparationCase, state: PreparationState, artifacts: list[PreparationArtifact]
@@ -630,12 +683,12 @@ def _render_package_markdown(
     criteria = by_type.get(ArtifactType.EVALUATION_CRITERIA)
     if criteria is not None:
         lines += ["", "## 2. Tiêu chí đánh giá"]
-        for c in criteria.content.get("weighted", []):  # type: ignore[union-attr]
+        for c in _dict_items(criteria.content.get("weighted", [])):
             lines.append(f"- [{c['weight']}%] {c['text']}")
     shortlist = by_type.get(ArtifactType.SUPPLIER_SHORTLIST)
     if shortlist is not None:
         lines += ["", "## 3. Danh sách nhà cung cấp mời"]
-        for s in shortlist.content.get("shortlist", []):  # type: ignore[union-attr]
+        for s in _dict_items(shortlist.content.get("shortlist", [])):
             lines.append(f"- {s['name']}")
     lines += ["", "## 4. Phê duyệt", "- CP1: APPROVED", "- CP2: APPROVED"]
     return "\n".join(lines)

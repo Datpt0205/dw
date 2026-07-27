@@ -112,6 +112,17 @@
         "title": "ActionItemView",
         "type": "object"
       },
+      "ActionResponse": {
+        "properties": {
+          "status": {
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "ActionResponse",
+        "type": "object"
+      },
       "AnalyzeResponse": {
         "properties": {
           "run_id": {
@@ -124,6 +135,25 @@
           "run_id"
         ],
         "title": "AnalyzeResponse",
+        "type": "object"
+      },
+      "AnswerClarificationsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/ClarificationAnswerRequest"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Answers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "answers"
+        ],
+        "title": "AnswerClarificationsRequest",
         "type": "object"
       },
       "ApprovalView": {
@@ -200,6 +230,47 @@
         "title": "ApprovalView",
         "type": "object"
       },
+      "ArtifactView": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_type": {
+            "title": "Artifact Type",
+            "type": "string"
+          },
+          "artifact_version": {
+            "title": "Artifact Version",
+            "type": "integer"
+          },
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "artifact_type",
+          "artifact_version",
+          "status",
+          "content",
+          "content_hash"
+        ],
+        "title": "ArtifactView",
+        "type": "object"
+      },
       "AuditEventView": {
         "properties": {
           "action": {
@@ -257,6 +328,396 @@
           "details"
         ],
         "title": "AuditEventView",
+        "type": "object"
+      },
+      "Body_addendum_api_v1_procurement_preparation_cases__case_id__addendum_post": {
+        "properties": {
+          "change_summary": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Change Summary",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "impact_summary": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Impact Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "change_summary",
+          "impact_summary"
+        ],
+        "title": "Body_addendum_api_v1_procurement_preparation_cases__case_id__addendum_post",
+        "type": "object"
+      },
+      "Body_cp4_api_v1_procurement_preparation_cases__case_id__cp4_post": {
+        "properties": {
+          "approval_reference": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Approval Reference",
+            "type": "string"
+          },
+          "comment": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "opening_at": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Opening At",
+            "type": "string"
+          },
+          "witnesses": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Witnesses",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "opening_at",
+          "witnesses",
+          "approval_reference"
+        ],
+        "title": "Body_cp4_api_v1_procurement_preparation_cases__case_id__cp4_post",
+        "type": "object"
+      },
+      "Body_publish_api_v1_procurement_preparation_cases__case_id__publication_post": {
+        "properties": {
+          "channel": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Channel",
+            "type": "string"
+          },
+          "external_reference": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "External Reference",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "published_at": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Published At",
+            "type": "string"
+          },
+          "recipient_summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Recipient Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "channel",
+          "recipient_summary",
+          "published_at",
+          "external_reference"
+        ],
+        "title": "Body_publish_api_v1_procurement_preparation_cases__case_id__publication_post",
+        "type": "object"
+      },
+      "Body_submission_api_v1_procurement_preparation_cases__case_id__submissions_post": {
+        "properties": {
+          "external_reference": {
+            "default": "",
+            "maxLength": 300,
+            "title": "External Reference",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "receipt_status": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Receipt Status",
+            "type": "string"
+          },
+          "received_at": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Received At",
+            "type": "string"
+          },
+          "supplier_name": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Supplier Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "supplier_name",
+          "received_at",
+          "receipt_status"
+        ],
+        "title": "Body_submission_api_v1_procurement_preparation_cases__case_id__submissions_post",
+        "type": "object"
+      },
+      "Body_upload_api_v1_procurement_preparation_cases_upload_post": {
+        "properties": {
+          "business_domain": {
+            "$ref": "#/components/schemas/BusinessDomain",
+            "default": "general"
+          },
+          "currency": {
+            "default": "VND",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "deadline": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Deadline",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "estimated_value_minor": {
+            "exclusiveMinimum": 0.0,
+            "title": "Estimated Value Minor",
+            "type": "integer"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "owner_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Owner Name",
+            "type": "string"
+          },
+          "procurement_type": {
+            "$ref": "#/components/schemas/ProcurementType",
+            "default": "goods"
+          },
+          "source_pr_ref": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Source Pr Ref",
+            "type": "string"
+          },
+          "supplier_names": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Supplier Names",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 3,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "title",
+          "source_pr_ref",
+          "estimated_value_minor",
+          "deadline",
+          "owner_name",
+          "supplier_names"
+        ],
+        "title": "Body_upload_api_v1_procurement_preparation_cases_upload_post",
+        "type": "object"
+      },
+      "Body_upload_document_api_v1_knowledge_documents_post": {
+        "properties": {
+          "classification": {
+            "default": "internal",
+            "title": "Classification",
+            "type": "string"
+          },
+          "domain": {
+            "default": "shared",
+            "title": "Domain",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "scope": {
+            "default": "tenant",
+            "title": "Scope",
+            "type": "string"
+          },
+          "source_version": {
+            "default": "1",
+            "title": "Source Version",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "title"
+        ],
+        "title": "Body_upload_document_api_v1_knowledge_documents_post",
+        "type": "object"
+      },
+      "BootstrapResponse": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "memberships": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceMembershipModel"
+            },
+            "title": "Memberships",
+            "type": "array"
+          },
+          "principal_id": {
+            "format": "uuid",
+            "title": "Principal Id",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "principal_id",
+          "subject",
+          "email",
+          "display_name",
+          "memberships"
+        ],
+        "title": "BootstrapResponse",
+        "type": "object"
+      },
+      "BusinessDomain": {
+        "description": "Business sector used for routing, reporting and knowledge retrieval.",
+        "enum": [
+          "general",
+          "information_technology",
+          "real_estate",
+          "healthcare",
+          "infrastructure",
+          "operations",
+          "energy",
+          "education",
+          "other"
+        ],
+        "title": "BusinessDomain",
+        "type": "string"
+      },
+      "ClarificationAnswerRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          },
+          "clarification_id": {
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Clarification Id",
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "source_note": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Source Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "clarification_id",
+          "question",
+          "answer"
+        ],
+        "title": "ClarificationAnswerRequest",
+        "type": "object"
+      },
+      "Cp3DecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_reference": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Approval Reference",
+            "type": "string"
+          },
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "comment": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Comment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approve",
+          "approval_reference"
+        ],
+        "title": "Cp3DecisionRequest",
         "type": "object"
       },
       "CreateCaseRequest": {
@@ -348,6 +809,93 @@
           "meeting_id"
         ],
         "title": "CreateMeetingResponse",
+        "type": "object"
+      },
+      "CreatePreparationCaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "business_domain": {
+            "$ref": "#/components/schemas/BusinessDomain",
+            "default": "general"
+          },
+          "currency": {
+            "default": "VND",
+            "title": "Currency",
+            "type": "string"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "estimated_value_minor": {
+            "default": 0,
+            "title": "Estimated Value Minor",
+            "type": "integer"
+          },
+          "owner_name": {
+            "default": "",
+            "title": "Owner Name",
+            "type": "string"
+          },
+          "pr_text": {
+            "title": "Pr Text",
+            "type": "string"
+          },
+          "procurement_type": {
+            "$ref": "#/components/schemas/ProcurementType",
+            "default": "other"
+          },
+          "source_pr_ref": {
+            "default": "",
+            "title": "Source Pr Ref",
+            "type": "string"
+          },
+          "supplier_names": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Supplier Names",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "pr_text",
+          "supplier_names"
+        ],
+        "title": "CreatePreparationCaseRequest",
+        "type": "object"
+      },
+      "CreatePreparationCaseResponse": {
+        "properties": {
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id"
+        ],
+        "title": "CreatePreparationCaseResponse",
         "type": "object"
       },
       "DecisionRequest": {
@@ -616,6 +1164,51 @@
         "title": "DocumentUploadRequest",
         "type": "object"
       },
+      "DocumentView": {
+        "additionalProperties": false,
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "content_hash"
+        ],
+        "title": "DocumentView",
+        "type": "object"
+      },
       "FindingView": {
         "properties": {
           "evidence_count": {
@@ -716,6 +1309,94 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "IngestJobView": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "chunk_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Count"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "title",
+          "filename",
+          "scope",
+          "attempts",
+          "error",
+          "document_id",
+          "chunk_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "IngestJobView",
+        "type": "object"
+      },
       "IntegrationView": {
         "properties": {
           "approval_policy": {
@@ -807,6 +1488,10 @@
             ],
             "title": "Index Version"
           },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
           "source_version": {
             "title": "Source Version",
             "type": "string"
@@ -824,7 +1509,8 @@
           "source_version",
           "index_version",
           "chunk_count",
-          "created_at"
+          "created_at",
+          "scope"
         ],
         "title": "KnowledgeDocumentView",
         "type": "object"
@@ -1027,6 +1713,260 @@
         "title": "MemoryItemView",
         "type": "object"
       },
+      "NotificationView": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "due_at": {
+            "title": "Due At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event_type",
+          "status",
+          "attempts",
+          "due_at",
+          "sent_at",
+          "last_error"
+        ],
+        "title": "NotificationView",
+        "type": "object"
+      },
+      "PreparationCaseView": {
+        "additionalProperties": false,
+        "properties": {
+          "artifacts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ArtifactView"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "business_domain": {
+            "title": "Business Domain",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "current_official_artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Official Artifact Id"
+          },
+          "current_step": {
+            "title": "Current Step",
+            "type": "string"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "documents": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DocumentView"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "estimated_value_minor": {
+            "title": "Estimated Value Minor",
+            "type": "integer"
+          },
+          "export_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Export Ref"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "intake_verified_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intake Verified At"
+          },
+          "intake_verified_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intake Verified By"
+          },
+          "last_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run Id"
+          },
+          "method_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method Key"
+          },
+          "notifications": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/NotificationView"
+            },
+            "title": "Notifications",
+            "type": "array"
+          },
+          "owner_name": {
+            "title": "Owner Name",
+            "type": "string"
+          },
+          "procurement_type": {
+            "title": "Procurement Type",
+            "type": "string"
+          },
+          "source_pr_ref": {
+            "title": "Source Pr Ref",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "source_pr_ref",
+          "estimated_value_minor",
+          "currency",
+          "deadline",
+          "owner_name",
+          "procurement_type",
+          "business_domain",
+          "method_key",
+          "state",
+          "current_step",
+          "last_run_id",
+          "export_ref",
+          "current_official_artifact_id",
+          "intake_verified_by",
+          "intake_verified_at",
+          "version"
+        ],
+        "title": "PreparationCaseView",
+        "type": "object"
+      },
+      "ProcurementType": {
+        "description": "Legal/operating shape of the procurement package.",
+        "enum": [
+          "goods",
+          "construction",
+          "consulting",
+          "non_consulting",
+          "mixed",
+          "investor_selection",
+          "other"
+        ],
+        "title": "ProcurementType",
+        "type": "string"
+      },
       "ReadinessResponse": {
         "properties": {
           "checks": {
@@ -1118,6 +2058,22 @@
         "title": "RecommendationView",
         "type": "object"
       },
+      "RejectIntakeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Comment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "comment"
+        ],
+        "title": "RejectIntakeRequest",
+        "type": "object"
+      },
       "RequirementView": {
         "properties": {
           "code": {
@@ -1150,6 +2106,20 @@
           "weight"
         ],
         "title": "RequirementView",
+        "type": "object"
+      },
+      "RunResponse": {
+        "properties": {
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "title": "RunResponse",
         "type": "object"
       },
       "RunView": {
@@ -1401,6 +2371,84 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "VerifyIntakeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_reference": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Approval Reference",
+            "type": "string"
+          },
+          "comment": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Comment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_reference"
+        ],
+        "title": "VerifyIntakeRequest",
+        "type": "object"
+      },
+      "WorkspaceMembershipModel": {
+        "properties": {
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "tenant_name": {
+            "title": "Tenant Name",
+            "type": "string"
+          },
+          "tenant_slug": {
+            "title": "Tenant Slug",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          },
+          "workspace_name": {
+            "title": "Workspace Name",
+            "type": "string"
+          },
+          "workspace_slug": {
+            "title": "Workspace Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "tenant_slug",
+          "tenant_name",
+          "workspace_id",
+          "workspace_slug",
+          "workspace_name",
+          "roles",
+          "scopes"
+        ],
+        "title": "WorkspaceMembershipModel",
+        "type": "object"
       }
     }
   },
@@ -1577,6 +2625,27 @@
         "summary": "List Events",
         "tags": [
           "audit"
+        ]
+      }
+    },
+    "/api/v1/auth/bootstrap": {
+      "get": {
+        "operationId": "bootstrap_api_v1_auth_bootstrap_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BootstrapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Bootstrap",
+        "tags": [
+          "identity"
         ]
       }
     },
@@ -1780,6 +2849,124 @@
           }
         },
         "summary": "List Documents",
+        "tags": [
+          "knowledge"
+        ]
+      },
+      "post": {
+        "operationId": "upload_document_api_v1_knowledge_documents_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_document_api_v1_knowledge_documents_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Document",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/knowledge/documents/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_ingest_job_api_v1_knowledge_documents_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ingest Job",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/knowledge/documents/{document_id}": {
+      "delete": {
+        "operationId": "delete_document_api_v1_knowledge_documents__document_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Document",
         "tags": [
           "knowledge"
         ]
@@ -2002,6 +3189,621 @@
         "summary": "Analyze",
         "tags": [
           "procurement"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases": {
+      "get": {
+        "operationId": "list_all_api_v1_procurement_preparation_cases_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PreparationCaseView"
+                  },
+                  "title": "Response List All Api V1 Procurement Preparation Cases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List All",
+        "tags": [
+          "preparation"
+        ]
+      },
+      "post": {
+        "operationId": "create_api_v1_procurement_preparation_cases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePreparationCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatePreparationCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases/upload": {
+      "post": {
+        "operationId": "upload_api_v1_procurement_preparation_cases_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_api_v1_procurement_preparation_cases_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatePreparationCaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases/{case_id}": {
+      "get": {
+        "operationId": "get_api_v1_procurement_preparation_cases__case_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreparationCaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases/{case_id}/addendum": {
+      "post": {
+        "operationId": "addendum_api_v1_procurement_preparation_cases__case_id__addendum_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_addendum_api_v1_procurement_preparation_cases__case_id__addendum_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Addendum",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases/{case_id}/clarifications": {
+      "post": {
+        "operationId": "answer_api_v1_procurement_preparation_cases__case_id__clarifications_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerClarificationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases/{case_id}/cp3": {
+      "post": {
+        "operationId": "cp3_api_v1_procurement_preparation_cases__case_id__cp3_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Cp3DecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cp3",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases/{case_id}/cp4": {
+      "post": {
+        "operationId": "cp4_api_v1_procurement_preparation_cases__case_id__cp4_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_cp4_api_v1_procurement_preparation_cases__case_id__cp4_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cp4",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases/{case_id}/publication": {
+      "post": {
+        "operationId": "publish_api_v1_procurement_preparation_cases__case_id__publication_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_publish_api_v1_procurement_preparation_cases__case_id__publication_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases/{case_id}/reject-intake": {
+      "post": {
+        "operationId": "reject_api_v1_procurement_preparation_cases__case_id__reject_intake_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectIntakeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases/{case_id}/run": {
+      "post": {
+        "operationId": "run_api_v1_procurement_preparation_cases__case_id__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases/{case_id}/submissions": {
+      "post": {
+        "operationId": "submission_api_v1_procurement_preparation_cases__case_id__submissions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_submission_api_v1_procurement_preparation_cases__case_id__submissions_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submission",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases/{case_id}/verify-intake": {
+      "post": {
+        "operationId": "verify_api_v1_procurement_preparation_cases__case_id__verify_intake_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyIntakeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify",
+        "tags": [
+          "preparation"
         ]
       }
     },

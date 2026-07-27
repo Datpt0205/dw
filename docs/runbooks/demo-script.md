@@ -1,93 +1,105 @@
-# Kịch bản demo — Digital Worker (DW01 đấu thầu + RAG)
+# Kịch bản demo & thuyết trình — Digital Worker (Đấu thầu DW01)
 
-Demo end-to-end: đăng nhập OIDC role-aware → upload tài liệu vào RAG (Docling/OCR,
-scope tenant/global) → chạy Digital Worker chuẩn bị gói thầu DW01 với 2 chốt phê
-duyệt (CP1/CP2) và trích dẫn bằng chứng từ RAG → cô lập đa tenant.
+Tài liệu này gồm 3 phần: **(A) thông điệp/câu chuyện để present**, **(B) kịch bản
+bấm từng bước trên UI**, **(C) mẹo trình bày**. Thời lượng gợi ý: **12–15 phút**.
 
-## 0. Chuẩn bị (một lần)
+---
 
-```bash
-# Bật full stack (đã build sẵn image api/web/worker)
-docker compose -f infra/compose/docker-compose.yml --env-file .env --profile full up -d --wait
-```
+## A. Câu chuyện để mở đầu (1–2 phút, nói không cần máy)
 
-- Web: <http://localhost:3000> · API: <http://localhost:8000> · Keycloak: <http://localhost:8686>
-- Keycloak chạy ở **8686** (đã chủ động dời khỏi 8080 để tránh đụng app khác trên máy).
-  Nếu cổng bị chiếm sau khi Docker restart: giải phóng rồi
-  `docker compose ... up -d --force-recreate keycloak`.
-- Tài khoản (mật khẩu `demo-password`, đều thuộc **tenant Alpha**):
+> "Đây là một **Digital Worker** — nhân sự số — cho nghiệp vụ **chuẩn bị hồ sơ đấu
+> thầu**. Nó **đọc PR đã duyệt, tra cứu luật/quy chế, tự soạn phương án – hồ sơ mời
+> thầu – tiêu chí chấm**, nhưng **không tự quyết**: mọi bước quan trọng đều **dừng
+> lại chờ người có thẩm quyền phê duyệt** (human-in-command). Người phê duyệt được
+> **nhắc qua Slack**, mọi thứ **truy vết được** và **cô lập theo từng đơn vị**."
 
-  | Tài khoản    | Vai trò              | Làm được gì trong demo                         |
-  | ------------ | -------------------- | ---------------------------------------------- |
-  | `an.nguyen`  | member               | tạo/upload, chạy DW01 — KHÔNG phê duyệt         |
-  | `binh.tran`  | approver (+member)   | phê duyệt CP1/CP2                              |
-  | `chi.le`     | platform_admin (+m)  | thấy Admin, upload **luật global** cho mọi tenant |
+3 điểm nhấn xuyên suốt — nhắc lại khi demo:
+1. **Con người kiểm soát**: 4 chốt phê duyệt CP1→CP4, worker luôn dừng chờ người.
+2. **Có căn cứ (RAG)**: mọi đề xuất kèm trích dẫn luật/quy chế đã nạp.
+3. **An toàn đa đơn vị**: mỗi tổ chức chỉ thấy dữ liệu của mình; luật thì dùng chung.
 
-## 1. Đăng nhập OIDC + UI theo vai trò (2 phút)
+---
 
-1. Mở <http://localhost:3000> → chuyển hướng sang Keycloak. Đăng nhập `an.nguyen`.
-2. Chỉ ra **sidebar chỉ hiện chức năng mà role được phép**: member thấy Đấu thầu,
-   Knowledge, Inbox… nhưng **không thấy nút phê duyệt/Admin**.
-3. Đăng xuất → đăng nhập `binh.tran` (approver): xuất hiện thêm quyền **Phê duyệt**.
-4. Đăng nhập `chi.le` (platform_admin): xuất hiện **Admin** + được upload scope global.
+## B. Kịch bản bấm trên UI
 
-> Điểm nhấn: phân quyền do backend cưỡng chế (scope/role); UI chỉ ẩn nút cho gọn —
-> gọi thẳng API mà thiếu quyền vẫn 403.
+### 0. Chuẩn bị (trước khi lên sân khấu)
+- Mở sẵn **http://localhost:3000** và **Slack** (để cạnh nhau — lát nữa Slack sẽ
+  hiện thông báo trực tiếp trên màn hình).
+- 3 tài khoản, mật khẩu `demo-password`, đều thuộc đơn vị **Alpha**:
 
-## 2. Đăng ký tài khoản mới (1 phút)
+  | Tài khoản   | Vai trò        | Dùng để trình |
+  | ----------- | -------------- | ------------- |
+  | `an.nguyen` | Chuyên viên    | tạo hồ sơ, chạy Digital Worker |
+  | `binh.tran` | Người phê duyệt | duyệt CP1/CP2/CP3/CP4 |
+  | `chi.le`    | Quản trị        | upload luật dùng chung, xem toàn quyền |
 
-1. Ở màn login Keycloak → **Register** → tạo tài khoản mới.
-2. Đăng nhập lần đầu → hệ thống **tự tạo user thật trong Postgres**, gắn vào
-   **tenant Alpha, role `member`** (auto-provisioning qua `external_identities`).
-3. Cho xem: tài khoản mới thấy đúng giao diện member (không có phê duyệt/Admin).
+- **Mẹo vàng — Đổi tài khoản 1 chạm:** bấm vào **chip tên** (góc trên phải) → chọn
+  **An / Bình / Chi** để nhảy vai **tức thì, không cần đăng nhập lại**. Đây là chìa
+  khoá để demo luồng phê duyệt mượt.
 
-## 3. Knowledge / RAG — upload tài liệu (4 phút)
+### 1. Tổng quan — đăng nhập `an.nguyen` (1 phút)
+1. Đăng nhập → vào **Trang chủ** (dashboard).
+2. Chỉ nhanh: các thẻ **Hồ sơ đang xử lý / Chờ phê duyệt / Giá trị / Tài liệu**,
+   danh sách **Hồ sơ cần chú ý**, **Cơ cấu loại gói thầu**.
+3. Nói: *"Số liệu này lấy trực tiếp từ hồ sơ thật, không phải tĩnh."*
 
-Vào **Knowledge** (sidebar).
+### 2. Nạp tri thức cho máy — RAG (2 phút)
+> Nếu muốn ngắn gọn, có thể bỏ qua và nói "luật đã được nạp sẵn".
 
-1. **Luật global** (đăng nhập `chi.le`): upload 1 file luật (PDF/DOCX/ảnh scan),
-   Loại = *Pháp lý*, Phạm vi = **Global**. → trạng thái *đang xử lý* → **hoàn tất, N chunk**.
-   - Điểm nhấn: worker **Docling** parse đa định dạng + **OCR** cho bản scan, bảng →
-     Markdown; nhúng bằng **BGE-M3 (self-host)**, index vào Qdrant kèm filter tenant.
-2. **Quy chế nội bộ** (đăng nhập `an.nguyen`): upload 1 file quy chế, Loại =
-   *Quy chế*, Phạm vi = **Tenant** (riêng tổ chức).
-3. Chỉ ra bảng tài liệu: **badge scope** (global = hổ phách, tenant = xám), số chunk,
-   phiên bản, nút **Xoá mềm** (giữ vết, có thể phục hồi).
+1. Đổi sang **`chi.le`** (chip tên → Chi). Vào **Tri thức**.
+2. Bấm **Thêm tài liệu** → popup: chọn 1 file **PDF/DOCX/ảnh scan** luật đấu thầu,
+   Loại **Pháp lý/Luật**, Phạm vi **Dùng chung toàn hệ thống** → **Tải lên và xử lý**.
+3. Nói trong lúc chờ: *"Máy tự **OCR + bóc bảng**, cắt đoạn theo cấu trúc, nhúng bằng
+   mô hình self-host BGE-M3 và lập chỉ mục — đây là nguồn để nó trích dẫn về sau."*
+4. Xong: tài liệu hiện trong danh mục, badge **Toàn cục**.
 
-> Global = luật dùng chung mọi tenant đọc được; Tenant = chỉ tổ chức của bạn thấy.
-> Chỉ platform_admin mới đăng được tài liệu global.
+### 3. Digital Worker chạy + chốt phê duyệt (6–7 phút) — phần chính
+1. Đổi về **`an.nguyen`**. Vào **Xây hồ sơ thầu** → **Tạo hồ sơ**.
+2. Trong popup: chọn file **PR đã duyệt** (có nút *Tải mẫu PR* nếu cần), điền Tên gói
+   thầu / Mã PR / Giá trị / Thời hạn / Nhà cung cấp → **Tạo và gửi xác minh**.
+3. **CHUYỂN SANG CỬA SỔ SLACK** ngay: **Bình nhận DM** "*Yêu cầu mới cần phê duyệt*"
+   kèm nút **Mở hồ sơ DW01**.
+   > 🎯 Khoảnh khắc "wow": *"Người tạo không tự duyệt hồ sơ của mình — hệ thống nhắc
+   > đúng người phê duyệt qua Slack ngay lập tức."*
+4. Đổi sang **`binh.tran`** (chip tên → Bình) → **Phê duyệt** (Inbox/Phê duyệt) để
+   **xác minh intake**. Mở hồ sơ → bấm **Chạy** cho Digital Worker chạy graph:
+   - Bóc yêu cầu → kiểm tra đủ → **đề xuất phương án mua sắm** (kèm trích dẫn luật/
+     quy chế — chỉ ra mục *căn cứ pháp lý / căn cứ quy chế*).
+   - Dừng ở **CP1 — Duyệt phương án**.
+5. `binh.tran` **Duyệt CP1** → worker tự tiếp: dựng **Hồ sơ mời thầu**, **Tiêu chí
+   chấm**, **Shortlist nhà cung cấp** (đều kèm *references* từ RAG) → dừng **CP2**.
+6. `binh.tran` **Duyệt CP2** → **khoá bản chính thức**. Tiếp tục **CP3 (phát hành/
+   công bố)** và **CP4 (bàn giao)** tương tự → trạng thái **Hoàn tất**.
+7. Mỗi lần duyệt/từ chối, chỉ lại Slack: **An nhận DM kết quả**; nếu để quá hạn,
+   **Chi nhận DM nhắc việc** (escalation).
 
-## 4. DW01 — Digital Worker chuẩn bị gói thầu (6 phút)
+### 4. Phân quyền & cô lập (1–2 phút)
+1. Đổi qua lại **An ↔ Bình ↔ Chi**, chỉ: sidebar & nút **thay đổi theo vai** (chỉ
+   Bình thấy nút Duyệt; chỉ Chi thấy Quản trị & upload luật global).
+2. Nói: *"UI ẩn cho gọn, nhưng **backend mới là nơi chặn thật** — gọi thẳng API mà
+   thiếu quyền vẫn 403. Dữ liệu mỗi đơn vị tách biệt bằng RLS; luật global thì chia sẻ."*
 
-Vào **Đấu thầu → DW01** (`/procurement/dw01`).
+---
 
-1. **Tạo hồ sơ mẫu** (nút trên trang) → sinh 1 case từ PR đã duyệt (fixture laptop).
-2. Mở case → **Chạy** để Digital Worker chạy graph:
-   - Bóc yêu cầu → kiểm tra đầy đủ → **đề xuất phương án mua sắm** (chọn hình thức theo
-     rule pack + **trích dẫn luật/quy chế từ RAG** — chỉ mục `legal_basis`, `policy_basis`).
-   - Dừng ở **CP1 — Duyệt phương án** (interrupt bền vững, run được checkpoint).
-3. Đăng nhập `binh.tran` (approver) → **Phê duyệt CP1**. Run **tự tiếp tục**:
-   - Dựng **hồ sơ mời thầu (HSMT)**, **tiêu chí đánh giá**, **shortlist NCC** — các
-     artifact kèm **references** trích từ RAG.
-   - Dừng ở **CP2 — Duyệt bộ hồ sơ**.
-4. `binh.tran` **Phê duyệt CP2** → **khoá bản chính thức** + **export gói đánh giá**
-   (lưu MinIO), trạng thái case = *hoàn tất*.
+## C. Mẹo trình bày
 
-> Điểm nhấn: một agentic workflow/bounded context; state có kiểu + versioned; 2 chốt
-> human-in-command; mọi artifact truy vết được về bằng chứng (evidence/citations).
+- **Bố cục màn hình:** trình duyệt (trái) + Slack (phải) cùng lúc — để khán giả
+  **thấy Slack nảy thông báo ngay khi bấm trên web**. Đây là điểm ấn tượng nhất.
+- **Dùng account switcher**, đừng đăng xuất/đăng nhập lại — giữ nhịp demo liền mạch.
+- **Kể theo vai người dùng**, không kể theo tính năng: "An tạo → Bình được nhắc →
+  Bình duyệt → An biết kết quả". Người xem hiểu *quy trình*, không sa vào kỹ thuật.
+- **Nhấn 3 lần** vào thông điệp: *người kiểm soát • có căn cứ • an toàn đa đơn vị*.
+- **Nếu Slack không hiện:** kiểm tra `.env` có `DW_SLACK_APPROVALS_ENABLED=true` và
+  3 `SLACK_USER_*_ID` đúng (member ID Slack, dạng `U…`), rồi
+  `docker compose ... up -d worker`. Test nhanh không cần UI: tạo 1 hồ sơ → worker
+  log `Slack approval notification sent`.
+- **Câu chốt:** *"Digital Worker làm phần nặng và lặp lại, con người giữ quyền quyết
+  định ở đúng 4 điểm — nhanh hơn nhưng vẫn kiểm soát và truy vết được."*
 
-## 5. (Tuỳ chọn) Cô lập đa tenant (2 phút)
+---
 
-- Chế độ dev (`DW_API_AUTH_MODE=dev`, trang `/dev-login`) có sẵn user tenant Beta
-  (`bao.pham`, `dung.vo`).
-- Đăng nhập tenant Beta → vào Knowledge: **đọc được luật global** của Alpha, nhưng
-  **không thấy quy chế nội bộ (tenant)** của Alpha → chứng minh RLS + Qdrant filter.
-
-## Điểm chốt khi demo
-
-- **Human-in-command**: 2 chốt phê duyệt CP1/CP2 pause/resume durable.
-- **RAG doanh nghiệp**: Docling+OCR đa định dạng, chunk theo cấu trúc, BGE-M3 self-host
-  + rerank, scope global/tenant, xoá mềm + versioning.
-- **Bảo mật đa tenant**: RLS Postgres + filter Qdrant; luật global chia sẻ, dữ liệu
-  tenant cô lập; upload global chỉ platform_admin.
-- **Truy vết**: mọi output DW01 gắn evidence/citations; export gói đánh giá.
+### Phụ lục — URL & lệnh nhanh
+- Web `http://localhost:3000` · API `http://localhost:8000` · Keycloak `http://localhost:8686`
+- Bật stack: `docker compose -f infra/compose/docker-compose.yml --env-file .env --profile full up -d`
+- Đổi member ID Slack thật cho Bình/Chi: sửa `SLACK_USER_BINH_ID` / `SLACK_USER_CHI_ID`
+  trong `.env` → `docker compose ... up -d worker` (không cần rebuild).

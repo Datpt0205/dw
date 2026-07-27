@@ -16,12 +16,14 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from dw_connectors.adapters.slack_approval_notifier import SlackApprovalNotifier
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_knowledge.adapters.composite_parser import CompositeParser
 from dw_knowledge.adapters.text_parser import PlaintextParser
 from dw_knowledge.gateway import KnowledgeGateway
 from dw_knowledge.ingest_jobs import IngestJobStore
 from dw_knowledge.ports import DocumentParserPort, EmbeddingPort, ObjectStoragePort, VectorIndexPort
+from dw_tender.adapters.preparation.notification_store import IntakeNotificationJobStore
 from dw_worker.settings import WorkerSettings
 
 
@@ -32,6 +34,15 @@ class IngestComponents:
     job_store: IngestJobStore
     parser: DocumentParserPort
     object_storage: ObjectStoragePort
+
+
+@dataclass
+class SlackApprovalComponents:
+    engine: AsyncEngine
+    store: IntakeNotificationJobStore
+    notifier: SlackApprovalNotifier
+    user_map: dict[str, str]
+    web_base_url: str
 
 
 def _build_storage(settings: WorkerSettings) -> ObjectStoragePort:
@@ -114,4 +125,24 @@ def build_ingest_components(settings: WorkerSettings) -> IngestComponents | None
         job_store=job_store,
         parser=_build_parser(),
         object_storage=storage,
+    )
+
+
+def build_slack_approval_components(
+    settings: WorkerSettings,
+) -> SlackApprovalComponents | None:
+    if not settings.slack_approvals_enabled:
+        return None
+    settings.validate_slack()
+    assert settings.database_url is not None
+    assert settings.slack_bot_token is not None
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    clock = SystemClock()
+    return SlackApprovalComponents(
+        engine=engine,
+        store=IntakeNotificationJobStore(session_factory=session_factory, clock=clock),
+        notifier=SlackApprovalNotifier(bot_token=settings.slack_bot_token),
+        user_map=settings.slack_user_map(),
+        web_base_url=settings.slack_web_base_url,
     )

@@ -11,9 +11,10 @@ import contextlib
 import logging
 import signal
 
-from dw_worker.composition import build_ingest_components
+from dw_worker.composition import build_ingest_components, build_slack_approval_components
 from dw_worker.consumers import ConsumerRegistry
 from dw_worker.consumers.ingest import build_ingest_consumer
+from dw_worker.consumers.slack_approvals import SlackApprovalConsumer
 from dw_worker.health import beat
 from dw_worker.settings import WorkerSettings
 
@@ -31,6 +32,20 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         logger.info("knowledge ingest consumer registered")
     else:
         logger.info("knowledge ingest disabled (database_url / s3_endpoint_url unset)")
+    slack = build_slack_approval_components(settings)
+    if slack is not None:
+        registry.register(
+            "slack_approvals",
+            SlackApprovalConsumer(
+                store=slack.store,
+                notifier=slack.notifier,
+                user_map=slack.user_map,
+                web_base_url=slack.web_base_url,
+            ),
+        )
+        logger.info("Slack approval notification consumer registered")
+    else:
+        logger.info("Slack approval notifications disabled")
     return registry
 
 

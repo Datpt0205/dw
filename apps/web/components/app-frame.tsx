@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Loader2, LogOut } from "lucide-react";
+import { Bot, Loader2, LogOut, ScrollText, Settings } from "lucide-react";
 import { Button } from "@dw/ui";
 import { useAuth } from "../lib/auth/auth-context";
 import { LoginScreen } from "./login-screen";
@@ -60,8 +60,8 @@ export function AppFrame({ children }: { children: ReactNode }) {
       <CenteredCard>
         <h1 className="text-lg font-semibold">Chưa có không gian làm việc</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Tài khoản của bạn đã đăng nhập nhưng chưa được gán vào workspace nào.
-          Liên hệ quản trị viên để được cấp quyền.
+          Tài khoản của bạn đã đăng nhập nhưng chưa được gán vào đơn vị làm việc
+          nào. Liên hệ quản trị viên để được cấp quyền.
         </p>
         <Button className="mt-5" variant="outline" onClick={logout}>
           <LogOut /> Đăng xuất
@@ -73,41 +73,62 @@ export function AppFrame({ children }: { children: ReactNode }) {
   // status === "ready"
   return (
     <>
-      <div className="flex min-h-screen">
-        <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r bg-sidebar px-3 py-4 md:flex">
-          <Link
-            href="/"
-            className="mb-6 flex items-center gap-2 px-2 text-base font-semibold"
-          >
-            <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+      <div className="flex min-h-screen bg-background">
+        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-[#d5e0e9] bg-sidebar px-4 py-5 md:flex">
+          <Link href="/" className="mb-7 flex items-center gap-3 px-2">
+            <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
               <Bot className="size-5" />
             </span>
-            Digital Worker
+            <span>
+              <span className="block text-sm font-bold tracking-tight">
+                Procurement AI
+              </span>
+              <span className="block text-[10px] font-medium uppercase tracking-[0.13em] text-muted-foreground">
+                Digital Worker
+              </span>
+            </span>
           </Link>
           <div className="flex-1">
             <NavLinks />
           </div>
-          <p className="px-2 text-[10px] leading-relaxed text-muted-foreground/70">
-            Hệ thống:{" "}
-            <Link className="underline" href="/audit">
-              Nhật ký
+          <div className="space-y-1 border-t pt-4 text-xs text-muted-foreground">
+            <Link
+              className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-sidebar-accent hover:text-foreground"
+              href="/audit"
+            >
+              <ScrollText className="size-3.5" /> Nhật ký hệ thống
             </Link>
             {hasScope("workspace.members.read") && (
-              <>
-                {" · "}
-                <Link className="underline" href="/admin">
-                  Quản trị
-                </Link>
-              </>
+              <Link
+                className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-sidebar-accent hover:text-foreground"
+                href="/admin"
+              >
+                <Settings className="size-3.5" /> Phân quyền
+              </Link>
             )}
-          </p>
+          </div>
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-10 flex h-14 items-center justify-between gap-3 border-b bg-background/80 px-6 backdrop-blur">
-            <WorkspaceSelector />
-            <SessionChip />
+          <header className="sticky top-0 z-20 border-b border-[#d5e0e9] bg-white/95 backdrop-blur-xl">
+            <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+              <div className="flex min-w-0 items-center gap-3">
+                <Link
+                  href="/"
+                  className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground md:hidden"
+                >
+                  <Bot className="size-5" />
+                </Link>
+                <WorkspaceSelector />
+              </div>
+              <SessionChip />
+            </div>
+            <div className="overflow-x-auto border-t px-3 py-2 md:hidden">
+              <NavLinks mobile />
+            </div>
           </header>
-          <main className="flex-1 p-6 md:p-8">{children}</main>
+          <main className="flex-1 px-4 py-7 sm:px-6 lg:px-10 lg:py-9">
+            {children}
+          </main>
         </div>
       </div>
     </>

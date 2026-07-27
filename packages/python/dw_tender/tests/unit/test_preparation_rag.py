@@ -8,24 +8,21 @@ filter), and that drafting degrades gracefully with no gateway / on failure.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import pytest
 
+from dw_agent_runtime.contracts import RunContext
 from dw_knowledge.contracts import EvidenceChunk, EvidenceRef
 from dw_tender.workflows.preparation_v1.nodes import PreparationNodes
 from dw_tender.workflows.preparation_v1.services import PreparationServices
-
-try:
-    from dw_agent_runtime.contracts import RunContext
-except Exception:  # pragma: no cover
-    RunContext = None  # type: ignore[assignment]
 
 TENANT = uuid.uuid4()
 WORKSPACE = uuid.uuid4()
 ACTOR = uuid.uuid4()
 
 
-def _run_context():
+def _run_context() -> RunContext:
     return RunContext(
         run_id=uuid.uuid4(),
         tenant_id=TENANT,
@@ -57,11 +54,11 @@ def _chunk(text: str, score: float) -> EvidenceChunk:
 
 
 class FakeGateway:
-    def __init__(self, chunks):
+    def __init__(self, chunks: list[EvidenceChunk]) -> None:
         self.chunks = chunks
-        self.calls = []
+        self.calls: list[tuple[str, str, uuid.UUID]] = []
 
-    async def search(self, query, context):
+    async def search(self, query: Any, context: Any) -> list[EvidenceChunk]:
         self.calls.append((query.text, query.domain, context.tenant_id))
         return self.chunks
 
@@ -101,7 +98,7 @@ async def test_cite_no_gateway_degrades_to_empty() -> None:
 @pytest.mark.asyncio
 async def test_cite_swallows_retrieval_failure() -> None:
     class Boom:
-        async def search(self, query, context):
+        async def search(self, query: Any, context: Any) -> list[EvidenceChunk]:
             raise RuntimeError("qdrant down")
 
     nodes = PreparationNodes(_services(Boom()))

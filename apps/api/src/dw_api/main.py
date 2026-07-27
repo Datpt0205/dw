@@ -101,9 +101,7 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
 
         include_session = settings.auth_mode == "dev" and bool(settings.dev_secret)
         app.include_router(
-            build_dev_router(
-                REPO_ROOT, settings.dev_secret or "", include_session=include_session
-            ),
+            build_dev_router(REPO_ROOT, settings.dev_secret or "", include_session=include_session),
             prefix="/api/v1",
         )
     if container.work_ops is not None:
@@ -144,6 +142,15 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
                 get_case=container.preparation.get_case,
                 list_cases=container.preparation.list_cases,
                 run_case=container.preparation.run_case,
+                verify_intake=container.preparation.verify_intake,
+                reject_intake=container.preparation.reject_intake,
+                answer_clarifications=container.preparation.answer_clarifications,
+                record_publication=container.preparation.record_publication,
+                record_submission=container.preparation.record_submission,
+                complete_cp4=container.preparation.complete_cp4,
+                submit_addendum=container.preparation.submit_addendum,
+                decide_cp3=container.preparation.decide_cp3,
+                audit_recorder=container.preparation.audit_recorder,
                 access_context_dependency=get_prep_ctx,
             ),
             prefix="/api/v1",

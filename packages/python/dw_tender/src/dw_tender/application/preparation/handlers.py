@@ -3,31 +3,79 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, timedelta
+from typing import Any
 
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.ports import WorkflowRunnerPort
-from dw_kernel.errors import NotFoundError
+from dw_kernel.errors import ConflictError, DomainError, NotFoundError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
-from dw_kernel.ports import IdGenerator
+from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.entitlement import PlanEntitlementService
+from dw_platform.application.ports import PlatformUnitOfWorkFactory
+from dw_platform.domain.audit import AuditEvent
 from dw_tender.application.ports import DocumentStoragePort
 from dw_tender.application.preparation.dto import PreparationCaseView
 from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
 from dw_tender.domain.preparation.entities import (
+    ArtifactStatus,
+    ArtifactType,
+    BusinessDomain,
+    CaseState,
     DocumentKind,
+    PreparationArtifact,
     PreparationCase,
     PreparationDocument,
+    ProcurementType,
+)
+from dw_tender.domain.preparation.notifications import (
+    IntakeNotificationJob,
+    IntakeNotificationType,
 )
 from dw_tender.domain.value_objects.ids import (
+    ArtifactId,
     PreparationCaseId,
     PreparationDocumentId,
 )
 
 TENDER_FEATURE = "tender_worker"
+
+
+@dataclass
+class PreparationAuditRecorder:
+    uow_factory: PlatformUnitOfWorkFactory
+    clock: UtcClock
+    id_generator: IdGenerator
+
+    async def record(
+        self,
+        context: AccessContext,
+        *,
+        action: str,
+        case_id: uuid.UUID,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        async with self.uow_factory(context) as uow:
+            await uow.audit.append(
+                AuditEvent(
+                    id=self.id_generator.new_uuid(),
+                    tenant_id=TenantId(context.tenant_id),
+                    workspace_id=WorkspaceId(context.workspace_id),
+                    actor_id=UserId(context.principal_id),
+                    action=action,
+                    resource_type="preparation_case",
+                    resource_id=str(case_id),
+                    occurred_at=self.clock.now().astimezone(UTC),
+                    policy_decision="allow",
+                    details=details or {},
+                )
+            )
+            await uow.commit()
 
 
 @dataclass(frozen=True)
@@ -39,7 +87,12 @@ class CreatePreparationCaseCommand:
     currency: str
     deadline: str | None
     owner_name: str
+    procurement_type: ProcurementType
+    business_domain: BusinessDomain
     pr_text: str
+    pr_filename: str = "approved-pr.txt"
+    pr_content_type: str = "text/plain; charset=utf-8"
+    supplier_names: tuple[str, ...] = ()
 
 
 @dataclass
@@ -49,6 +102,8 @@ class CreatePreparationCaseHandler:
     authorization: ScopeAuthorizationService
     entitlement: PlanEntitlementService
     id_generator: IdGenerator
+    clock: UtcClock
+    reminder_seconds: int = 5
 
     async def handle(
         self, command: CreatePreparationCaseCommand, context: AccessContext
@@ -70,14 +125,24 @@ class CreatePreparationCaseHandler:
             currency=command.currency,
             deadline=command.deadline,
             owner_name=command.owner_name,
+            procurement_type=command.procurement_type,
+            business_domain=command.business_domain,
         )
-        case.mark_intake_ready()
-
         pr_bytes = command.pr_text.encode("utf-8")
-        storage_key = (
-            f"{context.tenant_id}/{context.workspace_id}/preparation/{case.id.value}/approved_pr"
+        if not pr_bytes:
+            raise DomainError("purchase request file must not be empty")
+        if len(pr_bytes) > 5 * 1024 * 1024:
+            raise DomainError("purchase request file exceeds 5 MiB")
+        suppliers = tuple(
+            dict.fromkeys(name.strip() for name in command.supplier_names if name.strip())
         )
-        await self.storage.put_object(storage_key, pr_bytes, "text/plain")
+        if not suppliers:
+            raise DomainError("at least one supplier candidate is required")
+        storage_key = (
+            f"{context.tenant_id}/{context.workspace_id}/preparation/{case.id.value}/"
+            f"sources/{command.pr_filename}"
+        )
+        await self.storage.put_object(storage_key, pr_bytes, command.pr_content_type)
         document = PreparationDocument(
             id=PreparationDocumentId(self.id_generator.new_uuid()),
             tenant_id=TenantId(context.tenant_id),
@@ -85,15 +150,709 @@ class CreatePreparationCaseHandler:
             case_id=case.id,
             kind=DocumentKind.APPROVED_PR,
             title="Phiếu yêu cầu mua sắm (PR)",
+            filename=command.pr_filename,
+            content_type=command.pr_content_type,
+            size_bytes=len(pr_bytes),
             storage_key=storage_key,
             content_hash=hashlib.sha256(pr_bytes).hexdigest(),
             uploaded_by=UserId(context.principal_id),
         )
+        supplier_content: dict[str, Any] = {
+            "source": "manual_entry",
+            "suppliers": [{"name": name} for name in suppliers],
+        }
+        supplier_artifact = PreparationArtifact(
+            id=ArtifactId(self.id_generator.new_uuid()),
+            tenant_id=case.tenant_id,
+            workspace_id=case.workspace_id,
+            case_id=case.id,
+            artifact_type=ArtifactType.SUPPLIER_INPUT,
+            schema_version="1.0",
+            artifact_version=1,
+            status=ArtifactStatus.DRAFT,
+            content=supplier_content,
+            created_by=UserId(context.principal_id),
+            content_hash=_content_hash(supplier_content),
+        )
         async with self.uow_factory(TenantId(context.tenant_id)) as uow:
+            approver = await uow.notifications.find_recipient_for_role("approver")
+            escalation_owner = await uow.notifications.find_recipient_for_role("platform_admin")
+            if approver is None:
+                raise DomainError("DW01 intake requires an approver membership")
+            if escalation_owner is None:
+                raise DomainError("DW01 intake requires a platform_admin escalation owner")
             await uow.cases.add(case)
             await uow.documents.add(document)
+            await uow.artifacts.add(supplier_artifact)
+            now = self.clock.now().astimezone(UTC)
+            notification_payload: dict[str, object] = {
+                "title": case.title,
+                "source_pr_ref": case.source_pr_ref,
+                "owner_name": case.owner_name,
+                "procurement_type": case.procurement_type.value,
+                "business_domain": case.business_domain.value,
+                "estimated_value_minor": case.estimated_value_minor,
+                "currency": case.currency,
+            }
+            await uow.notifications.enqueue(
+                IntakeNotificationJob(
+                    id=self.id_generator.new_uuid(),
+                    tenant_id=case.tenant_id,
+                    workspace_id=case.workspace_id,
+                    case_id=case.id,
+                    event_type=IntakeNotificationType.APPROVAL_REQUESTED,
+                    recipient_user_id=approver,
+                    due_at=now,
+                    idempotency_key=f"dw01:{case.id.value}:intake:requested",
+                    payload=notification_payload,
+                )
+            )
+            await uow.notifications.enqueue(
+                IntakeNotificationJob(
+                    id=self.id_generator.new_uuid(),
+                    tenant_id=case.tenant_id,
+                    workspace_id=case.workspace_id,
+                    case_id=case.id,
+                    event_type=IntakeNotificationType.APPROVAL_ESCALATED,
+                    recipient_user_id=escalation_owner,
+                    due_at=now + timedelta(seconds=self.reminder_seconds),
+                    idempotency_key=f"dw01:{case.id.value}:intake:escalated",
+                    payload=notification_payload,
+                )
+            )
             await uow.commit()
         return case.id.value
+
+
+@dataclass
+class VerifyPreparationIntakeHandler:
+    uow_factory: PreparationUnitOfWorkFactory
+    authorization: ScopeAuthorizationService
+    clock: UtcClock
+    id_generator: IdGenerator
+
+    async def handle(
+        self,
+        case_id: uuid.UUID,
+        *,
+        approval_reference: str,
+        comment: str,
+        context: AccessContext,
+    ) -> None:
+        await self.authorization.require(
+            context=context,
+            action="approvals.decide",
+            resource_type="preparation_intake",
+            resource_id=str(case_id),
+        )
+        if not approval_reference.strip():
+            raise DomainError("approval reference must not be blank")
+        async with self.uow_factory(TenantId(context.tenant_id)) as uow:
+            case = await uow.cases.get(PreparationCaseId(case_id))
+            if case is None:
+                raise NotFoundError("preparation case not found")
+            documents = await uow.documents.list_for_case(case.id)
+            if not documents:
+                raise DomainError("intake has no source document")
+            verified_at = self.clock.now().astimezone(UTC)
+            case.verify_intake(UserId(context.principal_id), verified_at)
+            content: dict[str, Any] = {
+                "source_mode": "manual_upload",
+                "approval_reference": approval_reference.strip(),
+                "comment": comment.strip(),
+                "verified_by": str(context.principal_id),
+                "verified_at": verified_at.isoformat(),
+                "document_hashes": [document.content_hash for document in documents],
+                "declaration": (
+                    "Người xác minh xác nhận bản tải lên là PR đã được phê duyệt "
+                    "trong môi trường mô phỏng."
+                ),
+            }
+            await uow.artifacts.add(
+                PreparationArtifact(
+                    id=ArtifactId(self.id_generator.new_uuid()),
+                    tenant_id=case.tenant_id,
+                    workspace_id=case.workspace_id,
+                    case_id=case.id,
+                    artifact_type=ArtifactType.INTAKE_VERIFICATION,
+                    schema_version="1.0",
+                    artifact_version=1,
+                    status=ArtifactStatus.APPROVED,
+                    content=content,
+                    created_by=UserId(context.principal_id),
+                    content_hash=_content_hash(content),
+                )
+            )
+            await uow.notifications.enqueue(
+                IntakeNotificationJob(
+                    id=self.id_generator.new_uuid(),
+                    tenant_id=case.tenant_id,
+                    workspace_id=case.workspace_id,
+                    case_id=case.id,
+                    event_type=IntakeNotificationType.APPROVED,
+                    recipient_user_id=case.created_by,
+                    due_at=verified_at,
+                    idempotency_key=f"dw01:{case.id.value}:intake:approved:v{case.version}",
+                    payload={
+                        "title": case.title,
+                        "approval_reference": approval_reference.strip(),
+                        "comment": comment.strip(),
+                    },
+                )
+            )
+            await uow.cases.save(case)
+            await uow.commit()
+
+
+@dataclass
+class RejectPreparationIntakeHandler:
+    uow_factory: PreparationUnitOfWorkFactory
+    authorization: ScopeAuthorizationService
+    clock: UtcClock
+    id_generator: IdGenerator
+
+    async def handle(
+        self,
+        case_id: uuid.UUID,
+        *,
+        comment: str,
+        context: AccessContext,
+    ) -> None:
+        await self.authorization.require(
+            context=context,
+            action="approvals.decide",
+            resource_type="preparation_intake",
+            resource_id=str(case_id),
+        )
+        reason = comment.strip()
+        if not reason:
+            raise DomainError("intake rejection requires a reason")
+        async with self.uow_factory(TenantId(context.tenant_id)) as uow:
+            case = await uow.cases.get(PreparationCaseId(case_id))
+            if case is None:
+                raise NotFoundError("preparation case not found")
+            case.reject_intake(UserId(context.principal_id))
+            now = self.clock.now().astimezone(UTC)
+            await uow.notifications.enqueue(
+                IntakeNotificationJob(
+                    id=self.id_generator.new_uuid(),
+                    tenant_id=case.tenant_id,
+                    workspace_id=case.workspace_id,
+                    case_id=case.id,
+                    event_type=IntakeNotificationType.REJECTED,
+                    recipient_user_id=case.created_by,
+                    due_at=now,
+                    idempotency_key=f"dw01:{case.id.value}:intake:rejected:v{case.version}",
+                    payload={"title": case.title, "comment": reason},
+                )
+            )
+            await uow.cases.save(case)
+            await uow.commit()
+
+
+@dataclass(frozen=True)
+class ClarificationAnswer:
+    clarification_id: str
+    question: str
+    answer: str
+    source_note: str
+
+
+@dataclass
+class AnswerPreparationClarificationsHandler:
+    uow_factory: PreparationUnitOfWorkFactory
+    authorization: ScopeAuthorizationService
+    clock: UtcClock
+    id_generator: IdGenerator
+
+    async def handle(
+        self,
+        case_id: uuid.UUID,
+        answers: tuple[ClarificationAnswer, ...],
+        context: AccessContext,
+    ) -> None:
+        await self.authorization.require(
+            context=context,
+            action="tender.write",
+            resource_type="preparation_clarification",
+            resource_id=str(case_id),
+        )
+        if not answers or any(not item.answer.strip() for item in answers):
+            raise DomainError("every clarification requires a non-empty answer")
+        async with self.uow_factory(TenantId(context.tenant_id)) as uow:
+            case = await uow.cases.get(PreparationCaseId(case_id))
+            if case is None:
+                raise NotFoundError("preparation case not found")
+            if case.state is not CaseState.WAITING_CLARIFICATION:
+                raise ConflictError(
+                    "case is not waiting for clarification",
+                    details={"state": case.state.value},
+                )
+            latest = await uow.artifacts.latest(case.id, ArtifactType.CLARIFICATION_RESPONSE)
+            version = latest.artifact_version + 1 if latest is not None else 1
+            answered_at = self.clock.now().astimezone(UTC)
+            content: dict[str, Any] = {
+                "answered_by": str(context.principal_id),
+                "answered_at": answered_at.isoformat(),
+                "items": [
+                    {
+                        "id": item.clarification_id,
+                        "question": item.question.strip(),
+                        "answer": item.answer.strip(),
+                        "source_note": item.source_note.strip(),
+                    }
+                    for item in answers
+                ],
+            }
+            await uow.artifacts.add(
+                PreparationArtifact(
+                    id=ArtifactId(self.id_generator.new_uuid()),
+                    tenant_id=case.tenant_id,
+                    workspace_id=case.workspace_id,
+                    case_id=case.id,
+                    artifact_type=ArtifactType.CLARIFICATION_RESPONSE,
+                    schema_version="1.0",
+                    artifact_version=version,
+                    status=ArtifactStatus.SUBMITTED,
+                    content=content,
+                    created_by=UserId(context.principal_id),
+                    content_hash=_content_hash(content),
+                )
+            )
+            case.reopen_after_clarification()
+            await uow.cases.save(case)
+            await uow.commit()
+
+
+@dataclass(frozen=True)
+class RecordPublicationCommand:
+    filename: str
+    content_type: str
+    content: bytes
+    channel: str
+    recipient_summary: str
+    published_at: str
+    external_reference: str
+
+
+@dataclass
+class RecordPreparationPublicationHandler:
+    uow_factory: PreparationUnitOfWorkFactory
+    storage: DocumentStoragePort
+    authorization: ScopeAuthorizationService
+    clock: UtcClock
+    id_generator: IdGenerator
+
+    async def handle(
+        self,
+        case_id: uuid.UUID,
+        command: RecordPublicationCommand,
+        context: AccessContext,
+    ) -> None:
+        await self.authorization.require(
+            context=context,
+            action="tender.write",
+            resource_type="preparation_publication",
+            resource_id=str(case_id),
+        )
+        if not command.external_reference.strip():
+            raise DomainError("publication external reference must not be blank")
+        async with self.uow_factory(TenantId(context.tenant_id)) as uow:
+            case = await uow.cases.get(PreparationCaseId(case_id))
+            if case is None:
+                raise NotFoundError("preparation case not found")
+            if case.state is not CaseState.PACKAGE_OFFICIAL:
+                raise ConflictError(
+                    "only the official package can be recorded as published",
+                    details={"state": case.state.value},
+                )
+            document = await _store_source_document(
+                storage=self.storage,
+                id_generator=self.id_generator,
+                case=case,
+                actor=UserId(context.principal_id),
+                kind=DocumentKind.PUBLICATION_RECEIPT,
+                title="Bằng chứng phát hành hồ sơ",
+                filename=command.filename,
+                content_type=command.content_type,
+                content=command.content,
+            )
+            await uow.documents.add(document)
+            recorded_at = self.clock.now().astimezone(UTC)
+            artifact_content: dict[str, Any] = {
+                "source_mode": "manual_evidence_upload",
+                "channel": command.channel.strip(),
+                "recipient_summary": command.recipient_summary.strip(),
+                "published_at": command.published_at.strip(),
+                "external_reference": command.external_reference.strip(),
+                "receipt_document_id": str(document.id.value),
+                "receipt_hash": document.content_hash,
+                "recorded_by": str(context.principal_id),
+                "recorded_at": recorded_at.isoformat(),
+            }
+            await _add_application_artifact(
+                uow=uow,
+                id_generator=self.id_generator,
+                case=case,
+                actor=UserId(context.principal_id),
+                artifact_type=ArtifactType.PUBLICATION_RECORD,
+                content=artifact_content,
+                status=ArtifactStatus.OFFICIAL,
+            )
+            case.record_publication()
+            await uow.cases.save(case)
+            await uow.commit()
+
+
+@dataclass(frozen=True)
+class SubmitAddendumCommand:
+    filename: str
+    content_type: str
+    content: bytes
+    change_summary: str
+    impact_summary: str
+
+
+@dataclass
+class SubmitPreparationAddendumHandler:
+    uow_factory: PreparationUnitOfWorkFactory
+    storage: DocumentStoragePort
+    authorization: ScopeAuthorizationService
+    clock: UtcClock
+    id_generator: IdGenerator
+
+    async def handle(
+        self,
+        case_id: uuid.UUID,
+        command: SubmitAddendumCommand,
+        context: AccessContext,
+    ) -> None:
+        await self.authorization.require(
+            context=context,
+            action="tender.write",
+            resource_type="preparation_addendum",
+            resource_id=str(case_id),
+        )
+        async with self.uow_factory(TenantId(context.tenant_id)) as uow:
+            case = await uow.cases.get(PreparationCaseId(case_id))
+            if case is None:
+                raise NotFoundError("preparation case not found")
+            if case.state is not CaseState.PUBLISHED:
+                raise ConflictError(
+                    "addendum can only be submitted before receiving bids",
+                    details={"state": case.state.value},
+                )
+            document = await _store_source_document(
+                storage=self.storage,
+                id_generator=self.id_generator,
+                case=case,
+                actor=UserId(context.principal_id),
+                kind=DocumentKind.ADDENDUM,
+                title="Dự thảo addendum",
+                filename=command.filename,
+                content_type=command.content_type,
+                content=command.content,
+            )
+            await uow.documents.add(document)
+            content: dict[str, Any] = {
+                "document_id": str(document.id.value),
+                "document_hash": document.content_hash,
+                "change_summary": command.change_summary.strip(),
+                "impact_summary": command.impact_summary.strip(),
+                "submitted_by": str(context.principal_id),
+                "submitted_at": self.clock.now().astimezone(UTC).isoformat(),
+            }
+            await _add_application_artifact(
+                uow=uow,
+                id_generator=self.id_generator,
+                case=case,
+                actor=UserId(context.principal_id),
+                artifact_type=ArtifactType.ADDENDUM_DRAFT,
+                content=content,
+                status=ArtifactStatus.SUBMITTED,
+            )
+            case.submit_addendum()
+            await uow.cases.save(case)
+            await uow.commit()
+
+
+@dataclass
+class DecidePreparationCp3Handler:
+    uow_factory: PreparationUnitOfWorkFactory
+    authorization: ScopeAuthorizationService
+    clock: UtcClock
+    id_generator: IdGenerator
+
+    async def handle(
+        self,
+        case_id: uuid.UUID,
+        *,
+        approve: bool,
+        approval_reference: str,
+        comment: str,
+        context: AccessContext,
+    ) -> None:
+        await self.authorization.require(
+            context=context,
+            action="approvals.decide",
+            resource_type="preparation_cp3",
+            resource_id=str(case_id),
+        )
+        if not approval_reference.strip():
+            raise DomainError("CP3 approval reference must not be blank")
+        async with self.uow_factory(TenantId(context.tenant_id)) as uow:
+            case = await uow.cases.get(PreparationCaseId(case_id))
+            if case is None:
+                raise NotFoundError("preparation case not found")
+            if case.created_by.value == context.principal_id:
+                raise ConflictError("case creator cannot decide CP3 for their own case")
+            if case.state is not CaseState.CP3_PENDING:
+                raise ConflictError(
+                    "case is not waiting for CP3",
+                    details={"state": case.state.value},
+                )
+            draft = await uow.artifacts.latest(case.id, ArtifactType.ADDENDUM_DRAFT)
+            if draft is None:
+                raise DomainError("CP3 has no addendum draft")
+            decision_content: dict[str, Any] = {
+                "decision": "approved" if approve else "rejected",
+                "approval_reference": approval_reference.strip(),
+                "comment": comment.strip(),
+                "addendum_artifact_id": str(draft.id.value),
+                "addendum_hash": draft.content_hash,
+                "decided_by": str(context.principal_id),
+                "decided_at": self.clock.now().astimezone(UTC).isoformat(),
+            }
+            await _add_application_artifact(
+                uow=uow,
+                id_generator=self.id_generator,
+                case=case,
+                actor=UserId(context.principal_id),
+                artifact_type=ArtifactType.ADDENDUM_DECISION,
+                content=decision_content,
+                status=ArtifactStatus.APPROVED if approve else ArtifactStatus.DRAFT,
+            )
+            case.resolve_cp3()
+            await uow.cases.save(case)
+            await uow.commit()
+
+
+@dataclass(frozen=True)
+class RecordSubmissionCommand:
+    filename: str
+    content_type: str
+    content: bytes
+    supplier_name: str
+    received_at: str
+    receipt_status: str
+    external_reference: str
+
+
+@dataclass
+class RecordPreparationSubmissionHandler:
+    uow_factory: PreparationUnitOfWorkFactory
+    storage: DocumentStoragePort
+    authorization: ScopeAuthorizationService
+    clock: UtcClock
+    id_generator: IdGenerator
+
+    async def handle(
+        self,
+        case_id: uuid.UUID,
+        command: RecordSubmissionCommand,
+        context: AccessContext,
+    ) -> None:
+        await self.authorization.require(
+            context=context,
+            action="tender.write",
+            resource_type="supplier_submission",
+            resource_id=str(case_id),
+        )
+        if command.receipt_status not in {"on_time", "late", "replacement"}:
+            raise DomainError("invalid supplier submission receipt status")
+        async with self.uow_factory(TenantId(context.tenant_id)) as uow:
+            case = await uow.cases.get(PreparationCaseId(case_id))
+            if case is None:
+                raise NotFoundError("preparation case not found")
+            if case.state not in {CaseState.PUBLISHED, CaseState.RECEIVING_BIDS}:
+                raise ConflictError(
+                    "case is not accepting supplier submissions",
+                    details={"state": case.state.value},
+                )
+            document = await _store_source_document(
+                storage=self.storage,
+                id_generator=self.id_generator,
+                case=case,
+                actor=UserId(context.principal_id),
+                kind=DocumentKind.SUPPLIER_SUBMISSION,
+                title=f"Hồ sơ dự thầu — {command.supplier_name.strip()}",
+                filename=command.filename,
+                content_type=command.content_type,
+                content=command.content,
+            )
+            await uow.documents.add(document)
+            latest = await uow.artifacts.latest(case.id, ArtifactType.SUBMISSION_REGISTER)
+            prior_items = latest.content.get("items", []) if latest is not None else []
+            items = (
+                [dict(item) for item in prior_items if isinstance(item, dict)]
+                if isinstance(prior_items, list)
+                else []
+            )
+            items.append(
+                {
+                    "submission_id": str(document.id.value),
+                    "supplier_name": command.supplier_name.strip(),
+                    "filename": document.filename,
+                    "content_hash": document.content_hash,
+                    "received_at": command.received_at.strip(),
+                    "receipt_status": command.receipt_status,
+                    "external_reference": command.external_reference.strip(),
+                    "recorded_by": str(context.principal_id),
+                    "recorded_at": self.clock.now().astimezone(UTC).isoformat(),
+                }
+            )
+            await _add_application_artifact(
+                uow=uow,
+                id_generator=self.id_generator,
+                case=case,
+                actor=UserId(context.principal_id),
+                artifact_type=ArtifactType.SUBMISSION_REGISTER,
+                content={"source_mode": "manual_evidence_upload", "items": items},
+                status=ArtifactStatus.SUBMITTED,
+            )
+            case.record_submission()
+            await uow.cases.save(case)
+            await uow.commit()
+
+
+@dataclass(frozen=True)
+class CompleteCp4Command:
+    filename: str
+    content_type: str
+    content: bytes
+    opening_at: str
+    witnesses: tuple[str, ...]
+    approval_reference: str
+    comment: str
+
+
+@dataclass
+class CompletePreparationCp4Handler:
+    uow_factory: PreparationUnitOfWorkFactory
+    storage: DocumentStoragePort
+    authorization: ScopeAuthorizationService
+    clock: UtcClock
+    id_generator: IdGenerator
+
+    async def handle(
+        self,
+        case_id: uuid.UUID,
+        command: CompleteCp4Command,
+        context: AccessContext,
+    ) -> None:
+        await self.authorization.require(
+            context=context,
+            action="approvals.decide",
+            resource_type="preparation_cp4",
+            resource_id=str(case_id),
+        )
+        if not command.approval_reference.strip() or not command.witnesses:
+            raise DomainError("CP4 requires approval reference and at least one witness")
+        async with self.uow_factory(TenantId(context.tenant_id)) as uow:
+            case = await uow.cases.get(PreparationCaseId(case_id))
+            if case is None:
+                raise NotFoundError("preparation case not found")
+            if case.created_by.value == context.principal_id:
+                raise ConflictError("case creator cannot confirm CP4 for their own case")
+            if case.state is not CaseState.RECEIVING_BIDS:
+                raise ConflictError(
+                    "case is not ready for CP4",
+                    details={"state": case.state.value},
+                )
+            documents = await uow.documents.list_for_case(case.id)
+            submissions = [
+                item for item in documents if item.kind is DocumentKind.SUPPLIER_SUBMISSION
+            ]
+            if not submissions:
+                raise DomainError("CP4 requires at least one supplier submission")
+            minutes = await _store_source_document(
+                storage=self.storage,
+                id_generator=self.id_generator,
+                case=case,
+                actor=UserId(context.principal_id),
+                kind=DocumentKind.BID_OPENING_MINUTES,
+                title="Biên bản mở thầu",
+                filename=command.filename,
+                content_type=command.content_type,
+                content=command.content,
+            )
+            await uow.documents.add(minutes)
+            completed_at = self.clock.now().astimezone(UTC)
+            opening_content: dict[str, Any] = {
+                "opening_at": command.opening_at.strip(),
+                "witnesses": list(command.witnesses),
+                "approval_reference": command.approval_reference.strip(),
+                "comment": command.comment.strip(),
+                "minutes_document_id": str(minutes.id.value),
+                "minutes_hash": minutes.content_hash,
+                "confirmed_by": str(context.principal_id),
+                "confirmed_at": completed_at.isoformat(),
+            }
+            await _add_application_artifact(
+                uow=uow,
+                id_generator=self.id_generator,
+                case=case,
+                actor=UserId(context.principal_id),
+                artifact_type=ArtifactType.BID_OPENING_RECORD,
+                content=opening_content,
+                status=ArtifactStatus.APPROVED,
+            )
+            all_artifacts = await uow.artifacts.list_for_case(case.id)
+            handoff_content: dict[str, Any] = {
+                "case_id": str(case.id.value),
+                "source_mode": "manual_evidence_upload",
+                "official_package_artifact_id": (
+                    str(case.current_official_artifact_id)
+                    if case.current_official_artifact_id is not None
+                    else None
+                ),
+                "submission_count": len(submissions),
+                "submission_document_ids": [str(item.id.value) for item in submissions],
+                "artifact_index": [
+                    {
+                        "type": item.artifact_type.value,
+                        "version": item.artifact_version,
+                        "hash": item.content_hash,
+                    }
+                    for item in all_artifacts
+                ],
+                "cp4_reference": command.approval_reference.strip(),
+                "handoff_ready_at": completed_at.isoformat(),
+            }
+            handoff_bytes = json.dumps(handoff_content, ensure_ascii=False, indent=2).encode(
+                "utf-8"
+            )
+            handoff_ref = await self.storage.put_object(
+                (
+                    f"{context.tenant_id}/{context.workspace_id}/exports/preparation/"
+                    f"{case.id.value}/evaluation-handoff.json"
+                ),
+                handoff_bytes,
+                "application/json",
+            )
+            handoff_content["handoff_ref"] = handoff_ref
+            await _add_application_artifact(
+                uow=uow,
+                id_generator=self.id_generator,
+                case=case,
+                actor=UserId(context.principal_id),
+                artifact_type=ArtifactType.EVALUATION_HANDOFF,
+                content=handoff_content,
+                status=ArtifactStatus.OFFICIAL,
+            )
+            case.complete_cp4_handoff()
+            await uow.cases.save(case)
+            await uow.commit()
 
 
 @dataclass
@@ -113,7 +872,9 @@ class GetPreparationCaseHandler:
             if case is None:
                 raise NotFoundError("preparation case not found", details={"case_id": str(case_id)})
             artifacts = await uow.artifacts.list_for_case(case.id)
-        return PreparationCaseView.from_domain(case, artifacts)
+            documents = await uow.documents.list_for_case(case.id)
+            notifications = await uow.notifications.list_for_case(case.id)
+        return PreparationCaseView.from_domain(case, artifacts, documents, notifications)
 
 
 @dataclass
@@ -175,3 +936,74 @@ class RunPreparationHandler:
             run_context=run_context, input_payload={"case_id": str(case_id)}
         )
         return run_id
+
+
+def _content_hash(content: dict[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(content, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
+async def _store_source_document(
+    *,
+    storage: DocumentStoragePort,
+    id_generator: IdGenerator,
+    case: PreparationCase,
+    actor: UserId,
+    kind: DocumentKind,
+    title: str,
+    filename: str,
+    content_type: str,
+    content: bytes,
+) -> PreparationDocument:
+    if not content:
+        raise DomainError("uploaded evidence file must not be empty")
+    document_id = PreparationDocumentId(id_generator.new_uuid())
+    storage_key = (
+        f"{case.tenant_id.value}/{case.workspace_id.value}/preparation/{case.id.value}/"
+        f"sources/{document_id.value}/{filename}"
+    )
+    await storage.put_object(storage_key, content, content_type)
+    return PreparationDocument(
+        id=document_id,
+        tenant_id=case.tenant_id,
+        workspace_id=case.workspace_id,
+        case_id=case.id,
+        kind=kind,
+        title=title,
+        filename=filename,
+        content_type=content_type,
+        size_bytes=len(content),
+        storage_key=storage_key,
+        content_hash=hashlib.sha256(content).hexdigest(),
+        uploaded_by=actor,
+    )
+
+
+async def _add_application_artifact(
+    *,
+    uow: Any,
+    id_generator: IdGenerator,
+    case: PreparationCase,
+    actor: UserId,
+    artifact_type: ArtifactType,
+    content: dict[str, Any],
+    status: ArtifactStatus,
+) -> PreparationArtifact:
+    latest = await uow.artifacts.latest(case.id, artifact_type)
+    version = latest.artifact_version + 1 if latest is not None else 1
+    artifact = PreparationArtifact(
+        id=ArtifactId(id_generator.new_uuid()),
+        tenant_id=case.tenant_id,
+        workspace_id=case.workspace_id,
+        case_id=case.id,
+        artifact_type=artifact_type,
+        schema_version="1.0",
+        artifact_version=version,
+        status=status,
+        content=content,
+        created_by=actor,
+        content_hash=_content_hash(content),
+    )
+    await uow.artifacts.add(artifact)
+    return artifact

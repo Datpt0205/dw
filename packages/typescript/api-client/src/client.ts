@@ -47,6 +47,24 @@ export const preparationArtifactSchema = z.object({
   content: z.record(z.unknown()),
   content_hash: z.string(),
 });
+export const preparationDocumentSchema = z.object({
+  id: z.string().uuid(),
+  kind: z.string(),
+  title: z.string(),
+  filename: z.string(),
+  content_type: z.string(),
+  size_bytes: z.number(),
+  content_hash: z.string(),
+});
+export const preparationNotificationSchema = z.object({
+  id: z.string().uuid(),
+  event_type: z.string(),
+  status: z.string(),
+  attempts: z.number(),
+  due_at: z.string(),
+  sent_at: z.string().nullable(),
+  last_error: z.string().nullable(),
+});
 export const preparationCaseSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -56,17 +74,24 @@ export const preparationCaseSchema = z.object({
   currency: z.string(),
   deadline: z.string().nullable(),
   owner_name: z.string(),
+  procurement_type: z.string(),
+  business_domain: z.string(),
   method_key: z.string().nullable(),
   state: z.string(),
   current_step: z.string(),
   last_run_id: z.string().nullable(),
   export_ref: z.string().nullable(),
   current_official_artifact_id: z.string().nullable(),
+  intake_verified_by: z.string().uuid().nullable(),
+  intake_verified_at: z.string().nullable(),
   version: z.number(),
+  documents: z.array(preparationDocumentSchema),
   artifacts: z.array(preparationArtifactSchema),
+  notifications: z.array(preparationNotificationSchema),
 });
 export type PreparationArtifact = z.infer<typeof preparationArtifactSchema>;
 export type PreparationCase = z.infer<typeof preparationCaseSchema>;
+const actionResponseSchema = z.object({ status: z.string() });
 
 export class ApiError extends Error {
   constructor(
@@ -115,6 +140,37 @@ export class ApiClient {
         response.status,
         parsedError.success
           ? parsedError.data
+          : {
+              code: "internal",
+              message: `HTTP ${response.status}`,
+              details: {},
+            },
+      );
+    }
+    return schema.parse(json);
+  }
+
+  private async requestMultipart<T>(
+    path: string,
+    form: FormData,
+    schema: z.ZodType<T>,
+  ): Promise<T> {
+    const fetchImpl = this.options.fetchImpl ?? fetch;
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const token = await this.options.getAccessToken?.();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetchImpl(`${this.options.baseUrl}${path}`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    const json: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const parsed = errorResponseSchema.safeParse(json);
+      throw new ApiError(
+        response.status,
+        parsed.success
+          ? parsed.data
           : {
               code: "internal",
               message: `HTTP ${response.status}`,
@@ -287,7 +343,11 @@ export class ApiClient {
         response.status,
         parsed.success
           ? parsed.data
-          : { code: "internal", message: `HTTP ${response.status}`, details: {} },
+          : {
+              code: "internal",
+              message: `HTTP ${response.status}`,
+              details: {},
+            },
       );
     }
     return ingestJobSchema.parse(json);
@@ -317,7 +377,11 @@ export class ApiClient {
         response.status,
         parsed.success
           ? parsed.data
-          : { code: "internal", message: `HTTP ${response.status}`, details: {} },
+          : {
+              code: "internal",
+              message: `HTTP ${response.status}`,
+              details: {},
+            },
       );
     }
   }
@@ -419,13 +483,210 @@ export class ApiClient {
     currency?: string;
     deadline?: string | null;
     owner_name?: string;
+    procurement_type?: string;
+    business_domain?: string;
     pr_text: string;
+    supplier_names: string[];
   }): Promise<{ case_id: string }> {
     return this.request(
       "POST",
       "/api/v1/procurement/preparation/cases",
       z.object({ case_id: z.string().uuid() }),
       { body: input },
+    );
+  }
+
+  async uploadPreparationCase(
+    file: File,
+    input: {
+      title: string;
+      description?: string;
+      source_pr_ref: string;
+      estimated_value_minor: number;
+      currency?: string;
+      deadline: string;
+      owner_name: string;
+      procurement_type: string;
+      business_domain: string;
+      supplier_names: string;
+    },
+  ): Promise<{ case_id: string }> {
+    const fetchImpl = this.options.fetchImpl ?? fetch;
+    const form = new FormData();
+    form.append("file", file, file.name);
+    form.append("title", input.title);
+    form.append("description", input.description ?? "");
+    form.append("source_pr_ref", input.source_pr_ref);
+    form.append("estimated_value_minor", String(input.estimated_value_minor));
+    form.append("currency", input.currency ?? "VND");
+    form.append("deadline", input.deadline);
+    form.append("owner_name", input.owner_name);
+    form.append("procurement_type", input.procurement_type);
+    form.append("business_domain", input.business_domain);
+    form.append("supplier_names", input.supplier_names);
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const token = await this.options.getAccessToken?.();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetchImpl(
+      `${this.options.baseUrl}/api/v1/procurement/preparation/cases/upload`,
+      { method: "POST", headers, body: form },
+    );
+    const json: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const parsed = errorResponseSchema.safeParse(json);
+      throw new ApiError(
+        response.status,
+        parsed.success
+          ? parsed.data
+          : {
+              code: "internal",
+              message: `HTTP ${response.status}`,
+              details: {},
+            },
+      );
+    }
+    return z.object({ case_id: z.string().uuid() }).parse(json);
+  }
+
+  verifyPreparationIntake(
+    caseId: string,
+    input: { approval_reference: string; comment?: string },
+  ): Promise<{ status: string }> {
+    return this.request(
+      "POST",
+      `/api/v1/procurement/preparation/cases/${caseId}/verify-intake`,
+      z.object({ status: z.string() }),
+      { body: input },
+    );
+  }
+
+  rejectPreparationIntake(
+    caseId: string,
+    input: { comment: string },
+  ): Promise<{ status: string }> {
+    return this.request(
+      "POST",
+      `/api/v1/procurement/preparation/cases/${caseId}/reject-intake`,
+      actionResponseSchema,
+      { body: input },
+    );
+  }
+
+  answerPreparationClarifications(
+    caseId: string,
+    answers: Array<{
+      clarification_id: string;
+      question: string;
+      answer: string;
+      source_note?: string;
+    }>,
+  ): Promise<{ status: string }> {
+    return this.request(
+      "POST",
+      `/api/v1/procurement/preparation/cases/${caseId}/clarifications`,
+      z.object({ status: z.string() }),
+      { body: { answers } },
+    );
+  }
+
+  recordPreparationPublication(
+    caseId: string,
+    file: File,
+    input: {
+      channel: string;
+      recipient_summary: string;
+      published_at: string;
+      external_reference: string;
+    },
+  ): Promise<{ status: string }> {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    form.append("channel", input.channel);
+    form.append("recipient_summary", input.recipient_summary);
+    form.append("published_at", input.published_at);
+    form.append("external_reference", input.external_reference);
+    return this.requestMultipart(
+      `/api/v1/procurement/preparation/cases/${caseId}/publication`,
+      form,
+      actionResponseSchema,
+    );
+  }
+
+  recordPreparationSubmission(
+    caseId: string,
+    file: File,
+    input: {
+      supplier_name: string;
+      received_at: string;
+      receipt_status: "on_time" | "late" | "replacement";
+      external_reference?: string;
+    },
+  ): Promise<{ status: string }> {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    form.append("supplier_name", input.supplier_name);
+    form.append("received_at", input.received_at);
+    form.append("receipt_status", input.receipt_status);
+    form.append("external_reference", input.external_reference ?? "");
+    return this.requestMultipart(
+      `/api/v1/procurement/preparation/cases/${caseId}/submissions`,
+      form,
+      actionResponseSchema,
+    );
+  }
+
+  submitPreparationAddendum(
+    caseId: string,
+    file: File,
+    input: { change_summary: string; impact_summary: string },
+  ): Promise<{ status: string }> {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    form.append("change_summary", input.change_summary);
+    form.append("impact_summary", input.impact_summary);
+    return this.requestMultipart(
+      `/api/v1/procurement/preparation/cases/${caseId}/addendum`,
+      form,
+      actionResponseSchema,
+    );
+  }
+
+  decidePreparationCp3(
+    caseId: string,
+    input: {
+      approve: boolean;
+      approval_reference: string;
+      comment?: string;
+    },
+  ): Promise<{ status: string }> {
+    return this.request(
+      "POST",
+      `/api/v1/procurement/preparation/cases/${caseId}/cp3`,
+      actionResponseSchema,
+      { body: input },
+    );
+  }
+
+  completePreparationCp4(
+    caseId: string,
+    file: File,
+    input: {
+      opening_at: string;
+      witnesses: string;
+      approval_reference: string;
+      comment?: string;
+    },
+  ): Promise<{ status: string }> {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    form.append("opening_at", input.opening_at);
+    form.append("witnesses", input.witnesses);
+    form.append("approval_reference", input.approval_reference);
+    form.append("comment", input.comment ?? "");
+    return this.requestMultipart(
+      `/api/v1/procurement/preparation/cases/${caseId}/cp4`,
+      form,
+      actionResponseSchema,
     );
   }
 

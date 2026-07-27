@@ -40,11 +40,11 @@ export function LoginScreen() {
         <div className="mt-6 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
           <p className="font-medium text-foreground">Tài khoản demo</p>
           <p className="mt-1">
-            <code>an.nguyen</code> · <code>binh.tran</code> · <code>chi.le</code>{" "}
-            — mật khẩu <code>demo-password</code>
+            <code>an.nguyen</code> · <code>binh.tran</code> ·{" "}
+            <code>chi.le</code> — mật khẩu <code>demo-password</code>
           </p>
           <p className="mt-1">
-            Tài khoản mới đăng ký sẽ tự vào workspace demo với vai{" "}
+            Tài khoản mới đăng ký sẽ tự vào đơn vị demo với vai{" "}
             <strong>Nhân viên</strong>.
           </p>
         </div>

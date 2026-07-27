@@ -40,12 +40,14 @@ class SqlMembershipLookup:
             # The verified identity resolves to a platform user either directly
             # (dev tokens store the subject on users.subject) or via an external
             # identity mapping (Keycloak sub -> platform user).
-            candidate_users = sa.select(tables.users.c.id).where(
-                tables.users.c.subject == subject
-            ).union(
-                sa.select(tables.external_identities.c.user_id).where(
-                    tables.external_identities.c.issuer == issuer,
-                    tables.external_identities.c.subject == subject,
+            candidate_users = (
+                sa.select(tables.users.c.id)
+                .where(tables.users.c.subject == subject)
+                .union(
+                    sa.select(tables.external_identities.c.user_id).where(
+                        tables.external_identities.c.issuer == issuer,
+                        tables.external_identities.c.subject == subject,
+                    )
                 )
             )
 

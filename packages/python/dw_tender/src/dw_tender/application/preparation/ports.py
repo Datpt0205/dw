@@ -5,13 +5,14 @@ from __future__ import annotations
 from types import TracebackType
 from typing import Protocol
 
-from dw_kernel.ids import TenantId
+from dw_kernel.ids import TenantId, UserId
 from dw_tender.domain.preparation.entities import (
     ArtifactType,
     PreparationArtifact,
     PreparationCase,
     PreparationDocument,
 )
+from dw_tender.domain.preparation.notifications import IntakeNotificationJob
 from dw_tender.domain.value_objects.ids import ArtifactId, PreparationCaseId
 
 
@@ -45,10 +46,21 @@ class PreparationArtifactRepositoryPort(Protocol):
     async def mark_official(self, artifact_id: ArtifactId) -> None: ...
 
 
+class IntakeNotificationRepositoryPort(Protocol):
+    async def find_recipient_for_role(self, role_key: str) -> UserId | None: ...
+
+    async def enqueue(self, job: IntakeNotificationJob) -> None: ...
+
+    async def list_for_case(
+        self, case_id: PreparationCaseId
+    ) -> list[IntakeNotificationJob]: ...
+
+
 class PreparationUnitOfWork(Protocol):
     cases: PreparationCaseRepositoryPort
     documents: PreparationDocumentRepositoryPort
     artifacts: PreparationArtifactRepositoryPort
+    notifications: IntakeNotificationRepositoryPort
 
     async def __aenter__(self) -> PreparationUnitOfWork: ...
 

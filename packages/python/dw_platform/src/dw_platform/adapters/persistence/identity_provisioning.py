@@ -51,15 +51,11 @@ class SqlIdentityBootstrap:
     provider: str = "oidc"
 
     async def bootstrap(self, identity: VerifiedIdentity) -> BootstrapView:
-        subject = identity.subject
-        issuer = identity.issuer
         async with self.session_factory() as session, session.begin():
             user_id, is_new = await self._resolve_user(session, identity)
 
             # Membership plane is RLS-scoped: pin the default tenant first.
-            await session.execute(
-                _SET_TENANT, {"tenant_id": str(self.default_tenant_id)}
-            )
+            await session.execute(_SET_TENANT, {"tenant_id": str(self.default_tenant_id)})
             if is_new:
                 await self._provision_default_membership(session, user_id)
 
@@ -100,9 +96,7 @@ class SqlIdentityBootstrap:
 
         existing = (
             await session.execute(
-                sa.select(tables.users.c.id).where(
-                    tables.users.c.subject == identity.subject
-                )
+                sa.select(tables.users.c.id).where(tables.users.c.subject == identity.subject)
             )
         ).first()
         is_new = existing is None
@@ -122,9 +116,7 @@ class SqlIdentityBootstrap:
             # Read the id back (handles a concurrent insert winning the race).
             user_id = (
                 await session.execute(
-                    sa.select(tables.users.c.id).where(
-                        tables.users.c.subject == identity.subject
-                    )
+                    sa.select(tables.users.c.id).where(tables.users.c.subject == identity.subject)
                 )
             ).scalar_one()
 
@@ -137,20 +129,14 @@ class SqlIdentityBootstrap:
                 subject=identity.subject,
                 provider=self.provider,
             )
-            .on_conflict_do_nothing(
-                constraint="uq_external_identities_issuer_subject"
-            )
+            .on_conflict_do_nothing(constraint="uq_external_identities_issuer_subject")
         )
         return user_id, is_new
 
-    async def _provision_default_membership(
-        self, session: AsyncSession, user_id: UUID
-    ) -> None:
+    async def _provision_default_membership(self, session: AsyncSession, user_id: UUID) -> None:
         tenant_exists = (
             await session.execute(
-                sa.select(tables.tenants.c.id).where(
-                    tables.tenants.c.id == self.default_tenant_id
-                )
+                sa.select(tables.tenants.c.id).where(tables.tenants.c.id == self.default_tenant_id)
             )
         ).first()
         if tenant_exists is None:
@@ -208,8 +194,8 @@ class SqlIdentityBootstrap:
                     tables.roles.c.key.in_(role_keys)
                 )
             )
-            for key, scopes in role_rows:
-                scope_by_role[key] = list(scopes)
+            for key, role_scopes in role_rows:
+                scope_by_role[key] = list(role_scopes)
 
         views: list[WorkspaceMembershipView] = []
         for row in rows:

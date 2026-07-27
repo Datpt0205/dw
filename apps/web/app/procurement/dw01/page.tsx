@@ -1,182 +1,518 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { FilePlus2, Sparkles } from "lucide-react";
+import {
+  ArrowRight,
+  FileText,
+  Filter,
+  FolderKanban,
+  Search,
+  ShieldCheck,
+  Upload,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { PreparationCase } from "@dw/api-client";
 import {
+  Alert,
   Badge,
   Button,
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Input,
+  Select,
+  Skeleton,
   Textarea,
 } from "@dw/ui";
+import { EmptyState } from "../../../components/empty-state";
+import { PageHeading } from "../../../components/page-heading";
+import { TagInput } from "../../../components/tag-input";
 import { useAuth } from "../../../lib/auth/auth-context";
 import { apiClient } from "../../../lib/session";
+import {
+  BUSINESS_DOMAINS,
+  businessDomainLabel,
+  PROCUREMENT_TYPES,
+  procurementTypeLabel,
+} from "./catalog";
 import { STATE_BADGE, formatVnd } from "./state";
-
-const DEMO_PR = `PHIẾU YÊU CẦU MUA SẮM (PR) — ĐÃ PHÊ DUYỆT
-Mã PR: PR-2026-0042 (ĐÃ DUYỆT)
-Người yêu cầu: Phòng CNTT — Khối Vận hành
-Chủ sở hữu (owner): Nguyễn Văn An
-
-1. NHU CẦU
-Mua 100 máy tính xách tay cho khối vận hành mở rộng quý 3/2026.
-
-2. NGÂN SÁCH: 2.500.000.000 VND
-3. THỜI HẠN: giao trong 45 ngày kể từ ngày ký hợp đồng.
-
-4. YÊU CẦU KỸ THUẬT (SƠ BỘ)
-- CPU tối thiểu Core i5 thế hệ mới
-- RAM tối thiểu 16 GB
-- SSD tối thiểu 512 GB
-- Màn hình 14 inch Full HD
-- Bảo hành (CHƯA RÕ số năm bảo hành tối thiểu)
-- Hệ điều hành (CHƯA RÕ Windows bản quyền hay không)
-
-5. YÊU CẦU THƯƠNG MẠI
-- Địa điểm giao (CHƯA RÕ)
-- Điều khoản thanh toán (CHƯA RÕ)`;
 
 export default function Dw01ListPage() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { hasScope } = useAuth();
   const canCreate = hasScope("tender.write");
   const [cases, setCases] = useState<PreparationCase[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [title, setTitle] = useState("Mua 100 laptop khối vận hành");
-  const [value, setValue] = useState("2500000000");
-  const [prText, setPrText] = useState(DEMO_PR);
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState("");
+  const [reference, setReference] = useState("");
+  const [value, setValue] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [owner, setOwner] = useState("");
+  const [description, setDescription] = useState("");
+  const [suppliers, setSuppliers] = useState<string[]>([]);
+  const [procurementType, setProcurementType] = useState("goods");
+  const [businessDomain, setBusinessDomain] = useState("general");
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [formOpen, setFormOpen] = useState(false);
+
+  const valid = useMemo(
+    () =>
+      Boolean(
+        file &&
+        title.trim() &&
+        reference.trim() &&
+        Number(value) > 0 &&
+        deadline.trim() &&
+        owner.trim() &&
+        suppliers.length > 0,
+      ),
+    [deadline, file, owner, reference, suppliers, title, value],
+  );
+
+  const visibleCases = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("vi");
+    return (cases ?? []).filter((item) => {
+      const matchesType =
+        typeFilter === "all" || item.procurement_type === typeFilter;
+      const matchesQuery =
+        !query ||
+        item.title.toLocaleLowerCase("vi").includes(query) ||
+        item.source_pr_ref.toLocaleLowerCase("vi").includes(query) ||
+        item.owner_name.toLocaleLowerCase("vi").includes(query);
+      return matchesType && matchesQuery;
+    });
+  }, [cases, search, typeFilter]);
 
   const refresh = useCallback(() => {
     apiClient()
       .listPreparationCases()
-      .then(setCases)
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : "lỗi không rõ"),
+      .then((rows) => {
+        setCases(rows);
+        setError(null);
+      })
+      .catch((reason: unknown) =>
+        setError(reason instanceof Error ? reason.message : "Lỗi không rõ"),
       );
   }, []);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  useEffect(() => refresh(), [refresh]);
 
-  async function create(demo: boolean) {
+  useEffect(() => {
+    if (!formOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) setFormOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [busy, formOpen]);
+
+  async function create() {
+    if (!file || !valid) return;
     setBusy(true);
     setError(null);
     try {
-      const { case_id } = await apiClient().createPreparationCase({
-        title: demo ? "Mua 100 laptop khối vận hành (mẫu)" : title,
-        source_pr_ref: "PR-2026-0042",
-        estimated_value_minor: demo ? 2_500_000_000 : Number(value) || 0,
-        currency: "VND",
-        deadline: "45 ngày",
-        owner_name: "Nguyễn Văn An",
-        pr_text: demo ? DEMO_PR : prText,
+      const { case_id } = await apiClient().uploadPreparationCase(file, {
+        title: title.trim(),
+        description: description.trim(),
+        source_pr_ref: reference.trim(),
+        estimated_value_minor: Number(value),
+        deadline: deadline.trim(),
+        owner_name: owner.trim(),
+        procurement_type: procurementType,
+        business_domain: businessDomain,
+        supplier_names: suppliers.join("\n"),
       });
-      toast.success("Đã tạo hồ sơ — mở để chạy DW01.");
+      toast.success(
+        "Đã lưu nguồn PR và gửi yêu cầu xác minh cho người phê duyệt.",
+      );
       router.push(`/procurement/dw01/cases/${case_id}`);
-    } catch (e) {
-      const m = e instanceof Error ? e.message : "lỗi không rõ";
-      setError(m);
-      toast.error(m);
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "Lỗi không rõ";
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Xây hồ sơ mời thầu (DW01)
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            PR đã duyệt → phương án (CP1) → bộ hồ sơ RFQ/tiêu chí/shortlist (CP2)
-            → bản chính thức.
-          </p>
-        </div>
-        {canCreate && (
-          <Button onClick={() => void create(true)} disabled={busy}>
-            <Sparkles /> Tạo hồ sơ mẫu
-          </Button>
-        )}
-      </div>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
-
-      {canCreate && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Tạo hồ sơ từ PR</CardTitle>
-            <CardDescription>
-              Dán nội dung PR đã phê duyệt; các điểm «CHƯA RÕ» sẽ thành danh sách
-              làm rõ.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Input
-              placeholder="Tiêu đề hồ sơ"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-            <Input
-              placeholder="Giá trị gói (VND)"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-            />
-            <Textarea
-              rows={6}
-              value={prText}
-              onChange={(e) => setPrText(e.target.value)}
-            />
-            <Button
-              variant="outline"
-              onClick={() => void create(false)}
-              disabled={busy}
-            >
-              <FilePlus2 /> Tự nhập
+    <div className="mx-auto max-w-[1320px] space-y-6">
+      <PageHeading
+        eyebrow="DW-THAU-01 · Chuẩn bị hồ sơ"
+        icon={ShieldCheck}
+        title="Quản lý gói thầu"
+        description="Tiếp nhận PR đã duyệt, kiểm tra thông tin đầu vào và xây dựng hồ sơ mời thầu theo từng bước có người chịu trách nhiệm phê duyệt."
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <a href="/templates/dw01/01-approved-pr.md" download>
+                <FileText /> Tải mẫu PR
+              </a>
             </Button>
-          </CardContent>
-        </Card>
+            {canCreate && (
+              <Button onClick={() => setFormOpen(true)}>
+                <Upload /> Tạo hồ sơ
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      {error && (
+        <Alert variant="destructive">
+          <p>{error}</p>
+        </Alert>
       )}
 
-      <div className="space-y-2">
-        {cases?.length === 0 && (
-          <Card>
-            <CardContent className="pt-5 text-sm text-muted-foreground">
-              Chưa có hồ sơ nào — bấm <strong>Tạo hồ sơ mẫu</strong> để bắt đầu.
+      {canCreate && formOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="new-case-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-[#071d33]/55 backdrop-blur-[2px]"
+            aria-label="Đóng cửa sổ tạo hồ sơ"
+            onClick={() => {
+              if (!busy) setFormOpen(false);
+            }}
+          />
+          <Card className="relative z-10 flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden border-0 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b bg-slate-50/90 px-5 py-4 sm:px-6">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 id="new-case-title" className="font-semibold">
+                    Tạo hồ sơ từ PR đã duyệt
+                  </h2>
+                  <Badge variant="warning">Cần xác minh chéo</Badge>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Mọi trường bắt buộc đều được lưu vào hệ thống; file gốc được
+                  giữ nguyên để đối chiếu khi cần.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="shrink-0"
+                onClick={() => setFormOpen(false)}
+                disabled={busy}
+                aria-label="Đóng"
+              >
+                <X />
+              </Button>
+            </div>
+            <CardContent className="overflow-y-auto pt-6">
+              {error && (
+                <Alert variant="destructive" className="mb-5">
+                  <p>{error}</p>
+                </Alert>
+              )}
+              <div className="grid gap-8 xl:grid-cols-[minmax(300px,0.82fr)_minmax(0,1.55fr)]">
+                <div className="space-y-6 xl:border-r xl:pr-8">
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                      1. Tài liệu nguồn
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="group flex min-h-40 w-full flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-5 text-center transition-colors hover:border-primary/50 hover:bg-[#edf5fa]"
+                    >
+                      <span className="flex size-11 items-center justify-center rounded-2xl bg-white text-slate-600 shadow-sm group-hover:text-primary">
+                        <Upload className="size-5" />
+                      </span>
+                      <span className="mt-3 text-sm font-semibold">
+                        {file ? file.name : "Chọn file PR đã duyệt"}
+                      </span>
+                      <span className="mt-1 text-xs text-muted-foreground">
+                        UTF-8 .txt hoặc .md · tối đa 5 MiB
+                      </span>
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      className="sr-only"
+                      type="file"
+                      accept=".txt,.md,text/plain,text/markdown"
+                      onChange={(event) =>
+                        setFile(event.target.files?.[0] ?? null)
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                      2. Phân loại
+                    </p>
+                    <div className="space-y-3">
+                      <FieldLabel label="Loại gói thầu" required>
+                        <Select
+                          value={procurementType}
+                          onChange={(event) =>
+                            setProcurementType(event.target.value)
+                          }
+                        >
+                          {PROCUREMENT_TYPES.map((item) => (
+                            <option key={item.value} value={item.value}>
+                              {item.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </FieldLabel>
+                      <FieldLabel label="Lĩnh vực nghiệp vụ" required>
+                        <Select
+                          value={businessDomain}
+                          onChange={(event) =>
+                            setBusinessDomain(event.target.value)
+                          }
+                        >
+                          {BUSINESS_DOMAINS.map((item) => (
+                            <option key={item.value} value={item.value}>
+                              {item.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </FieldLabel>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="min-w-0">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                    3. Thông tin hồ sơ
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <FieldLabel
+                      label="Tên gói thầu"
+                      required
+                      className="sm:col-span-2"
+                    >
+                      <Input
+                        value={title}
+                        onChange={(event) => setTitle(event.target.value)}
+                        placeholder="Ví dụ: Cung cấp thiết bị CNTT năm 2026"
+                      />
+                    </FieldLabel>
+                    <FieldLabel label="Mã/tham chiếu PR" required>
+                      <Input
+                        value={reference}
+                        onChange={(event) => setReference(event.target.value)}
+                        placeholder="PR-2026-..."
+                      />
+                    </FieldLabel>
+                    <FieldLabel label="Chủ sở hữu nghiệp vụ" required>
+                      <Input
+                        value={owner}
+                        onChange={(event) => setOwner(event.target.value)}
+                        placeholder="Họ tên người chịu trách nhiệm"
+                      />
+                    </FieldLabel>
+                    <FieldLabel label="Giá trị dự toán (VND)" required>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={value}
+                        onChange={(event) => setValue(event.target.value)}
+                        placeholder="Nhập số nguyên, ví dụ 2500000000"
+                      />
+                    </FieldLabel>
+                    <FieldLabel label="Thời hạn thực hiện" required>
+                      <Input
+                        value={deadline}
+                        onChange={(event) => setDeadline(event.target.value)}
+                        placeholder="Ví dụ: 45 ngày từ ngày ký hợp đồng"
+                      />
+                    </FieldLabel>
+                    <FieldLabel
+                      label="Mô tả ngắn"
+                      hint="Không bắt buộc"
+                      className="sm:col-span-2"
+                    >
+                      <Textarea
+                        rows={3}
+                        value={description}
+                        onChange={(event) => setDescription(event.target.value)}
+                        placeholder="Mục tiêu và phạm vi chính của gói thầu"
+                      />
+                    </FieldLabel>
+                    <div className="min-w-0 sm:col-span-2">
+                      <label
+                        htmlFor="supplier-name"
+                        className="mb-1.5 block text-sm font-medium"
+                      >
+                        Nhà cung cấp dự kiến{" "}
+                        <span className="text-destructive">*</span>
+                      </label>
+                      <TagInput
+                        id="supplier-name"
+                        values={suppliers}
+                        onChange={setSuppliers}
+                        placeholder="Nhập tên nhà cung cấp"
+                        helpText="Nhấn Enter hoặc nút Thêm sau mỗi nhà cung cấp. Có thể dán nhiều tên được ngăn cách bằng dấu phẩy."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex flex-col gap-4 rounded-xl border border-[#cddfeb] bg-[#eef5fa] p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="max-w-xl text-xs leading-5 text-slate-600">
+                      Sau khi tạo, Bình sẽ nhận thông báo riêng trên Slack để
+                      xác minh hồ sơ. Người lập không thể tự xác minh hồ sơ của
+                      mình.
+                    </p>
+                    <Button
+                      className="shrink-0"
+                      onClick={() => void create()}
+                      disabled={!valid || busy}
+                    >
+                      <Upload />
+                      {busy ? "Đang tải lên…" : "Tạo và gửi xác minh"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      <section className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Danh sách hồ sơ</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Tìm kiếm, lọc và mở hồ sơ cần xử lý.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
+              <Input
+                className="pl-9 sm:w-64"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Tên, mã PR, người phụ trách…"
+              />
+            </div>
+            <div className="relative">
+              <Filter className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
+              <Select
+                className="pl-9 pr-8 sm:w-48"
+                value={typeFilter}
+                onChange={(event) => setTypeFilter(event.target.value)}
+              >
+                <option value="all">Tất cả loại gói</option>
+                {PROCUREMENT_TYPES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.shortLabel}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {cases === null && !error && <Skeleton className="h-56 rounded-2xl" />}
+        {cases !== null && visibleCases.length === 0 && (
+          <EmptyState
+            icon={FolderKanban}
+            title={cases.length === 0 ? "Chưa có hồ sơ" : "Không có kết quả"}
+            description={
+              cases.length === 0
+                ? "Tạo hồ sơ đầu tiên từ PR đã được phê duyệt."
+                : "Thử thay đổi từ khóa hoặc bộ lọc loại gói thầu."
+            }
+          />
         )}
-        {cases?.map((c) => {
-          const badge = STATE_BADGE(c.state);
-          return (
-            <Link key={c.id} href={`/procurement/dw01/cases/${c.id}`}>
-              <Card className="transition-colors hover:border-primary/50">
-                <CardContent className="flex items-center justify-between gap-3 pt-4">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{c.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatVnd(c.estimated_value_minor)}
-                      {c.method_key ? ` · ${c.method_key}` : ""}
-                    </p>
-                  </div>
-                  <Badge variant={badge.variant}>{badge.label}</Badge>
-                </CardContent>
-              </Card>
-            </Link>
-          );
-        })}
-      </div>
+        {visibleCases.length > 0 && (
+          <Card className="overflow-hidden">
+            <div className="divide-y">
+              {visibleCases.map((item) => {
+                const state = STATE_BADGE(item.state);
+                return (
+                  <Link
+                    key={item.id}
+                    href={`/procurement/dw01/cases/${item.id}`}
+                    className="group grid gap-3 px-5 py-4 transition-colors hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"
+                  >
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 group-hover:bg-primary group-hover:text-white">
+                        <FileText className="size-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold group-hover:text-primary">
+                          {item.title}
+                        </span>
+                        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                          <span>{item.source_pr_ref}</span>
+                          <span>·</span>
+                          <span>{formatVnd(item.estimated_value_minor)}</span>
+                          <span>·</span>
+                          <span>{item.owner_name}</span>
+                        </span>
+                        <span className="mt-2 flex flex-wrap gap-1.5">
+                          <Badge variant="secondary">
+                            {procurementTypeLabel(item.procurement_type)}
+                          </Badge>
+                          <Badge variant="outline">
+                            {businessDomainLabel(item.business_domain)}
+                          </Badge>
+                        </span>
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 sm:justify-end">
+                      <Badge variant={state.variant}>{state.label}</Badge>
+                      <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+      </section>
     </div>
+  );
+}
+
+function FieldLabel({
+  label,
+  hint,
+  required = false,
+  className = "",
+  children,
+}: {
+  label: string;
+  hint?: string;
+  required?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={className}>
+      <span className="mb-1.5 flex items-center gap-1.5 text-sm font-medium">
+        {label}
+        {required && <span className="text-destructive">*</span>}
+        {hint && (
+          <span className="text-xs font-normal text-muted-foreground">
+            · {hint}
+          </span>
+        )}
+      </span>
+      {children}
+    </label>
   );
 }

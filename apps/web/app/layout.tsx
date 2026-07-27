@@ -7,8 +7,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Digital Worker Platform",
-  description:
-    "Multi-tenant Digital Worker platform — tender & work operations",
+  description: "Nền tảng hỗ trợ quản lý và phê duyệt quy trình đấu thầu",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

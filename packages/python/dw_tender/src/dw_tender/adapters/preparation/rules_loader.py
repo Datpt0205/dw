@@ -28,6 +28,7 @@ def load_procurement_rules(path: Path) -> ProcurementRules:
         for m in data["methods"]
     )
     evaluation = data.get("evaluation", {})
+    solicitation = data.get("solicitation_template", {})
     intake = data.get("intake", {})
     return ProcurementRules(
         version=str(data["version"]),
@@ -41,4 +42,14 @@ def load_procurement_rules(path: Path) -> ProcurementRules:
         require_budget=bool(intake.get("require_budget", True)),
         require_deadline=bool(intake.get("require_deadline", True)),
         require_owner=bool(intake.get("require_owner", True)),
+        mandatory_criteria=tuple(
+            (str(item["code"]), str(item["text"])) for item in evaluation.get("mandatory", [])
+        ),
+        weighted_criteria=tuple(
+            (str(item["code"]), str(item["text"]), int(item["weight"]))
+            for item in evaluation.get("weighted", [])
+        ),
+        payment_term_template=str(solicitation.get("payment_term", "")),
+        tax_term_template=str(solicitation.get("tax_term", "")),
+        response_structure=tuple(str(item) for item in solicitation.get("response_structure", [])),
     )

@@ -13,6 +13,8 @@ import {
 import { API_BASE_URL, AUTH_MODE } from "./config";
 import { getKeycloak } from "./keycloak";
 import {
+  activeQuickToken,
+  activeQuickUsername,
   clearActiveWorkspace,
   clearDevToken,
   devToken,
@@ -173,6 +175,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (AUTH_MODE === "dev") {
       loadDevSession();
+      return;
+    }
+
+    // Fast account switcher (demo): if a quick account is active, bootstrap with
+    // its stored token and skip the Keycloak redirect handshake entirely.
+    if (activeQuickUsername()) {
+      void (async () => {
+        const token = await activeQuickToken();
+        if (!token) {
+          setStatus("unauthenticated");
+          return;
+        }
+        try {
+          applyBootstrap(await fetchBootstrap(token));
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "bootstrap error");
+          setStatus("error");
+        }
+      })();
       return;
     }
 

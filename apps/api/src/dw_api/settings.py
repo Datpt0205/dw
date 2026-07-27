@@ -141,6 +141,14 @@ class ApiSettings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("DW_API_TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN"),
     )
+    approval_reminder_seconds: int = Field(
+        default=5,
+        ge=1,
+        le=604800,
+        validation_alias=AliasChoices(
+            "DW_API_APPROVAL_REMINDER_SECONDS", "DW_APPROVAL_REMINDER_SECONDS"
+        ),
+    )
 
     # --- observability (§21; Langfuse optional behind configuration) ---
     otel_endpoint: str | None = Field(

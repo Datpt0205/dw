@@ -40,6 +40,7 @@ class RunRecord:
     error: dict[str, Any] | None
     approval_request_id: uuid.UUID | None
     release_manifest_ref: str | None
+    requested_by: uuid.UUID
 
 
 @dataclass(frozen=True)
@@ -118,4 +119,5 @@ class SqlWorkerRunStore:
             error=dict(row.error) if row.error is not None else None,
             approval_request_id=row.approval_request_id,
             release_manifest_ref=row.release_manifest_ref,
+            requested_by=row.requested_by,
         )

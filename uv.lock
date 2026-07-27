@@ -1003,11 +1003,15 @@ version = "0.1.0"
 source = { editable = "apps/worker" }
 dependencies = [
     { name = "asyncpg" },
+    { name = "dw-connectors" },
     { name = "dw-kernel" },
     { name = "dw-knowledge" },
     { name = "dw-platform" },
+    { name = "dw-tender" },
+    { name = "minio" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "qdrant-client" },
     { name = "sqlalchemy", extra = ["asyncio"] },
 ]
 
@@ -1024,11 +1028,15 @@ parsers = [
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.30,<1" },
     { name = "docling", marker = "extra == 'parsers'", specifier = ">=2.15,<3" },
+    { name = "dw-connectors", editable = "packages/python/dw_connectors" },
     { name = "dw-kernel", editable = "packages/python/dw_kernel" },
     { name = "dw-knowledge", editable = "packages/python/dw_knowledge" },
     { name = "dw-platform", editable = "packages/python/dw_platform" },
+    { name = "dw-tender", editable = "packages/python/dw_tender" },
+    { name = "minio", specifier = ">=7.2,<8" },
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pydantic-settings", specifier = ">=2.7,<3" },
+    { name = "qdrant-client", specifier = ">=1.12,<1.15" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36,<2.1" },
     { name = "torch", marker = "extra == 'parsers'", specifier = ">=2.2,<3", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torchvision", marker = "extra == 'parsers'", specifier = ">=0.17,<1", index = "https://download.pytorch.org/whl/cpu" },

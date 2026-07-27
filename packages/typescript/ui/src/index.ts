@@ -20,5 +20,5 @@ export {
 export { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs";
 export { Alert, AlertDescription, AlertTitle, type AlertProps } from "./alert";
 export { Skeleton } from "./skeleton";
-export { Input, Textarea } from "./input";
+export { Input, Select, Textarea } from "./input";
 export { Separator } from "./separator";

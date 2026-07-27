@@ -42,21 +42,39 @@ def _route_after_cp1(state: PreparationState) -> str:
     return "draft_solicitation_package" if approved else "close_failed"
 
 
+def _route_after_approach_gate(state: PreparationState) -> str:
+    return "cp1_review" if state.get("approach_gate", {}).get("passed") else "close_incomplete"
+
+
 def _route_after_cp2(state: PreparationState) -> str:
     return "finalize_official" if state.get("cp2_decision", {}).get("approved") else "close_failed"
 
 
-def build_preparation_graph(services: PreparationServices) -> StateGraph:
+def build_preparation_graph(services: PreparationServices) -> StateGraph:  # type: ignore[type-arg]
     nodes = PreparationNodes(services)
-    graph: StateGraph = StateGraph(PreparationState)
+    graph: StateGraph = StateGraph(PreparationState)  # type: ignore[type-arg]
 
-    all_names = _INTAKE_TO_CP1 + _CP1_TO_CP2 + ("finalize_official", "close_failed")
+    all_names = (
+        _INTAKE_TO_CP1
+        + _CP1_TO_CP2
+        + (
+            "finalize_official",
+            "close_failed",
+            "close_incomplete",
+        )
+    )
     for name in all_names:
         graph.add_node(name, getattr(nodes, name))
 
     graph.add_edge(START, _INTAKE_TO_CP1[0])
-    for previous, current in pairwise(_INTAKE_TO_CP1):
+    for previous, current in pairwise(_INTAKE_TO_CP1[:5]):
         graph.add_edge(previous, current)
+    graph.add_conditional_edges(
+        "approach_gate",
+        _route_after_approach_gate,
+        {"cp1_review": "cp1_review", "close_incomplete": "close_incomplete"},
+    )
+    graph.add_edge("cp1_review", "apply_cp1")
 
     graph.add_conditional_edges(
         "apply_cp1",
@@ -76,4 +94,5 @@ def build_preparation_graph(services: PreparationServices) -> StateGraph:
     )
     graph.add_edge("finalize_official", END)
     graph.add_edge("close_failed", END)
+    graph.add_edge("close_incomplete", END)
     return graph
