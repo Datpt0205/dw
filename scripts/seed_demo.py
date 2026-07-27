@@ -109,7 +109,9 @@ USERS = [
         "binh.tran@alpha.local",
         "Trần Thị Bình",
         "tenant-alpha",
-        ["approver", "member"],
+        # Approver ONLY — separation of duties: the person who prepares/runs a
+        # case (member) must not also be the one who approves it.
+        ["approver"],
         "mua-hang",
     ),
     (

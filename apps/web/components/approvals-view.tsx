@@ -25,6 +25,7 @@ import {
 } from "@dw/ui";
 import { EmptyState } from "./empty-state";
 import { PageHeading } from "./page-heading";
+import { PendingIntakeVerification } from "./pending-intake";
 import { useAuth } from "../lib/auth/auth-context";
 import { apiClient } from "../lib/session";
 
@@ -147,6 +148,9 @@ export function ApprovalsView({
         title="Hàng chờ phê duyệt"
         description="Các hồ sơ đang chờ quyết định được ưu tiên ở trên. Hãy xem tài liệu liên quan và ghi rõ nhận xét trước khi phê duyệt."
       />
+
+      <PendingIntakeVerification />
+
       {error && <p className="text-sm text-destructive">{error}</p>}
       {approvals === null && !error && (
         <Skeleton className="h-64 rounded-2xl" />

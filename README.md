@@ -5,7 +5,7 @@ Multi-tenant Digital Worker platform với hai bounded context độc lập:
 - **`tender`** — Procurement Tender Digital Worker: phân tích RFQ/hồ sơ mời thầu, ma trận tuân thủ, chấm điểm deterministic, đề xuất kèm bằng chứng.
 - **`work_ops`** — Meeting & Work Operations Digital Worker: transcript → tóm tắt → quyết định → action item → phê duyệt → giao việc.
 
-Kiến trúc: modular monolith (API + async worker + web) trong một monorepo, Clean/Hexagonal, DDD, human-in-command (autonomy A2). Specification gốc: [docs/architecture/Digital_Worker_Source_Base_Blueprint_v2.md](docs/architecture/Digital_Worker_Source_Base_Blueprint_v2.md). Tiến độ triển khai: [docs/implementation/IMPLEMENTATION_PLAN.md](docs/implementation/IMPLEMENTATION_PLAN.md).
+Kiến trúc: modular monolith (API + async worker + web) trong một monorepo, Clean/Hexagonal, DDD, human-in-command (autonomy A2). Specification gốc: [docs/architecture/Digital_Worker_Source_Base_Blueprint_v2.md](docs/architecture/Digital_Worker_Source_Base_Blueprint_v2.md).
 
 ## Yêu cầu môi trường
 
@@ -163,7 +163,7 @@ count) — không bao giờ chứa prompt content; mọi attribute qua redaction
 
 ## Tài liệu vận hành & bảo mật
 
+- [Kịch bản demo DW01](docs/runbooks/demo-script.md) · [LLM & RAG trong DW01](docs/runbooks/dw01-ai-rag-explainer.md)
 - [Threat model (STRIDE)](docs/threat-model/THREAT_MODEL.md)
-- [Runbooks](docs/runbooks/): local dev · approval kẹt · sự cố cách ly tenant · xoay secret
-- [ADRs](docs/adr/) — ADR-015 evals, ADR-016 observability, ADR-017 hardening
-- [Báo cáo nghiệm thu](docs/implementation/ACCEPTANCE_REPORT.md)
+- [Runbooks](docs/runbooks/): local dev · Slack phê duyệt DW01 · approval kẹt · sự cố cách ly tenant · xoay secret
+- [ADRs](docs/adr/) — ADR-015 evals, ADR-016 observability, ADR-017 hardening, ADR-019 OIDC

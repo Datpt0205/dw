@@ -465,6 +465,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 clock=clock,
                 id_generator=id_generator,
                 knowledge=knowledge_gateway,
+                model_gateway=gateway,
+                model_profile=settings.model_profile,
             )
 
             graph_registry = GraphRegistry()

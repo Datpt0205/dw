@@ -35,6 +35,7 @@ import { useAuth } from "../../../../../lib/auth/auth-context";
 import { apiClient } from "../../../../../lib/session";
 import { TagInput } from "../../../../../components/tag-input";
 import { businessDomainLabel, procurementTypeLabel } from "../../catalog";
+import { ComplianceChecklist } from "../../compliance-checklist";
 import { STATE_BADGE, STEPPER, currentStepIndex, formatVnd } from "../../state";
 
 const ARTIFACT_TITLE: Record<string, string> = {
@@ -429,6 +430,8 @@ export default function Dw01CaseDetail({
           </div>
         </CardContent>
       </Card>
+
+      <ComplianceChecklist caseData={data} />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 

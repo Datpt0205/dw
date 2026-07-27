@@ -17,9 +17,11 @@ from langgraph.types import interrupt
 
 from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext
+from dw_agent_runtime.ports import ModelRequest
 from dw_kernel.errors import DomainError
 from dw_kernel.ids import TenantId
 from dw_knowledge.contracts import SearchQuery
+from dw_tender.application.preparation.extraction import PreparationExtraction
 from dw_tender.application.preparation.rules import approach_gate, solicitation_gate
 from dw_tender.domain.preparation.entities import (
     ArtifactStatus,
@@ -187,16 +189,19 @@ class PreparationNodes:
         rc = _run_context(config)
         case_id = _case_id(state)
         pr_text = state.get("pr_text", "")
-        lines = [ln.strip() for ln in pr_text.splitlines() if ln.strip()]
-        requirement_lines = [ln.lstrip("-• ").strip() for ln in lines if ln.startswith(("-", "•"))]
-        unknowns = [ln for ln in lines if "CHƯA RÕ" in ln]
+
+        requirements, unknowns, source = await self._extract_requirements(rc, pr_text)
+
         content = {
             "estimated_value": _fmt_vnd(state.get("estimated_value_minor", 0)),
             "deadline": state.get("deadline"),
             "owner": state.get("owner_name"),
             "procurement_type": state.get("procurement_type"),
             "business_domain": state.get("business_domain"),
-            "requirement_lines": requirement_lines,
+            "extraction_source": source,
+            "requirement_lines": [r["text"] for r in requirements],
+            "requirements": requirements,
+            "unknowns": unknowns,
             "unknown_count": len(unknowns),
         }
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
@@ -204,7 +209,44 @@ class PreparationNodes:
             assert case is not None
             await self._add_artifact(uow, case, ArtifactType.DEMAND_SNAPSHOT, content)
             await uow.commit()
-        return {"requirements": [{"text": t} for t in requirement_lines], "unknowns": unknowns}
+        return {"requirements": requirements, "unknowns": unknowns}
+
+    async def _extract_requirements(
+        self, run_context: RunContext, pr_text: str
+    ) -> tuple[list[dict[str, Any]], list[str], str]:
+        """Bóc yêu cầu từ PR. Ưu tiên LLM; fallback về tách dòng khi không có
+        model hoặc model lỗi — intake không bao giờ bị chặn vì model."""
+        gateway = self.services.model_gateway
+        if gateway is not None and pr_text.strip():
+            try:
+                extracted = await gateway.generate_structured(
+                    ModelRequest(
+                        task="structured_extraction",
+                        prompt_id="preparation.extract_requirements",
+                        prompt_version=self.services.prompt_bundle_version,
+                        variables={"pr_text": pr_text},
+                        model_profile=self.services.model_profile,
+                    ),
+                    PreparationExtraction,
+                    run_context=run_context,
+                )
+                requirements = [
+                    {"code": r.code, "text": r.statement, "kind": r.kind}
+                    for r in extracted.requirements
+                ]
+                if requirements:
+                    return requirements, list(extracted.unknowns), "ai"
+            except Exception:  # best-effort grounding, never a gate
+                pass
+
+        lines = [ln.strip() for ln in pr_text.splitlines() if ln.strip()]
+        requirements = [
+            {"text": ln.lstrip("-• ").strip()}
+            for ln in lines
+            if ln.startswith(("-", "•"))
+        ]
+        unknowns = [ln for ln in lines if "CHƯA RÕ" in ln]
+        return requirements, unknowns, "rule"
 
     # -- 3. completeness + clarifications ---------------------------------
     async def completeness_check(

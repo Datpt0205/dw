@@ -61,16 +61,19 @@ bấm từng bước trên UI**, **(C) mẹo trình bày**. Thời lượng gợ
    kèm nút **Mở hồ sơ DW01**.
    > 🎯 Khoảnh khắc "wow": *"Người tạo không tự duyệt hồ sơ của mình — hệ thống nhắc
    > đúng người phê duyệt qua Slack ngay lập tức."*
-4. Đổi sang **`binh.tran`** (chip tên → Bình) → **Phê duyệt** (Inbox/Phê duyệt) để
-   **xác minh intake**. Mở hồ sơ → bấm **Chạy** cho Digital Worker chạy graph:
+4. Đổi sang **`binh.tran`** (chip tên → Bình) → vào **Phê duyệt** → mục vàng
+   **"Hồ sơ chờ bạn xác minh đầu vào"** → mở hồ sơ → bấm **Xác minh** (An không tự
+   xác minh hồ sơ mình được — tách vai).
+   > 🎯 Điểm nhấn tách vai: *Bình chỉ **duyệt**, không thấy nút "Chạy"; An chỉ
+   > **soạn/chạy**, không duyệt được — hệ thống cưỡng chế ở backend.*
+5. Đổi **về `an.nguyen`** → mở hồ sơ → bấm **Chạy** cho Digital Worker chạy graph:
    - Bóc yêu cầu → kiểm tra đủ → **đề xuất phương án mua sắm** (kèm trích dẫn luật/
-     quy chế — chỉ ra mục *căn cứ pháp lý / căn cứ quy chế*).
-   - Dừng ở **CP1 — Duyệt phương án**.
-5. `binh.tran` **Duyệt CP1** → worker tự tiếp: dựng **Hồ sơ mời thầu**, **Tiêu chí
-   chấm**, **Shortlist nhà cung cấp** (đều kèm *references* từ RAG) → dừng **CP2**.
-6. `binh.tran` **Duyệt CP2** → **khoá bản chính thức**. Tiếp tục **CP3 (phát hành/
+     quy chế) → xem **Bảng kiểm tuân thủ** cập nhật đèn xanh/vàng → dừng **CP1**.
+6. Đổi sang **`binh.tran`** → **Phê duyệt** → **Duyệt CP1** → worker tự tiếp: dựng
+   **HSMT**, **Tiêu chí chấm**, **Shortlist** (kèm *references* RAG) → dừng **CP2**.
+7. `binh.tran` **Duyệt CP2** → **khoá bản chính thức**. Tiếp tục **CP3 (phát hành/
    công bố)** và **CP4 (bàn giao)** tương tự → trạng thái **Hoàn tất**.
-7. Mỗi lần duyệt/từ chối, chỉ lại Slack: **An nhận DM kết quả**; nếu để quá hạn,
+8. Mỗi lần duyệt/từ chối, chỉ lại Slack: **An nhận DM kết quả**; nếu để quá hạn,
    **Chi nhận DM nhắc việc** (escalation).
 
 ### 4. Phân quyền & cô lập (1–2 phút)
