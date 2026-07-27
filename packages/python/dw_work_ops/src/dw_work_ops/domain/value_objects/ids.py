@@ -20,8 +20,3 @@ class TranscriptArtifactId(EntityId):
 @dataclass(frozen=True, slots=True)
 class ActionItemId(EntityId):
     """Identifies an action item."""
-
-
-@dataclass(frozen=True, slots=True)
-class DispatchRequestId(EntityId):
-    """Identifies a dispatch request toward an external system."""

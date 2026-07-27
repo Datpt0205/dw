@@ -9,9 +9,5 @@ class TenderDomainError(DomainError):
     """Base class for tender-context rule violations."""
 
 
-class MissingEvidenceError(TenderDomainError):
-    """A mandatory criterion cannot be judged compliant without evidence."""
-
-
 class InvalidScoringConfigError(TenderDomainError):
     """Scoring weights/mandatory flags are inconsistent."""

@@ -83,10 +83,6 @@ function toAccount(username: string, data: { access_token: string; refresh_token
   };
 }
 
-export function listQuickAccounts(): QuickAccount[] {
-  return Object.values(readQuickAccounts()).sort((a, b) => a.savedAt - b.savedAt);
-}
-
 export function activeQuickUsername(): string | null {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem(KEYS.quickActive);
@@ -112,17 +108,6 @@ export async function quickLogin(username: string, password: string): Promise<Qu
   writeQuickAccounts(map);
   window.localStorage.setItem(KEYS.quickActive, username);
   return account;
-}
-
-export function activateQuickAccount(username: string): void {
-  window.localStorage.setItem(KEYS.quickActive, username);
-}
-
-export function removeQuickAccount(username: string): void {
-  const map = readQuickAccounts();
-  delete map[username];
-  writeQuickAccounts(map);
-  if (activeQuickUsername() === username) window.localStorage.removeItem(KEYS.quickActive);
 }
 
 function clearQuickActive(): void {
@@ -171,9 +156,6 @@ export interface Session {
   roles?: string[];
   scopes?: string[];
 }
-
-/** Back-compat alias for components that still import the old name. */
-export type DevSession = Session;
 
 export interface ActiveWorkspace {
   tenantId: string;
