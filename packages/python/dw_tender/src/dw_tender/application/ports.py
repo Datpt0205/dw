@@ -88,3 +88,13 @@ class DocumentStoragePort(Protocol):
     async def put_object(self, key: str, data: bytes, content_type: str) -> str: ...
 
     async def get_object(self, key: str) -> bytes: ...
+
+
+class EmailPublisherPort(Protocol):
+    """Sends the official solicitation package to invited suppliers by email.
+
+    A deferred integration: the POC ships an SMTP adapter (and a mock); a real
+    deployment would swap in a procurement-portal connector behind this port.
+    """
+
+    async def send(self, *, subject: str, body: str, to: str) -> str: ...

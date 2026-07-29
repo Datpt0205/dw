@@ -41,7 +41,7 @@ export function LoginScreen() {
           <p className="font-medium text-foreground">Tài khoản demo</p>
           <p className="mt-1">
             <code>an.nguyen</code> · <code>binh.tran</code> ·{" "}
-            <code>chi.le</code> — mật khẩu <code>demo-password</code>
+            <code>chi.le</code> — mật khẩu <code>demo</code>
           </p>
           <p className="mt-1">
             Tài khoản mới đăng ký sẽ tự vào đơn vị demo với vai{" "}

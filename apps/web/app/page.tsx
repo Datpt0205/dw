@@ -121,10 +121,10 @@ export default function DashboardPage() {
   );
 
   const roleLabel = roles.includes("platform_admin")
-    ? "Quản trị hệ thống"
+    ? "Quản trị"
     : roles.includes("approver")
-      ? "Người phê duyệt"
-      : "Chuyên viên nghiệp vụ";
+      ? "Quản lý"
+      : "Nhân viên";
 
   return (
     <div className="mx-auto max-w-[1440px] space-y-6">

@@ -16,11 +16,13 @@ class PreparationState(TypedDict, total=False):
     currency: str
     deadline: str | None
     owner_name: str
+    case_title: str
+    source_pr_ref: str
     procurement_type: str
     business_domain: str
 
     requirements: list[dict[str, Any]]
-    unknowns: list[str]
+    unknowns: list[dict[str, str]]
     clarifications: list[dict[str, Any]]
     clarification_answers: dict[str, str]
     supplier_candidates: list[dict[str, Any]]

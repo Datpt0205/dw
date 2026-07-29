@@ -26,6 +26,7 @@ import {
 import { EmptyState } from "./empty-state";
 import { PageHeading } from "./page-heading";
 import { PendingIntakeVerification } from "./pending-intake";
+import { PendingCp3Decision } from "./pending-cp3";
 import { useAuth } from "../lib/auth/auth-context";
 import { apiClient } from "../lib/session";
 
@@ -71,10 +72,10 @@ function approvalTitle(approvalType: string) {
 
 function approvalStep(value: unknown) {
   const steps: Record<string, string> = {
-    CP1: "Bước 1 — Phương án lựa chọn",
-    CP2: "Bước 2 — Hồ sơ mời thầu",
-    CP3: "Bước 3 — Thay đổi hồ sơ",
-    CP4: "Bước 4 — Mở thầu",
+    CP1: "CP1 — Duyệt phương án mua sắm",
+    CP2: "CP2 — Duyệt hồ sơ trước phát hành",
+    CP3: "CP3 — Duyệt làm rõ/sửa đổi sau phát hành",
+    CP4: "CP4 — Xác nhận mở thầu & bàn giao đánh giá",
     DW01: "Chuẩn bị hồ sơ thầu",
   };
   const key = String(value ?? "DW01");
@@ -115,6 +116,22 @@ export function ApprovalsView({
     refresh();
   }, [refresh]);
 
+  // Poll every 5s (visible only) + refresh on focus/reveal so the queue reflects
+  // checkpoints raised in another tab without a manual reload.
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const id = setInterval(tick, 5000);
+    document.addEventListener("visibilitychange", tick);
+    window.addEventListener("focus", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("focus", tick);
+    };
+  }, [refresh]);
+
   async function decide(approval: Approval, approve: boolean) {
     const comment = comments[approval.id] ?? "";
     setBusyId(approval.id);
@@ -150,6 +167,7 @@ export function ApprovalsView({
       />
 
       <PendingIntakeVerification />
+      <PendingCp3Decision />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       {approvals === null && !error && (
@@ -172,6 +190,8 @@ export function ApprovalsView({
         const gate = approval.payload["gate"] as
           { passed?: boolean; reasons?: string[] } | undefined;
         const preparationCaseId = approval.payload["case_id"];
+        const caseTitle = String(approval.payload["case_title"] ?? "").trim();
+        const prRef = String(approval.payload["source_pr_ref"] ?? "").trim();
         return (
           <Card key={approval.id} className="overflow-hidden border-amber-200">
             <CardHeader className="border-b bg-amber-50/60">
@@ -187,11 +207,21 @@ export function ApprovalsView({
                       </span>
                     ) : null;
                   })()}
-                  <span>{approvalTitle(approval.approval_type)}</span>
+                  <span>
+                    {caseTitle || approvalTitle(approval.approval_type)}
+                  </span>
                 </span>
                 <Badge variant={badge.variant}>{badge.label}</Badge>
               </CardTitle>
-              <CardDescription>{approval.reason}</CardDescription>
+              <CardDescription>
+                {caseTitle && (
+                  <span className="font-medium text-foreground">
+                    {approvalTitle(approval.approval_type)}
+                    {prRef ? ` · ${prRef}` : ""} —{" "}
+                  </span>
+                )}
+                {approval.reason}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 pt-5 text-sm">
               {isPreparation && (

@@ -39,6 +39,23 @@ import {
 } from "./catalog";
 import { STATE_BADGE, formatVnd } from "./state";
 
+// Group digits into VND thousands (2500000000 -> "2.500.000.000").
+function formatThousands(digits: string): string {
+  const clean = digits.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+  return clean.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+// Human scale hint so a typo in the number of zeros is obvious before submit.
+function vndInWords(digits: string): string {
+  const n = Number(digits.replace(/\D/g, ""));
+  if (!n) return "";
+  if (n >= 1_000_000_000)
+    return `${(n / 1_000_000_000).toLocaleString("vi-VN", { maximumFractionDigits: 2 })} tỷ đồng`;
+  if (n >= 1_000_000)
+    return `${(n / 1_000_000).toLocaleString("vi-VN", { maximumFractionDigits: 2 })} triệu đồng`;
+  return `${n.toLocaleString("vi-VN")} đồng`;
+}
+
 export default function Dw01ListPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -61,6 +78,12 @@ export default function Dw01ListPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
 
+  // Minimum suppliers implied by the package value (mirrors the rule pack:
+  // ≤100tr = chỉ định (1); trên đó = chào giá/đấu thầu rộng rãi (3)). Validated
+  // here so a package that can't clear CP1 is caught at intake, not mid-run.
+  const requiredSuppliers = Number(value) > 0 && Number(value) <= 100_000_000 ? 1 : 3;
+  const suppliersShort = Number(value) > 0 && suppliers.length < requiredSuppliers;
+
   const valid = useMemo(
     () =>
       Boolean(
@@ -68,11 +91,11 @@ export default function Dw01ListPage() {
         title.trim() &&
         reference.trim() &&
         Number(value) > 0 &&
-        deadline.trim() &&
+        Number(deadline) > 0 &&
         owner.trim() &&
-        suppliers.length > 0,
+        suppliers.length >= requiredSuppliers,
       ),
-    [deadline, file, owner, reference, suppliers, title, value],
+    [deadline, file, owner, reference, suppliers, title, value, requiredSuppliers],
   );
 
   const visibleCases = useMemo(() => {
@@ -127,7 +150,7 @@ export default function Dw01ListPage() {
         description: description.trim(),
         source_pr_ref: reference.trim(),
         estimated_value_minor: Number(value),
-        deadline: deadline.trim(),
+        deadline: `${deadline} ngày`,
         owner_name: owner.trim(),
         procurement_type: procurementType,
         business_domain: businessDomain,
@@ -323,19 +346,34 @@ export default function Dw01ListPage() {
                     </FieldLabel>
                     <FieldLabel label="Giá trị dự toán (VND)" required>
                       <Input
-                        type="number"
-                        min="1"
-                        value={value}
-                        onChange={(event) => setValue(event.target.value)}
-                        placeholder="Nhập số nguyên, ví dụ 2500000000"
+                        inputMode="numeric"
+                        value={formatThousands(value)}
+                        onChange={(event) =>
+                          setValue(event.target.value.replace(/\D/g, ""))
+                        }
+                        placeholder="Ví dụ: 2.500.000.000"
                       />
+                      {value && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          ≈ {vndInWords(value)}
+                        </p>
+                      )}
                     </FieldLabel>
-                    <FieldLabel label="Thời hạn thực hiện" required>
-                      <Input
-                        value={deadline}
-                        onChange={(event) => setDeadline(event.target.value)}
-                        placeholder="Ví dụ: 45 ngày từ ngày ký hợp đồng"
-                      />
+                    <FieldLabel label="Thời hạn thực hiện (số ngày)" required>
+                      <div className="relative">
+                        <Input
+                          inputMode="numeric"
+                          value={deadline}
+                          onChange={(event) =>
+                            setDeadline(event.target.value.replace(/\D/g, ""))
+                          }
+                          placeholder="Ví dụ: 45"
+                          className="pr-12"
+                        />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                          ngày
+                        </span>
+                      </div>
                     </FieldLabel>
                     <FieldLabel
                       label="Mô tả ngắn"
@@ -362,8 +400,15 @@ export default function Dw01ListPage() {
                         values={suppliers}
                         onChange={setSuppliers}
                         placeholder="Nhập tên nhà cung cấp"
-                        helpText="Nhấn Enter hoặc nút Thêm sau mỗi nhà cung cấp. Có thể dán nhiều tên được ngăn cách bằng dấu phẩy."
+                        helpText="Nhấn Enter hoặc nút Thêm sau mỗi nhà cung cấp. Gói > 100 triệu (chào giá cạnh tranh / đấu thầu rộng rãi) cần tối thiểu 3 nhà cung cấp."
                       />
+                      {suppliersShort && (
+                        <p className="mt-1 text-xs font-medium text-destructive">
+                          Gói {formatThousands(value)} VND cần tối thiểu{" "}
+                          {requiredSuppliers} nhà cung cấp (đang có{" "}
+                          {suppliers.length}) — chưa đủ để nộp.
+                        </p>
+                      )}
                     </div>
                   </div>
 

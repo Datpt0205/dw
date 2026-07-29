@@ -21,6 +21,7 @@ from dw_agent_runtime.ports import ModelRequest
 from dw_kernel.errors import DomainError
 from dw_kernel.ids import TenantId
 from dw_knowledge.contracts import SearchQuery
+from dw_tender.application.preparation.drafts import CriteriaDraft, SolicitationDraft
 from dw_tender.application.preparation.extraction import PreparationExtraction
 from dw_tender.application.preparation.rules import approach_gate, solicitation_gate
 from dw_tender.domain.preparation.entities import (
@@ -122,6 +123,11 @@ class PreparationNodes:
         status: ArtifactStatus = ArtifactStatus.DRAFT,
     ) -> PreparationArtifact:
         latest = await uow.artifacts.latest(case.id, artifact_type)
+        content_hash = _hash(content)
+        if latest is not None and latest.content_hash == content_hash:
+            # Idempotent re-run (e.g. continue after clarification): identical
+            # content keeps the existing version instead of creating noisy dupes.
+            return latest
         version = (latest.artifact_version + 1) if latest is not None else 1
         artifact = PreparationArtifact(
             id=ArtifactId(self.services.id_generator.new_uuid()),
@@ -134,7 +140,7 @@ class PreparationNodes:
             status=status,
             content=content,
             created_by=case.created_by,
-            content_hash=_hash(content),
+            content_hash=content_hash,
         )
         await uow.artifacts.add(artifact)
         return artifact
@@ -176,6 +182,8 @@ class PreparationNodes:
             "currency": case.currency,
             "deadline": case.deadline,
             "owner_name": case.owner_name,
+            "case_title": case.title,
+            "source_pr_ref": case.source_pr_ref,
             "procurement_type": case.procurement_type.value,
             "business_domain": case.business_domain.value,
             "clarification_answers": answers,
@@ -189,6 +197,16 @@ class PreparationNodes:
         rc = _run_context(config)
         case_id = _case_id(state)
         pr_text = state.get("pr_text", "")
+
+        # Continue-run after clarification: reuse the existing snapshot so the
+        # requirement/unknown set stays identical (deterministic completeness
+        # gate) and we neither re-pay for an LLM call nor create a dupe version.
+        async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
+            existing = await uow.artifacts.latest(case_id, ArtifactType.DEMAND_SNAPSHOT)
+        if existing is not None:
+            requirements = _dict_items(existing.content.get("requirements", []))
+            unknowns = _dict_items(existing.content.get("unknowns", []))
+            return {"requirements": requirements, "unknowns": unknowns}
 
         requirements, unknowns, source = await self._extract_requirements(rc, pr_text)
 
@@ -213,9 +231,9 @@ class PreparationNodes:
 
     async def _extract_requirements(
         self, run_context: RunContext, pr_text: str
-    ) -> tuple[list[dict[str, Any]], list[str], str]:
-        """Bóc yêu cầu từ PR. Ưu tiên LLM; fallback về tách dòng khi không có
-        model hoặc model lỗi — intake không bao giờ bị chặn vì model."""
+    ) -> tuple[list[dict[str, Any]], list[dict[str, str]], str]:
+        """Bóc yêu cầu từ PR. Ưu tiên LLM (kèm gợi ý trả lời cho điểm chưa rõ);
+        fallback về tách dòng khi không có model/lỗi — intake không bao giờ bị chặn."""
         gateway = self.services.model_gateway
         if gateway is not None and pr_text.strip():
             try:
@@ -234,8 +252,12 @@ class PreparationNodes:
                     {"code": r.code, "text": r.statement, "kind": r.kind}
                     for r in extracted.requirements
                 ]
+                unknowns = [
+                    {"question": u.question, "suggested_answer": u.suggested_answer}
+                    for u in extracted.unknowns
+                ]
                 if requirements:
-                    return requirements, list(extracted.unknowns), "ai"
+                    return requirements, unknowns, "ai"
             except Exception:  # best-effort grounding, never a gate
                 pass
 
@@ -245,8 +267,68 @@ class PreparationNodes:
             for ln in lines
             if ln.startswith(("-", "•"))
         ]
-        unknowns = [ln for ln in lines if "CHƯA RÕ" in ln]
+        unknowns = [
+            {"question": ln, "suggested_answer": ""} for ln in lines if "CHƯA RÕ" in ln
+        ]
         return requirements, unknowns, "rule"
+
+    async def _llm_solicitation(
+        self, run_context: RunContext, procurement_type: str, method: str, requirements: list[str]
+    ) -> SolicitationDraft | None:
+        """LLM-draft the solicitation scope + technical requirements. None on
+        no-model/error so the caller keeps the deterministic template."""
+        gateway = self.services.model_gateway
+        if gateway is None or not requirements:
+            return None
+        try:
+            return await gateway.generate_structured(
+                ModelRequest(
+                    task="reasoning",
+                    prompt_id="preparation.draft_solicitation",
+                    prompt_version=self.services.prompt_bundle_version,
+                    variables={
+                        "procurement_type": procurement_type,
+                        "method": method,
+                        "requirements": "\n".join(f"- {r}" for r in requirements),
+                    },
+                    model_profile=self.services.model_profile,
+                ),
+                SolicitationDraft,
+                run_context=run_context,
+            )
+        except Exception:
+            return None
+
+    async def _llm_criteria(
+        self, run_context: RunContext, procurement_type: str, requirements: list[str]
+    ) -> list[dict[str, Any]] | None:
+        """LLM-draft weighted criteria; returns None unless weights sum to 100
+        (else the caller keeps the rule-pack default)."""
+        gateway = self.services.model_gateway
+        if gateway is None or not requirements:
+            return None
+        try:
+            draft: CriteriaDraft = await gateway.generate_structured(
+                ModelRequest(
+                    task="reasoning",
+                    prompt_id="preparation.draft_criteria",
+                    prompt_version=self.services.prompt_bundle_version,
+                    variables={
+                        "procurement_type": procurement_type,
+                        "requirements": "\n".join(f"- {r}" for r in requirements),
+                    },
+                    model_profile=self.services.model_profile,
+                ),
+                CriteriaDraft,
+                run_context=run_context,
+            )
+        except Exception:
+            return None
+        if not draft.weights_valid():
+            return None
+        return [
+            {"code": c.code, "text": c.text, "weight": c.weight} for c in draft.weighted
+        ]
 
     # -- 3. completeness + clarifications ---------------------------------
     async def completeness_check(
@@ -259,7 +341,11 @@ class PreparationNodes:
         clarifications = [
             {
                 "id": f"c{i + 1}",
-                "question": u.split("(", 1)[0].strip().lstrip("-• ").strip() or u,
+                "question": (u.get("question", "") if isinstance(u, dict) else str(u)),
+                # AI's draft answer — pre-fills the field for the reviewer to confirm/edit.
+                "suggested_answer": (
+                    u.get("suggested_answer", "") if isinstance(u, dict) else ""
+                ),
                 "blocking": not bool(answers.get(f"c{i + 1}", "").strip()),
                 "answered": bool(answers.get(f"c{i + 1}", "").strip()),
                 "answer": answers.get(f"c{i + 1}", ""),
@@ -385,6 +471,8 @@ class PreparationNodes:
             "reason": f"CP1 — Duyệt phương án mua sắm ({state.get('method_label', method.label)})",
             "checkpoint": "CP1",
             "case_id": state["case_id"],
+            "case_title": state.get("case_title", ""),
+            "source_pr_ref": state.get("source_pr_ref", ""),
             "gate": gate,
             "method": {"key": method.key, "label": method.label},
             "estimated_value": _fmt_vnd(state.get("estimated_value_minor", 0)),
@@ -393,6 +481,13 @@ class PreparationNodes:
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
+            # Persist the gate verdict onto the approach artifact so the UI can
+            # show exactly WHY CP1 is (not) reachable — otherwise a non-clarification
+            # blocker (e.g. too few suppliers) is an invisible dead-end.
+            approach = await uow.artifacts.latest(case_id, ArtifactType.PROCUREMENT_APPROACH)
+            if approach is not None:
+                merged = {**approach.content, "gate": gate}
+                await self._add_artifact(uow, case, ArtifactType.PROCUREMENT_APPROACH, merged)
             case.advance(
                 CaseState.CP1_PENDING if result.passed else CaseState.WAITING_CLARIFICATION,
                 "cp1",
@@ -428,10 +523,28 @@ class PreparationNodes:
         rc = _run_context(config)
         case_id = _case_id(state)
         requirements = [r["text"] for r in state.get("requirements", [])]
+        # LLM drafts the scope + technical requirements; template is the fallback.
+        draft = await self._llm_solicitation(
+            rc,
+            str(state.get("procurement_type", "")),
+            str(state.get("method_label", "")),
+            requirements,
+        )
+        scope = (
+            draft.scope
+            if draft
+            else "Cung cấp hàng hoá/dịch vụ theo yêu cầu đã phê duyệt."
+        )
+        tech_requirements = (
+            list(draft.technical_requirements)
+            if draft and draft.technical_requirements
+            else requirements
+        )
         content = {
             "title": f"Hồ sơ mời thầu/RFQ — {state.get('method_label', '')}",
-            "scope": "Cung cấp hàng hoá/dịch vụ theo yêu cầu đã phê duyệt.",
-            "requirements": requirements,
+            "drafted_by": "ai" if draft else "template",
+            "scope": scope,
+            "requirements": tech_requirements,
             "commercial_terms": {
                 "payment": self.services.rules.payment_term_template,
                 "delivery": f"Giao hàng trong {state.get('deadline') or 'thời hạn quy định'}.",
@@ -474,17 +587,28 @@ class PreparationNodes:
     ) -> PreparationState:
         rc = _run_context(config)
         case_id = _case_id(state)
+        requirements = [r["text"] for r in state.get("requirements", [])]
+        # LLM tailors the weighted criteria (validated to sum 100); mandatory
+        # criteria stay from the rule pack (legal baseline). Fallback: rule pack.
+        llm_weighted = await self._llm_criteria(
+            rc, str(state.get("procurement_type", "")), requirements
+        )
+        weighted = (
+            llm_weighted
+            if llm_weighted
+            else [
+                {"code": code, "text": text, "weight": weight}
+                for code, text, weight in self.services.rules.weighted_criteria
+            ]
+        )
         criteria: dict[str, Any] = {
             "mandatory": [
                 {"code": code, "text": text, "pass_fail": True}
                 for code, text in self.services.rules.mandatory_criteria
             ],
-            "weighted": [
-                {"code": code, "text": text, "weight": weight}
-                for code, text, weight in self.services.rules.weighted_criteria
-            ],
+            "weighted": weighted,
             "method": "Chấm điểm có trọng số; điểm tiên quyết pass/fail.",
-            "source": f"rule_pack:{self.services.rules.version}",
+            "source": "ai" if llm_weighted else f"rule_pack:{self.services.rules.version}",
         }
         content = {
             **criteria,
@@ -591,6 +715,8 @@ class PreparationNodes:
             "reason": "CP2 — Duyệt bộ hồ sơ mời thầu chính thức",
             "checkpoint": "CP2",
             "case_id": state["case_id"],
+            "case_title": state.get("case_title", ""),
+            "source_pr_ref": state.get("source_pr_ref", ""),
             "gate": gate,
             "weighted_total": int(criteria.get("weighted_total", 0)),
             "shortlist_count": len(state.get("shortlist", [])),
@@ -608,6 +734,12 @@ class PreparationNodes:
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
+            # Persist the gate verdict on the solicitation package so a failed CP2
+            # gate shows its reasons in the UI instead of silently parking the case.
+            package = await uow.artifacts.latest(case_id, ArtifactType.SOLICITATION_PACKAGE)
+            if package is not None:
+                merged = {**package.content, "gate": gate}
+                await self._add_artifact(uow, case, ArtifactType.SOLICITATION_PACKAGE, merged)
             case.advance(CaseState.CP2_PENDING if result.passed else CaseState.PACKAGE_READY, "cp2")
             await uow.cases.save(case)
             await uow.commit()

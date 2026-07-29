@@ -1,15 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   MinusCircle,
   ShieldCheck,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
 import type { PreparationCase } from "@dw/api-client";
-import { Badge, Card, CardContent } from "@dw/ui";
+import { Badge, Card, CardContent, cn } from "@dw/ui";
 import {
   evaluateCompliance,
   summarize,
@@ -36,22 +38,39 @@ export function ComplianceChecklist({
       : s.warn > 0
         ? `${s.warn} mục cần lưu ý`
         : "Đạt yêu cầu cơ bản";
+  // Collapsed by default: it's a reference/audit view, not a next-step action.
+  // Expand only if something needs attention or the user opens it.
+  const [open, setOpen] = useState(s.fail > 0);
 
   return (
     <Card>
-      <div className="flex items-center justify-between gap-3 border-b px-5 py-4 sm:px-6">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left sm:px-6"
+      >
         <div className="flex items-center gap-2">
           <ShieldCheck className="size-4 text-primary" />
           <div>
             <h2 className="font-semibold">Bảng kiểm tuân thủ</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Đối chiếu tự động theo cấu hình quy tắc — mang tính tham chiếu
+              Đối chiếu tự động theo quy tắc — tham chiếu, bấm để{" "}
+              {open ? "thu gọn" : "xem chi tiết"}
             </p>
           </div>
         </div>
-        <Badge variant={s.tone}>{summaryLabel}</Badge>
-      </div>
-      <CardContent className="pt-4">
+        <div className="flex items-center gap-2">
+          <Badge variant={s.tone}>{summaryLabel}</Badge>
+          <ChevronDown
+            className={cn(
+              "size-4 text-muted-foreground transition-transform",
+              open && "rotate-180",
+            )}
+          />
+        </div>
+      </button>
+      {open && (
+      <CardContent className="border-t pt-4">
         <ul className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
           {checks.map((check) => {
             const { Icon, cls } = ICON[check.status];
@@ -84,6 +103,7 @@ export function ComplianceChecklist({
           chế/đấu thầu cần xác nhận trước khi áp dụng nghiệp vụ thật.
         </p>
       </CardContent>
+      )}
     </Card>
   );
 }

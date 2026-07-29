@@ -10,18 +10,23 @@ const ROLE_BADGE: Record<
   string,
   { label: string; variant: "success" | "warning" | "secondary" }
 > = {
-  approver: { label: "phê duyệt", variant: "success" },
+  approver: { label: "quản lý", variant: "success" },
   platform_admin: { label: "quản trị", variant: "warning" },
   member: { label: "nhân viên", variant: "secondary" },
 };
 
+// Role hierarchy (low → high). Only the highest role a user holds is shown as a
+// badge — a manager isn't labelled "nhân viên · quản lý", just "quản lý", even
+// though the manager tier includes every member permission.
+const ROLE_RANK = ["member", "approver", "platform_admin"];
+
 // Demo personas for the fast account switcher (public demo credentials).
 const QUICK_PERSONAS = [
   { username: "an.nguyen", name: "Nguyễn Văn An", role: "nhân viên" },
-  { username: "binh.tran", name: "Trần Thị Bình", role: "phê duyệt" },
+  { username: "binh.tran", name: "Trần Thị Bình", role: "quản lý" },
   { username: "chi.le", name: "Lê Thị Chi", role: "quản trị" },
 ];
-const DEMO_PASSWORD = "demo-password";
+const DEMO_PASSWORD = "demo";
 
 /** Header chip: who is signed in + one-click account switch + sign-out. */
 export function SessionChip() {
@@ -44,10 +49,11 @@ export function SessionChip() {
 
   if (status !== "ready") return null;
 
-  const shown = roles
-    .map((r) => ROLE_BADGE[r])
-    .filter((b): b is { label: string; variant: "success" | "warning" | "secondary" } => b !== undefined)
-    .slice(0, 2);
+  const topRole = roles
+    .filter((r) => r in ROLE_BADGE)
+    .sort((a, b) => ROLE_RANK.indexOf(b) - ROLE_RANK.indexOf(a))[0];
+  const topBadge = topRole ? ROLE_BADGE[topRole] : undefined;
+  const shown = topBadge ? [topBadge] : [];
 
   const canQuickSwitch = mode === "oidc";
   const currentName = (displayName || "").toLowerCase();

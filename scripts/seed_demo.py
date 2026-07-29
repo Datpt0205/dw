@@ -37,14 +37,21 @@ ROLES = [
     },
     {
         "key": "approver",
-        "name": "Approver",
+        # Manager tier: a superset of "member" plus approval authority. Sits
+        # between Nhân viên and Quản trị in the hierarchy.
+        "name": "Quản lý",
         "scopes": [
-            "approvals.read",
-            "approvals.decide",
+            # everything a member can do …
             "work_ops.read",
+            "work_ops.write",
             "tender.read",
+            "tender.write",
+            "approvals.read",
             "knowledge.read",
+            "knowledge.write",
             "memory.read",
+            # … plus deciding approvals.
+            "approvals.decide",
         ],
     },
     {

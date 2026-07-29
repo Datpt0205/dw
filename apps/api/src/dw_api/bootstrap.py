@@ -75,6 +75,7 @@ from dw_tender.application.handlers import (
 )
 from dw_tender.application.preparation.handlers import (
     AnswerPreparationClarificationsHandler,
+    AutoPublishPreparationHandler,
     CompletePreparationCp4Handler,
     CreatePreparationCaseHandler,
     DecidePreparationCp3Handler,
@@ -150,6 +151,7 @@ class PreparationHandlers:
     reject_intake: RejectPreparationIntakeHandler
     answer_clarifications: AnswerPreparationClarificationsHandler
     record_publication: RecordPreparationPublicationHandler
+    auto_publish: AutoPublishPreparationHandler
     record_submission: RecordPreparationSubmissionHandler
     complete_cp4: CompletePreparationCp4Handler
     submit_addendum: SubmitPreparationAddendumHandler
@@ -259,6 +261,27 @@ def _build_telemetry(settings: ApiSettings) -> TelemetryPort:
 
     tracer, meter = configure_tracing("dw-api", otlp_endpoint=endpoint, otlp_headers=headers)
     return OtelTelemetry(tracer=tracer, meter=meter)
+
+
+def _build_email_publisher() -> object:
+    """SMTP publisher when SMTP_* env is set; otherwise a no-op mock."""
+    from dw_tender.adapters.preparation.smtp_publisher import (
+        MockEmailPublisher,
+        SmtpEmailPublisher,
+    )
+
+    host = os.environ.get("SMTP_HOST", "")
+    user = os.environ.get("SMTP_USER", "")
+    password = os.environ.get("SMTP_PASSWORD", "")
+    if host and user and password:
+        return SmtpEmailPublisher(
+            host=host,
+            port=int(os.environ.get("SMTP_PORT", "587")),
+            username=user,
+            password=password,
+            sender=os.environ.get("SMTP_FROM", user),
+        )
+    return MockEmailPublisher()
 
 
 def _build_storage(settings: ApiSettings) -> object | None:
@@ -552,7 +575,9 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     reminder_seconds=settings.approval_reminder_seconds,
                 ),
                 get_case=GetPreparationCaseHandler(
-                    uow_factory=preparation_uow_factory, authorization=authorization
+                    uow_factory=preparation_uow_factory,
+                    authorization=authorization,
+                    storage=storage,  # type: ignore[arg-type]
                 ),
                 list_cases=ListPreparationCasesHandler(
                     uow_factory=preparation_uow_factory, authorization=authorization
@@ -569,6 +594,13 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     authorization=authorization,
                     clock=clock,
                     id_generator=id_generator,
+                    run_case=RunPreparationHandler(
+                        uow_factory=preparation_uow_factory,
+                        workflow_runner=runner,
+                        authorization=authorization,
+                        entitlement=entitlement,
+                        id_generator=id_generator,
+                    ),
                 ),
                 reject_intake=RejectPreparationIntakeHandler(
                     uow_factory=preparation_uow_factory,
@@ -588,6 +620,16 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     authorization=authorization,
                     clock=clock,
                     id_generator=id_generator,
+                ),
+                auto_publish=AutoPublishPreparationHandler(
+                    uow_factory=preparation_uow_factory,
+                    storage=storage,  # type: ignore[arg-type]
+                    authorization=authorization,
+                    clock=clock,
+                    id_generator=id_generator,
+                    email_publisher=_build_email_publisher(),
+                    recipient_email=os.environ.get("DW_PUBLICATION_EMAIL", "")
+                    or os.environ.get("SMTP_USER", ""),
                 ),
                 record_submission=RecordPreparationSubmissionHandler(
                     uow_factory=preparation_uow_factory,

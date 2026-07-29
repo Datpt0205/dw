@@ -35,6 +35,22 @@ export function PendingIntakeVerification() {
     refresh();
   }, [refresh]);
 
+  // Poll every 5s + refresh on focus/reveal so a newly created case shows up
+  // for the verifier's tab promptly.
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const id = setInterval(tick, 5000);
+    document.addEventListener("visibilitychange", tick);
+    window.addEventListener("focus", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("focus", tick);
+    };
+  }, [refresh]);
+
   if (!canVerify || cases === null || cases.length === 0) return null;
 
   return (

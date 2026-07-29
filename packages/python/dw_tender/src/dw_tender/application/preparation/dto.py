@@ -25,9 +25,14 @@ class DocumentView(BaseModel):
     content_type: str
     size_bytes: int
     content_hash: str
+    # Inline text for small text/* uploads so the UI can preview the source
+    # document in a popup without a separate download round-trip.
+    text_content: str | None = None
 
     @classmethod
-    def from_domain(cls, document: PreparationDocument) -> DocumentView:
+    def from_domain(
+        cls, document: PreparationDocument, text_content: str | None = None
+    ) -> DocumentView:
         return cls(
             id=document.id.value,
             kind=document.kind.value,
@@ -36,6 +41,7 @@ class DocumentView(BaseModel):
             content_type=document.content_type,
             size_bytes=document.size_bytes,
             content_hash=document.content_hash,
+            text_content=text_content,
         )
 
 
@@ -118,6 +124,7 @@ class PreparationCaseView(BaseModel):
         artifacts: list[PreparationArtifact] | None = None,
         documents: list[PreparationDocument] | None = None,
         notifications: list[IntakeNotificationJob] | None = None,
+        document_texts: dict[UUID, str] | None = None,
     ) -> PreparationCaseView:
         return cls(
             id=case.id.value,
@@ -143,7 +150,10 @@ class PreparationCaseView(BaseModel):
                 case.intake_verified_at.isoformat() if case.intake_verified_at is not None else None
             ),
             version=case.version,
-            documents=[DocumentView.from_domain(d) for d in (documents or [])],
+            documents=[
+                DocumentView.from_domain(d, (document_texts or {}).get(d.id.value))
+                for d in (documents or [])
+            ],
             artifacts=[ArtifactView.from_domain(a) for a in (artifacts or [])],
             notifications=[NotificationView.from_domain(n) for n in (notifications or [])],
         )

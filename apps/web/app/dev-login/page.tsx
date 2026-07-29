@@ -9,7 +9,7 @@ import { apiClient, loginAsDev } from "../../lib/session";
 
 const ROLE_LABEL: Record<string, string> = {
   member: "Nhân viên",
-  approver: "Người phê duyệt",
+  approver: "Quản lý",
   platform_admin: "Quản trị",
 };
 

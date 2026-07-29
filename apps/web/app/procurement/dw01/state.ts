@@ -49,7 +49,7 @@ export const STEPPER: { key: string; label: string; states: string[] }[] = [
   },
   {
     key: "cp1",
-    label: "CP1 — Phương án",
+    label: "CP1 — Duyệt phương án mua sắm",
     states: ["cp1_pending", "cp1_approved"],
   },
   {
@@ -59,13 +59,13 @@ export const STEPPER: { key: string; label: string; states: string[] }[] = [
   },
   {
     key: "cp2",
-    label: "CP2 — Bộ hồ sơ",
+    label: "CP2 — Duyệt hồ sơ trước phát hành",
     states: ["cp2_pending", "cp2_approved"],
   },
   { key: "official", label: "Chính thức", states: ["package_official"] },
   {
     key: "publication",
-    label: "Phát hành · CP3",
+    label: "CP3 — Duyệt làm rõ/sửa đổi sau phát hành",
     states: ["published", "cp3_pending"],
   },
   {
@@ -73,7 +73,11 @@ export const STEPPER: { key: string; label: string; states: string[] }[] = [
     label: "Nhận hồ sơ",
     states: ["receiving_bids", "cp4_ready"],
   },
-  { key: "handoff", label: "CP4 · Bàn giao", states: ["completed"] },
+  {
+    key: "handoff",
+    label: "CP4 — Xác nhận mở thầu & bàn giao đánh giá",
+    states: ["completed"],
+  },
 ];
 
 export function currentStepIndex(state: string): number {

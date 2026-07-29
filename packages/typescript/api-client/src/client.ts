@@ -55,6 +55,7 @@ export const preparationDocumentSchema = z.object({
   content_type: z.string(),
   size_bytes: z.number(),
   content_hash: z.string(),
+  text_content: z.string().nullish(),
 });
 export const preparationNotificationSchema = z.object({
   id: z.string().uuid(),
@@ -608,6 +609,14 @@ export class ApiClient {
     return this.requestMultipart(
       `/api/v1/procurement/preparation/cases/${caseId}/publication`,
       form,
+      actionResponseSchema,
+    );
+  }
+
+  autoPublishPreparation(caseId: string): Promise<{ status: string }> {
+    return this.request(
+      "POST",
+      `/api/v1/procurement/preparation/cases/${caseId}/publish-auto`,
       actionResponseSchema,
     );
   }

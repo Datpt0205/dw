@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import uuid
@@ -19,7 +20,7 @@ from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.domain.audit import AuditEvent
-from dw_tender.application.ports import DocumentStoragePort
+from dw_tender.application.ports import DocumentStoragePort, EmailPublisherPort
 from dw_tender.application.preparation.dto import PreparationCaseView
 from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
 from dw_tender.domain.preparation.entities import (
@@ -230,6 +231,9 @@ class VerifyPreparationIntakeHandler:
     authorization: ScopeAuthorizationService
     clock: UtcClock
     id_generator: IdGenerator
+    # Auto-start DW01 right after a successful verification (attributed to the
+    # case owner). Optional so tests/callers that don't wire it keep working.
+    run_case: RunPreparationHandler | None = None
 
     async def handle(
         self,
@@ -302,6 +306,13 @@ class VerifyPreparationIntakeHandler:
             )
             await uow.cases.save(case)
             await uow.commit()
+
+        # Human-in-command handoff: verification (approver) immediately kicks off
+        # DW01, attributed to the case owner. A run failure must not fail the
+        # verification itself — the owner can still press "Chạy DW01" manually.
+        if self.run_case is not None:
+            with contextlib.suppress(Exception):  # best-effort auto-start
+                await self.run_case.handle_auto(case_id, context)
 
 
 @dataclass
@@ -502,6 +513,125 @@ class RecordPreparationPublicationHandler:
             case.record_publication()
             await uow.cases.save(case)
             await uow.commit()
+
+
+@dataclass
+class AutoPublishPreparationHandler:
+    """Publishes the official package by emailing the invited suppliers, then
+    records the publication automatically (no manual evidence upload)."""
+
+    uow_factory: PreparationUnitOfWorkFactory
+    storage: DocumentStoragePort
+    authorization: ScopeAuthorizationService
+    clock: UtcClock
+    id_generator: IdGenerator
+    email_publisher: EmailPublisherPort
+    recipient_email: str
+
+    async def handle(self, case_id: uuid.UUID, context: AccessContext) -> dict[str, str]:
+        await self.authorization.require(
+            context=context,
+            action="tender.write",
+            resource_type="preparation_publication",
+            resource_id=str(case_id),
+        )
+        async with self.uow_factory(TenantId(context.tenant_id)) as uow:
+            case = await uow.cases.get(PreparationCaseId(case_id))
+            if case is None:
+                raise NotFoundError("preparation case not found")
+            if case.state is not CaseState.PACKAGE_OFFICIAL:
+                raise ConflictError(
+                    "only the official package can be published",
+                    details={"state": case.state.value},
+                )
+            package = await uow.artifacts.latest(case.id, ArtifactType.SOLICITATION_PACKAGE)
+            shortlist_art = await uow.artifacts.latest(case.id, ArtifactType.SUPPLIER_SHORTLIST)
+            raw_shortlist = shortlist_art.content.get("shortlist", []) if shortlist_art else []
+            suppliers = [
+                str(s.get("name", ""))
+                for s in raw_shortlist
+                if isinstance(s, dict) and str(s.get("name", "")).strip()
+            ]
+            subject = f"[MỜI CHÀO GIÁ] {case.title} — {case.source_pr_ref or ''}".strip()
+            body = _build_rfq_email_body(case, package.content if package else {})
+
+            # Send first — if email fails we do NOT record a publication.
+            message_id = await self.email_publisher.send(
+                subject=subject, body=body, to=self.recipient_email
+            )
+
+            recorded_at = self.clock.now().astimezone(UTC)
+            evidence = (
+                f"Đã gửi tự động qua email tới {self.recipient_email}\n"
+                f"Message-ID: {message_id}\nThời điểm: {recorded_at.isoformat()}\n\n{body}"
+            ).encode()
+            document = await _store_source_document(
+                storage=self.storage,
+                id_generator=self.id_generator,
+                case=case,
+                actor=UserId(context.principal_id),
+                kind=DocumentKind.PUBLICATION_RECEIPT,
+                title="Bằng chứng phát hành (email tự động)",
+                filename="publication_email.txt",
+                content_type="text/plain; charset=utf-8",
+                content=evidence,
+            )
+            await uow.documents.add(document)
+            artifact_content: dict[str, Any] = {
+                "source_mode": "auto_email",
+                "channel": "Email công vụ (tự động)",
+                "recipient_summary": (
+                    ", ".join(suppliers) if suppliers else self.recipient_email
+                ),
+                "published_at": recorded_at.isoformat(),
+                "external_reference": message_id,
+                "sent_to": self.recipient_email,
+                "receipt_document_id": str(document.id.value),
+                "receipt_hash": document.content_hash,
+                "recorded_by": str(context.principal_id),
+                "recorded_at": recorded_at.isoformat(),
+            }
+            await _add_application_artifact(
+                uow=uow,
+                id_generator=self.id_generator,
+                case=case,
+                actor=UserId(context.principal_id),
+                artifact_type=ArtifactType.PUBLICATION_RECORD,
+                content=artifact_content,
+                status=ArtifactStatus.OFFICIAL,
+            )
+            case.record_publication()
+            await uow.cases.save(case)
+            await uow.commit()
+        return {"message_id": message_id, "sent_to": self.recipient_email}
+
+
+def _build_rfq_email_body(case: PreparationCase, package: dict[str, Any]) -> str:
+    # NOTE: this body is sent to ONE supplier at a time — never list the other
+    # invited suppliers here (bidders must not learn who they compete against).
+    scope = str(package.get("scope", "")).strip()
+    reqs = [str(r) for r in package.get("requirements", [])]
+    lines = [
+        "Kính gửi Quý nhà cung cấp,",
+        "",
+        f"Công ty trân trọng mời Quý đơn vị tham gia chào giá cho gói: {case.title}.",
+        f"Mã tham chiếu: {case.source_pr_ref or '—'}.",
+        "",
+        "PHẠM VI CUNG CẤP:",
+        scope or "(theo hồ sơ mời thầu đính kèm)",
+        "",
+        "YÊU CẦU KỸ THUẬT CHÍNH:",
+    ]
+    lines += [f"- {r}" for r in reqs] or ["- (theo hồ sơ mời thầu đính kèm)"]
+    lines += [
+        "",
+        "Thời hạn nộp hồ sơ: trong vòng 14 ngày kể từ ngày phát hành.",
+        "Đề nghị Quý đơn vị gửi báo giá theo biểu mẫu đính kèm.",
+        "",
+        "Trân trọng,",
+        "Phòng Mua sắm.",
+    ]
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -859,6 +989,9 @@ class CompletePreparationCp4Handler:
 class GetPreparationCaseHandler:
     uow_factory: PreparationUnitOfWorkFactory
     authorization: ScopeAuthorizationService
+    storage: DocumentStoragePort | None = None
+    # Only inline small text uploads (source PRs are a couple of KiB).
+    max_inline_text_bytes: int = 256 * 1024
 
     async def handle(self, case_id: uuid.UUID, context: AccessContext) -> PreparationCaseView:
         await self.authorization.require(
@@ -874,7 +1007,29 @@ class GetPreparationCaseHandler:
             artifacts = await uow.artifacts.list_for_case(case.id)
             documents = await uow.documents.list_for_case(case.id)
             notifications = await uow.notifications.list_for_case(case.id)
-        return PreparationCaseView.from_domain(case, artifacts, documents, notifications)
+        document_texts = await self._inline_texts(documents)
+        return PreparationCaseView.from_domain(
+            case, artifacts, documents, notifications, document_texts=document_texts
+        )
+
+    async def _inline_texts(
+        self, documents: list[PreparationDocument]
+    ) -> dict[uuid.UUID, str]:
+        if self.storage is None:
+            return {}
+        texts: dict[uuid.UUID, str] = {}
+        for doc in documents:
+            is_text = doc.content_type.startswith("text/") or doc.filename.lower().endswith(
+                (".txt", ".md", ".markdown", ".csv")
+            )
+            if not is_text or doc.size_bytes > self.max_inline_text_bytes:
+                continue
+            try:
+                raw = await self.storage.get_object(doc.storage_key)
+                texts[doc.id.value] = raw.decode("utf-8", errors="replace")
+            except Exception:  # preview is best-effort, never fails the case load
+                continue
+        return texts
 
 
 @dataclass
@@ -908,6 +1063,16 @@ class RunPreparationHandler:
             resource_type="preparation_case",
             resource_id=str(case_id),
         )
+        return await self._start(case_id, context, on_behalf_of_owner=False)
+
+    async def handle_auto(self, case_id: uuid.UUID, context: AccessContext) -> uuid.UUID:
+        """Auto-run triggered by a verified intake. The approver need not hold
+        ``tender.write``; the run is attributed to the case owner instead."""
+        return await self._start(case_id, context, on_behalf_of_owner=True)
+
+    async def _start(
+        self, case_id: uuid.UUID, context: AccessContext, *, on_behalf_of_owner: bool
+    ) -> uuid.UUID:
         await self.entitlement.require_feature(context, TENDER_FEATURE)
 
         run_id = self.id_generator.new_uuid()
@@ -915,6 +1080,9 @@ class RunPreparationHandler:
             case = await uow.cases.get(PreparationCaseId(case_id))
             if case is None:
                 raise NotFoundError("preparation case not found", details={"case_id": str(case_id)})
+            actor_id = (
+                str(case.created_by.value) if on_behalf_of_owner else context.principal_id
+            )
             case.start_run(run_id)
             await uow.cases.save(case)
             await uow.commit()
@@ -923,10 +1091,10 @@ class RunPreparationHandler:
             run_id=run_id,
             tenant_id=context.tenant_id,
             workspace_id=context.workspace_id,
-            actor_id=context.principal_id,
+            actor_id=actor_id,
             worker_id=self.worker_id,
             worker_version=self.worker_version,
-            channel="web",
+            channel="auto_intake" if on_behalf_of_owner else "web",
             plan_id=context.plan_id,
             roles=context.roles,
             scopes=context.scopes,

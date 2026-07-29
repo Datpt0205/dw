@@ -17,8 +17,16 @@ class ExtractedRequirement(BaseModel):
     kind: str = Field(pattern=r"^(mandatory|informational)$")
 
 
+class UnknownItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    question: str = Field(min_length=1, max_length=400)
+    # A DRAFT the reviewer confirms/edits — never an invented fact treated as final.
+    suggested_answer: str = Field(default="", max_length=600)
+
+
 class PreparationExtraction(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     requirements: list[ExtractedRequirement] = Field(default_factory=list)
-    unknowns: list[str] = Field(default_factory=list)
+    unknowns: list[UnknownItem] = Field(default_factory=list)

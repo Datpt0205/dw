@@ -41,14 +41,18 @@ const ROLE_CATALOG: {
   },
   {
     key: "approver",
-    label: "Người phê duyệt",
-    summary: "Xem và quyết định phê duyệt. Không tạo nội dung.",
+    label: "Quản lý",
+    summary:
+      "Toàn quyền của nhân viên, cộng thêm quyết định phê duyệt. Không có quyền quản trị.",
     scopes: [
+      "tender.read",
+      "tender.write",
+      "work_ops.read",
+      "work_ops.write",
       "approvals.read",
       "approvals.decide",
-      "tender.read",
-      "work_ops.read",
       "knowledge.read",
+      "knowledge.write",
       "memory.read",
     ],
   },

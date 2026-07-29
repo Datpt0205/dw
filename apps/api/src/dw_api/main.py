@@ -146,6 +146,7 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
                 reject_intake=container.preparation.reject_intake,
                 answer_clarifications=container.preparation.answer_clarifications,
                 record_publication=container.preparation.record_publication,
+                auto_publish=container.preparation.auto_publish,
                 record_submission=container.preparation.record_submission,
                 complete_cp4=container.preparation.complete_cp4,
                 submit_addendum=container.preparation.submit_addendum,

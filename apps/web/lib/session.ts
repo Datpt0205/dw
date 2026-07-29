@@ -137,13 +137,20 @@ async function quickAccessToken(): Promise<string | null> {
         refresh_token: acc.refreshToken,
       }),
     });
-    if (!res.ok) return acc.token; // let a stale token 401 rather than hard-fail
+    // Refresh token also expired/invalid → the session is truly over. Drop the
+    // dead account and report "no token" so the app returns to login cleanly,
+    // instead of sending an expired token that 401s into an error screen.
+    if (!res.ok) {
+      clearQuickActive();
+      return null;
+    }
     const refreshed = toAccount(username, await res.json());
     map[username] = refreshed;
     writeQuickAccounts(map);
     return refreshed.token;
   } catch {
-    return acc.token;
+    // Network error refreshing — keep the account but signal no usable token.
+    return null;
   }
 }
 
@@ -241,11 +248,14 @@ async function currentAccessToken(): Promise<string | null> {
   return kc.token ?? null;
 }
 
+// Guard so a burst of concurrent 401s triggers exactly one redirect.
+let redirectingOn401 = false;
+
 export function apiClient(): ApiClient {
   return new ApiClient({
     baseUrl: API_BASE_URL,
     getAccessToken: currentAccessToken,
-    fetchImpl: (input, init) => {
+    fetchImpl: async (input, init) => {
       const headers = new Headers(init?.headers);
       if (typeof window !== "undefined") {
         const tenantId = window.localStorage.getItem(KEYS.tenant);
@@ -255,7 +265,16 @@ export function apiClient(): ApiClient {
           headers.set("X-Workspace-Id", workspaceId);
         }
       }
-      return fetch(input, { ...init, headers });
+      const res = await fetch(input, { ...init, headers });
+      // 401 = the session is no longer authenticated (token died mid-use).
+      // Clear local state and bounce to the login screen instead of leaving the
+      // user staring at a failed action. (403 = permission, handled per-call.)
+      if (res.status === 401 && typeof window !== "undefined" && !redirectingOn401) {
+        redirectingOn401 = true;
+        clearActiveWorkspace();
+        window.location.href = "/";
+      }
+      return res;
     },
   });
 }

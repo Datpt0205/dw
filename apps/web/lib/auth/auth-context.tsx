@@ -245,10 +245,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // A quick-account session was never established through the Keycloak JS
+    // adapter, so kc.logout() would throw/bounce. Just clear local state and
+    // return to the app root, which renders the login screen.
+    const wasQuick = activeQuickUsername() !== null;
     clearActiveWorkspace();
     if (AUTH_MODE === "dev") {
       clearDevToken();
       window.location.href = "/dev-login";
+      return;
+    }
+    if (wasQuick) {
+      window.location.href = "/";
       return;
     }
     void getKeycloak().logout({ redirectUri: window.location.origin });

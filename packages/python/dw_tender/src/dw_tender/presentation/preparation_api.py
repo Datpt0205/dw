@@ -14,6 +14,7 @@ from dw_platform.application.access_context import AccessContext
 from dw_tender.application.preparation.dto import PreparationCaseView
 from dw_tender.application.preparation.handlers import (
     AnswerPreparationClarificationsHandler,
+    AutoPublishPreparationHandler,
     ClarificationAnswer,
     CompleteCp4Command,
     CompletePreparationCp4Handler,
@@ -110,6 +111,7 @@ def build_preparation_router(
     reject_intake: RejectPreparationIntakeHandler,
     answer_clarifications: AnswerPreparationClarificationsHandler,
     record_publication: RecordPreparationPublicationHandler,
+    auto_publish: AutoPublishPreparationHandler,
     record_submission: RecordPreparationSubmissionHandler,
     complete_cp4: CompletePreparationCp4Handler,
     submit_addendum: SubmitPreparationAddendumHandler,
@@ -319,6 +321,19 @@ def build_preparation_router(
             action="preparation.publication.recorded",
             case_id=case_id,
             details={"external_reference": external_reference, "channel": channel},
+        )
+        return ActionResponse()
+
+    @router.post("/cases/{case_id}/publish-auto", response_model=ActionResponse)
+    async def publish_auto(
+        case_id: uuid.UUID, context: AccessContext = require_context
+    ) -> ActionResponse:
+        result = await auto_publish.handle(case_id, context)
+        await audit_recorder.record(
+            context,
+            action="preparation.publication.auto_sent",
+            case_id=case_id,
+            details=result,
         )
         return ActionResponse()
 

@@ -7,7 +7,9 @@
   "resetPasswordAllowed": true,
   "sslRequired": "external",
   "defaultSignatureAlgorithm": "RS256",
-  "accessTokenLifespan": 900,
+  "accessTokenLifespan": 28800,
+  "ssoSessionIdleTimeout": 28800,
+  "ssoSessionMaxLifespan": 28800,
   "clients": [
     {
       "clientId": "dw-web",
@@ -46,7 +48,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "demo-password", "temporary": false }
+        { "type": "password", "value": "demo", "temporary": false }
       ]
     },
     {
@@ -58,7 +60,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "demo-password", "temporary": false }
+        { "type": "password", "value": "demo", "temporary": false }
       ]
     },
     {
@@ -70,7 +72,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "demo-password", "temporary": false }
+        { "type": "password", "value": "demo", "temporary": false }
       ]
     }
   ]

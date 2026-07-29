@@ -35,8 +35,13 @@ ENV NEXT_PUBLIC_AUTH_MODE=$NEXT_PUBLIC_AUTH_MODE \
     NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=$NEXT_PUBLIC_KEYCLOAK_CLIENT_ID
 
 ENV NEXT_TELEMETRY_DISABLED=1 \
-    NODE_OPTIONS=--max-old-space-size=1536
-RUN pnpm --filter @dw/web build
+    NODE_OPTIONS=--max-old-space-size=4096
+# Persist Next.js's incremental compiler cache across builds so a rebuild after
+# a code change recompiles only what changed (typically 2–5× faster) instead of
+# starting from scratch. The mount only holds .next/cache; the standalone/static
+# output is still produced fresh each build.
+RUN --mount=type=cache,target=/build/apps/web/.next/cache \
+    pnpm --filter @dw/web build
 
 # ---------------------------------------------------------------------------
 # Stage 2 — runtime: non-root standalone server
