@@ -128,9 +128,13 @@ class FakeStore:
 @dataclass
 class FakeGateway:
     turn: IntakeChatTurn
+    thinking: str = ""
 
     async def generate_structured(self, request, output_type, *, run_context):
         return self.turn
+
+    async def generate_structured_traced(self, request, output_type, *, run_context):
+        return self.turn, self.thinking
 
 
 @dataclass
@@ -143,11 +147,14 @@ class FakeCreateCase:
 
 
 def make_service(
-    store: FakeStore, turn: IntakeChatTurn, create_case: FakeCreateCase | None = None
+    store: FakeStore,
+    turn: IntakeChatTurn,
+    create_case: FakeCreateCase | None = None,
+    thinking: str = "",
 ) -> ConversationIntakeService:
     return ConversationIntakeService(
         store=store,
-        gateway=FakeGateway(turn),  # type: ignore[arg-type]
+        gateway=FakeGateway(turn, thinking=thinking),  # type: ignore[arg-type]
         create_case=create_case or FakeCreateCase(),  # type: ignore[arg-type]
         rules=RULES,
         clock=FakeClock(),  # type: ignore[arg-type]
@@ -196,14 +203,39 @@ async def test_incomplete_message_asks_question_and_keeps_collecting() -> None:
         reply_vi="Bạn cho tôi biết ngân sách và thời hạn nhé?",
         reasoning_summary="Đã nhận yêu cầu mua 100 laptop.",
     )
-    replies = await make_service(store, turn).handle_message(
+    outcome = await make_service(store, turn).handle_message(
         channel_key="slack:D1", text="Tôi muốn mua 100 laptop", context=CONTEXT, display_name="An"
     )
+    replies = outcome.replies
     assert len(replies) == 1 and replies[0].kind == "message"
     assert "ngân sách" in replies[0].text
+    # Thinking is SYSTEM-BUILT from the validated slot diff + completeness.
+    assert "Ghi nhận từ tin nhắn" in outcome.thinking
+    assert "số lượng «100»" in outcome.thinking
+    assert "Còn thiếu" in outcome.thinking
     conv = next(iter(store.conversations.values()))
     assert conv.state == "collecting"
     assert conv.slots.quantity == 100
+
+
+async def test_thinking_is_deterministic_trace_not_model_narration() -> None:
+    store = FakeStore()
+    turn = IntakeChatTurn(
+        intent="provide_info",
+        slots=FULL_SLOTS,
+        reply_vi="ok",
+        reasoning_summary="lời kể tự thuật của model — KHÔNG được hiển thị",
+    )
+    outcome = await make_service(store, turn, thinking="raw CoT — KHÔNG hiển thị").handle_message(
+        channel_key="slack:D1", text="đủ", context=CONTEXT, display_name="An"
+    )
+    # Real rule-pack evaluation shows up (2 tỷ -> Đấu thầu, >=3 NCC)…
+    assert "Đấu thầu" in outcome.thinking
+    assert "tối thiểu 3 NCC" in outcome.thinking
+    assert "Đã đủ thông tin bắt buộc" in outcome.thinking
+    # …and no self-reported narration leaks into the display.
+    assert "tự thuật" not in outcome.thinking
+    assert "raw CoT" not in outcome.thinking
 
 
 async def test_complete_message_returns_confirm_card() -> None:
@@ -211,9 +243,10 @@ async def test_complete_message_returns_confirm_card() -> None:
     turn = IntakeChatTurn(
         intent="provide_info", slots=FULL_SLOTS, reply_vi="Đã đủ thông tin.", reasoning_summary=""
     )
-    replies = await make_service(store, turn).handle_message(
+    outcome = await make_service(store, turn).handle_message(
         channel_key="slack:D1", text="đủ hết rồi", context=CONTEXT, display_name="An"
     )
+    replies = outcome.replies
     assert replies[0].kind == "confirm_card"
     assert replies[0].conversation_id is not None
     assert any("Đấu thầu" in line for line in replies[0].summary_lines)
@@ -233,9 +266,11 @@ async def test_confirm_creates_case_via_command_and_is_idempotent() -> None:
     )
     conv_id = next(iter(store.conversations.keys()))
 
-    replies = await service.handle_action(
-        action="confirm", conversation_id=conv_id, context=CONTEXT, display_name="An"
-    )
+    replies = (
+        await service.handle_action(
+            action="confirm", conversation_id=conv_id, context=CONTEXT, display_name="An"
+        )
+    ).replies
     assert replies[0].kind == "case_link"
     assert len(create_case.created) == 1
     command = create_case.created[0]
@@ -245,9 +280,11 @@ async def test_confirm_creates_case_via_command_and_is_idempotent() -> None:
     assert "laptop" in command.pr_text
 
     # Double click: no second case, still returns the link.
-    again = await service.handle_action(
-        action="confirm", conversation_id=conv_id, context=CONTEXT, display_name="An"
-    )
+    again = (
+        await service.handle_action(
+            action="confirm", conversation_id=conv_id, context=CONTEXT, display_name="An"
+        )
+    ).replies
     assert len(create_case.created) == 1
     assert again[0].kind == "case_link"
 
@@ -262,9 +299,11 @@ async def test_edit_returns_to_collecting() -> None:
         channel_key="slack:D1", text="đủ", context=CONTEXT, display_name="An"
     )
     conv_id = next(iter(store.conversations.keys()))
-    replies = await service.handle_action(
-        action="edit", conversation_id=conv_id, context=CONTEXT, display_name="An"
-    )
+    replies = (
+        await service.handle_action(
+            action="edit", conversation_id=conv_id, context=CONTEXT, display_name="An"
+        )
+    ).replies
     assert store.conversations[conv_id].state == "collecting"
     assert "sửa" in replies[0].text.lower()
 

@@ -11,10 +11,10 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC
-from typing import Literal, Protocol
+from typing import ClassVar, Literal, Protocol
 
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.ports import ModelGateway, ModelRequest
+from dw_agent_runtime.ports import ModelRequest, TracedModelGateway
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
 from dw_tender.application.conversation.schemas import (
@@ -93,7 +93,18 @@ class ChatReply:
     summary_lines: tuple[str, ...] = ()
     conversation_id: uuid.UUID | None = None
     case_id: uuid.UUID | None = None
-    reasoning: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class TurnOutcome:
+    """One handled inbound turn: the model's visible thinking + the replies.
+
+    ``thinking`` is the reasoner's reasoning_content (falling back to the
+    structured reasoning_summary) — shown by the channel BEFORE the replies.
+    """
+
+    replies: tuple[ChatReply, ...]
+    thinking: str = ""
 
 
 def _fmt_vnd(value: int | None) -> str:
@@ -103,7 +114,7 @@ def _fmt_vnd(value: int | None) -> str:
 @dataclass
 class ConversationIntakeService:
     store: ConversationStorePort
-    gateway: ModelGateway
+    gateway: TracedModelGateway
     create_case: CreatePreparationCaseHandler
     rules: ProcurementRules
     clock: UtcClock
@@ -122,7 +133,7 @@ class ConversationIntakeService:
         text: str,
         context: AccessContext,
         display_name: str,
-    ) -> list[ChatReply]:
+    ) -> TurnOutcome:
         conversation = await self.store.find_active(
             tenant_id=context.tenant_id,
             workspace_id=context.workspace_id,
@@ -146,13 +157,20 @@ class ConversationIntakeService:
                 tenant_id=context.tenant_id,
                 state="cancelled",
             )
-            return [
-                ChatReply(
-                    text="Đã huỷ yêu cầu hiện tại. Khi cần mua sắm, bạn cứ nhắn cho tôi nhé."
-                )
-            ]
+            return TurnOutcome(
+                replies=(
+                    ChatReply(
+                        text="Đã huỷ yêu cầu hiện tại. Khi cần mua sắm, bạn cứ nhắn cho tôi nhé."
+                    ),
+                ),
+                thinking="• Người dùng muốn huỷ yêu cầu hiện tại.",
+            )
 
         missing = missing_required(merged, self.rules)
+        # The visible "thinking" is SYSTEM-BUILT from what actually happened
+        # (validated slot diff, real rule-pack evaluation, completeness count) —
+        # never the model narrating itself (plan §7.5: auditable, no self-report).
+        thinking = self._build_thinking(before=conversation.slots, merged=merged, missing=missing)
         next_state: ConversationState = "collecting" if missing else "confirming"
         await self.store.update(
             conversation_id=conversation.id,
@@ -162,8 +180,10 @@ class ConversationIntakeService:
         )
 
         if missing:
-            return [ChatReply(text=turn.reply_vi, reasoning=turn.reasoning_summary)]
-        return [self._confirm_card(conversation.id, merged, turn.reasoning_summary)]
+            return TurnOutcome(replies=(ChatReply(text=turn.reply_vi),), thinking=thinking)
+        return TurnOutcome(
+            replies=(self._confirm_card(conversation.id, merged),), thinking=thinking
+        )
 
     # -------------------------------------------------------------- actions --
     async def handle_action(
@@ -173,19 +193,27 @@ class ConversationIntakeService:
         conversation_id: uuid.UUID,
         context: AccessContext,
         display_name: str,
-    ) -> list[ChatReply]:
+    ) -> TurnOutcome:
         conversation = await self.store.get(
             conversation_id=conversation_id, tenant_id=context.tenant_id
         )
         if conversation is None:
-            return [ChatReply(text="Không tìm thấy phiên trao đổi này (có thể đã hết hạn).")]
+            return TurnOutcome(
+                replies=(ChatReply(text="Không tìm thấy phiên trao đổi này (có thể đã hết hạn)."),)
+            )
         # Stale/double click: once the case exists, just repeat the link.
         if conversation.state == "case_created" and conversation.case_id:
-            return [self._case_link(conversation.case_id, "Hồ sơ đã được tạo trước đó.")]
+            return TurnOutcome(
+                replies=(self._case_link(conversation.case_id, "Hồ sơ đã được tạo trước đó."),)
+            )
         if conversation.state != "confirming":
-            return [
-                ChatReply(text="Phiên này chưa ở bước xác nhận — bạn bổ sung thông tin đã nhé.")
-            ]
+            return TurnOutcome(
+                replies=(
+                    ChatReply(
+                        text="Phiên này chưa ở bước xác nhận — bạn bổ sung thông tin đã nhé."
+                    ),
+                )
+            )
 
         if action == "edit":
             await self.store.update(
@@ -193,14 +221,16 @@ class ConversationIntakeService:
                 tenant_id=context.tenant_id,
                 state="collecting",
             )
-            return [
-                ChatReply(
-                    text=(
-                        "OK, bạn nhắn phần muốn sửa (vd: «ngân sách 1,5 tỷ» hoặc "
-                        "«thêm NCC FPT») — tôi sẽ cập nhật rồi xác nhận lại."
-                    )
+            return TurnOutcome(
+                replies=(
+                    ChatReply(
+                        text=(
+                            "OK, bạn nhắn phần muốn sửa (vd: «ngân sách 1,5 tỷ» hoặc "
+                            "«thêm NCC FPT») — tôi sẽ cập nhật rồi xác nhận lại."
+                        )
+                    ),
                 )
-            ]
+            )
 
         slots = conversation.slots
         pr_ref = f"SLACK-{self.clock.now().astimezone(UTC):%Y%m%d}-{str(conversation.id)[:8]}"
@@ -226,14 +256,16 @@ class ConversationIntakeService:
             state="case_created",
             case_id=case_id,
         )
-        return [
-            self._case_link(
-                case_id,
-                "✅ Đã tạo hồ sơ mua sắm từ trao đổi này. "
-                "Quản lý sẽ nhận thông báo Slack để xác minh; sau khi xác minh, "
-                "Digital Worker tự chạy và tôi sẽ báo bạn tiến độ.",
+        return TurnOutcome(
+            replies=(
+                self._case_link(
+                    case_id,
+                    "✅ Đã tạo hồ sơ mua sắm từ trao đổi này. "
+                    "Quản lý sẽ nhận thông báo Slack để xác minh; sau khi xác minh, "
+                    "Digital Worker tự chạy và tôi sẽ báo bạn tiến độ.",
+                ),
             )
-        ]
+        )
 
     # ------------------------------------------------------------ internals --
     async def _run_turn(
@@ -270,13 +302,69 @@ class ConversationIntakeService:
             scopes=context.scopes,
             trace_id=f"chat-{str(conversation.id)[:12]}",
         )
+        # reasoning_summary/reasoning_content stay available for logging, but
+        # the DISPLAYED thinking is system-built (see _build_thinking).
         return await self.gateway.generate_structured(
             request, IntakeChatTurn, run_context=run_context
         )
 
-    def _confirm_card(
-        self, conversation_id: uuid.UUID, slots: IntakeSlots, reasoning: str
-    ) -> ChatReply:
+    _SLOT_LABELS: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("title", "tên gói"),
+        ("item_summary", "hàng hoá/dịch vụ"),
+        ("quantity", "số lượng"),
+        ("estimated_value_vnd", "ngân sách"),
+        ("deadline_days", "thời hạn"),
+        ("delivery_location", "nơi giao"),
+        ("purpose", "mục đích"),
+        ("supplier_names", "NCC dự kiến"),
+        ("warranty_months", "bảo hành"),
+        ("os_license", "HĐH/bản quyền"),
+        ("payment_terms", "thanh toán"),
+    )
+
+    def _build_thinking(
+        self, *, before: IntakeSlots, merged: IntakeSlots, missing: list[str]
+    ) -> str:
+        """Deterministic reasoning trace: every line is true by construction."""
+        lines: list[str] = []
+
+        captured: list[str] = []
+        for name, label in self._SLOT_LABELS:
+            old, new = getattr(before, name), getattr(merged, name)
+            if new in (None, "", []) or new == old:
+                continue
+            if name == "estimated_value_vnd":
+                captured.append(f"{label} {_fmt_vnd(new)}")
+            elif name == "deadline_days":
+                captured.append(f"{label} {new} ngày")
+            elif name == "supplier_names":
+                captured.append(f"{label}: {', '.join(new)}")
+            else:
+                captured.append(f"{label} «{new}»")
+        if captured:
+            lines.append("• Ghi nhận từ tin nhắn: " + "; ".join(captured))
+        else:
+            lines.append("• Tin nhắn không bổ sung thông tin mới cho hồ sơ.")
+
+        if merged.estimated_value_vnd:
+            method = self.rules.select_method(merged.estimated_value_vnd)
+            lines.append(
+                f"• Đối chiếu quy định (rule pack v{self.rules.version}): giá trị "
+                f"{_fmt_vnd(merged.estimated_value_vnd)} → hình thức «{method.label}», "
+                f"tối thiểu {method.min_suppliers} NCC (đang có {len(merged.supplier_names)})."
+            )
+        else:
+            lines.append(
+                "• Chưa có ngân sách nên chưa đối chiếu được hình thức mua sắm theo quy định."
+            )
+
+        if missing:
+            lines.append(f"• Còn thiếu {len(missing)} thông tin bắt buộc → hỏi bổ sung.")
+        else:
+            lines.append("• Đã đủ thông tin bắt buộc → chuyển sang bước xác nhận để tạo hồ sơ.")
+        return "\n".join(lines)
+
+    def _confirm_card(self, conversation_id: uuid.UUID, slots: IntakeSlots) -> ChatReply:
         method = (
             self.rules.select_method(slots.estimated_value_vnd)
             if slots.estimated_value_vnd
@@ -312,7 +400,6 @@ class ConversationIntakeService:
             kind="confirm_card",
             summary_lines=tuple(lines),
             conversation_id=conversation_id,
-            reasoning=reasoning,
         )
 
     def _case_link(self, case_id: uuid.UUID, text: str) -> ChatReply:

@@ -17,8 +17,12 @@ system: |
        thiếu trong MỘT tin nhắn (gạch đầu dòng), kèm gợi ý định dạng trả lời.
      - Nếu đã đủ: xác nhận ngắn gọn là đã đủ thông tin (hệ thống sẽ tự hiển thị
        bản tóm tắt xác nhận, KHÔNG cần bạn liệt kê lại).
-  4. reasoning_summary: 1–2 câu giải thích bạn đã hiểu gì / vì sao hỏi lại
-     (sẽ hiển thị cho người dùng — viết dễ hiểu, không nói về "JSON" hay "slot").
+  4. reasoning_summary: suy luận NGẮN GỌN bằng tiếng Việt, hiển thị cho người
+     dùng như "dòng suy nghĩ" của nhân viên số. Cấu trúc 1–3 câu theo mạch:
+     (a) đã hiểu/ghi nhận được gì; (b) đối chiếu với quy định/ngưỡng nào nếu áp
+     dụng (vd giá trị gói → hình thức mua sắm, số NCC tối thiểu); (c) vì sao
+     hỏi lại hoặc vì sao đã đủ điều kiện. Với tin nhắn đơn giản chỉ cần 1 câu.
+     TUYỆT ĐỐI không nhắc tới "JSON", "schema", "slot" hay cơ chế nội bộ.
 
   Quy đổi: "2 tỷ" = 2000000000 (VND). "500 triệu" = 500000000. Thời hạn luôn đổi
   về SỐ NGÀY (deadline_days), ví dụ "6 tuần" = 42, "trước 30/9" thì tính số ngày

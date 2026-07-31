@@ -58,7 +58,7 @@ class MockModelAdapter:
         route: ModelRoute,
         *,
         max_output_tokens: int | None,
-    ) -> tuple[dict[str, object], ModelUsage]:
+    ) -> tuple[dict[str, object], ModelUsage, str | None]:
         self.calls.append(prompt)
 
         builder = self._builders.get((prompt.prompt_id, prompt.version))
@@ -80,4 +80,4 @@ class MockModelAdapter:
             output_tokens=max(1, len(json.dumps(response)) // 4),
             cost_usd=0.0,
         )
-        return response, usage
+        return response, usage, None

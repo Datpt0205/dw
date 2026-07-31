@@ -40,7 +40,9 @@ class ModelProviderAdapter(Protocol):
         route: ModelRoute,
         *,
         max_output_tokens: int | None,
-    ) -> tuple[dict[str, object], ModelUsage]: ...
+    ) -> tuple[dict[str, object], ModelUsage, str | None]:
+        """Returns (parsed_json, usage, visible_reasoning_or_None)."""
+        ...
 
 
 class UsageRecorderPort(Protocol):
@@ -68,7 +70,12 @@ class RoutingModelGateway:
 
     def _route(self, request: ModelRequest) -> ModelRoute:
         profile = self.profiles.resolve(request.model_profile)
-        if request.task == "reasoning":
+        if request.route_kind == "deep_reasoning":
+            # Visible-thinking route is optional; degrade to reasoning route.
+            return profile.deep_reasoning or profile.reasoning
+        if request.route_kind == "reasoning" or (
+            request.route_kind == "auto" and request.task == "reasoning"
+        ):
             return profile.reasoning
         return profile.structured_extraction
 
@@ -79,6 +86,18 @@ class RoutingModelGateway:
         *,
         run_context: RunContext,
     ) -> OutputT:
+        output, _reasoning = await self.generate_structured_traced(
+            request, output_type, run_context=run_context
+        )
+        return output
+
+    async def generate_structured_traced(
+        self,
+        request: ModelRequest,
+        output_type: type[OutputT],
+        *,
+        run_context: RunContext,
+    ) -> tuple[OutputT, str]:
         route = self._route(request)
         adapter = self.adapters.get(route.provider)
         if adapter is None:
@@ -89,7 +108,7 @@ class RoutingModelGateway:
         prompt = self.prompts.render(
             request.prompt_id, request.prompt_version, dict(request.variables)
         )
-        raw, usage = await adapter.complete_json(
+        raw, usage, reasoning = await adapter.complete_json(
             prompt,
             output_type.model_json_schema(),
             route,
@@ -97,7 +116,7 @@ class RoutingModelGateway:
         )
         self.usage_recorder.record(run_context, request, usage)
         try:
-            return output_type.model_validate(raw)
+            return output_type.model_validate(raw), reasoning or ""
         except ValidationError as exc:
             raise DomainError(
                 "model output failed schema validation",

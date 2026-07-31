@@ -30,6 +30,9 @@ logger = logging.getLogger("dw_api.channels.slack")
 _CONFIRM_ACTION = "dw01_chat_confirm"
 _EDIT_ACTION = "dw01_chat_edit"
 
+# Slack section blocks cap at 3000 chars; keep the thinking readable.
+_THINKING_MAX_CHARS = 2200
+
 
 @dataclass
 class SlackFrontOfficeService:
@@ -121,13 +124,29 @@ class SlackFrontOfficeService:
 
         # DM = one rolling conversation per channel; channel mention = per thread.
         channel_key = f"slack:{channel}" + (f":{thread_ts}" if thread_ts else "")
-        replies = await self.chat.conversation_service.handle_message(
-            channel_key=channel_key,
-            text=self._strip_mention(text),
-            context=context,
-            display_name=display_name,
+
+        # Thinking-first UX: post a placeholder immediately (the reasoner can
+        # take a while), then replace it with the model's visible reasoning
+        # BEFORE the actual replies arrive as separate messages.
+        thinking_ts = await self.chat.chat_client.post_message(
+            channel=channel, thread_ts=thread_ts, text="🤔 Đang suy nghĩ…"
         )
-        for reply in replies:
+        try:
+            outcome = await self.chat.conversation_service.handle_message(
+                channel_key=channel_key,
+                text=self._strip_mention(text),
+                context=context,
+                display_name=display_name,
+            )
+        except Exception:
+            await self.chat.chat_client.update_message(
+                channel=channel,
+                ts=thinking_ts,
+                text="⚠️ Xin lỗi, tôi gặp trục trặc khi xử lý — bạn nhắn lại giúp nhé.",
+            )
+            raise
+        await self._reveal_thinking(channel, thinking_ts, outcome.thinking)
+        for reply in outcome.replies:
             await self._send_reply(channel, thread_ts, reply)
 
     async def _handle_interactive(self, payload: dict[str, Any]) -> None:
@@ -156,7 +175,7 @@ class SlackFrontOfficeService:
             conv_uuid = UUID(conversation_id)
         except ValueError:
             return
-        replies = await self.chat.conversation_service.handle_action(
+        outcome = await self.chat.conversation_service.handle_action(
             action="confirm" if action_id == _CONFIRM_ACTION else "edit",
             conversation_id=conv_uuid,
             context=context,
@@ -169,10 +188,33 @@ class SlackFrontOfficeService:
                 channel=channel, ts=str(message["ts"]), text=f"{chosen} — xem tin nhắn tiếp theo."
             )
         thread_ts = message.get("thread_ts")
-        for reply in replies:
+        for reply in outcome.replies:
             await self._send_reply(channel, thread_ts, reply)
 
     # -------------------------------------------------------------- render ---
+    async def _reveal_thinking(self, channel: str, thinking_ts: str, thinking: str) -> None:
+        """Replace the placeholder with the model's visible reasoning."""
+        if not thinking:
+            await self.chat.chat_client.update_message(
+                channel=channel, ts=thinking_ts, text="💭 (không có suy luận cho lượt này)"
+            )
+            return
+        trimmed = thinking.strip()
+        if len(trimmed) > _THINKING_MAX_CHARS:
+            trimmed = trimmed[:_THINKING_MAX_CHARS].rstrip() + "\n… _(đã rút gọn)_"
+        quoted = "\n".join(f">{line}" for line in trimmed.splitlines())
+        await self.chat.chat_client.update_message(
+            channel=channel,
+            ts=thinking_ts,
+            text="💭 Suy nghĩ của Digital Worker",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"💭 *Suy nghĩ*\n{quoted}"},
+                }
+            ],
+        )
+
     async def _send_reply(self, channel: str, thread_ts: str | None, reply: Any) -> None:
         blocks: list[dict[str, Any]] | None = None
         if reply.kind == "confirm_card" and reply.conversation_id is not None:
@@ -197,21 +239,6 @@ class SlackFrontOfficeService:
                             "value": str(reply.conversation_id),
                         },
                     ],
-                },
-            ]
-            if reply.reasoning:
-                blocks.append(
-                    {
-                        "type": "context",
-                        "elements": [{"type": "mrkdwn", "text": f"💭 {reply.reasoning}"}],
-                    }
-                )
-        elif reply.reasoning:
-            blocks = [
-                {"type": "section", "text": {"type": "mrkdwn", "text": reply.text}},
-                {
-                    "type": "context",
-                    "elements": [{"type": "mrkdwn", "text": f"💭 {reply.reasoning}"}],
                 },
             ]
         await self.chat.chat_client.post_message(
