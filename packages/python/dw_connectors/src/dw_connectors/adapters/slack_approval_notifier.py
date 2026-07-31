@@ -197,6 +197,12 @@ def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
                 "action_id": "dw01_intake_reject",
                 "value": str(message.case_id),
             },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "📄 Xem PR", "emoji": True},
+                "action_id": "dw01_view_pr",
+                "value": str(message.case_id),
+            },
         ]
     blocks: list[dict[str, Any]] = [
         {

@@ -38,6 +38,7 @@ _CP_APPROVE = "dw01_cp_approve"
 _CP_REJECT = "dw01_cp_reject"
 _CP4_CONFIRM = "dw01_cp4_confirm"
 _PUBLISH = "dw01_publish"
+_VIEW_PR = "dw01_view_pr"
 
 # Slack section blocks cap at 3000 chars; keep the thinking readable.
 _THINKING_MAX_CHARS = 2200
@@ -178,6 +179,7 @@ class SlackFrontOfficeService:
             _CP_REJECT,
             _CP4_CONFIRM,
             _PUBLISH,
+            _VIEW_PR,
         )
         if action_id not in known:
             return
@@ -194,6 +196,9 @@ class SlackFrontOfficeService:
             return
         context, display_name = resolved
 
+        if action_id == _VIEW_PR:
+            await self._post_pr_preview(value, channel, context)
+            return
         if action_id in (
             _INTAKE_APPROVE,
             _INTAKE_REJECT,
@@ -326,6 +331,53 @@ class SlackFrontOfficeService:
             }
         ]
         await self.chat.chat_client.publish_home_view(user_id=slack_user_id, blocks=blocks)
+
+    async def _post_pr_preview(
+        self, value: str, channel: str, context: AccessContext
+    ) -> None:
+        """[📄 Xem PR]: post the source PR inline so the approver never leaves
+        Slack. Authorized via the clicker's real context (tender.read + RLS)."""
+        preparation = self.container.preparation
+        if preparation is None:
+            return
+        try:
+            view = await preparation.get_case.handle(UUID(value), context)
+        except Exception as exc:
+            await self.chat.chat_client.post_message(
+                channel=channel, text=f"⚠️ Không mở được PR: {str(exc)[:200]}"
+            )
+            return
+        pr_doc = next(
+            (
+                doc
+                for doc in view.documents
+                if doc.kind == "approved_pr" and doc.text_content
+            ),
+            None,
+        )
+        if pr_doc is None:
+            await self.chat.chat_client.post_message(
+                channel=channel,
+                text="Không tìm thấy nội dung PR dạng văn bản — mở hồ sơ trên web để xem.",
+            )
+            return
+        body = pr_doc.text_content or ""
+        if len(body) > 2800:
+            body = body[:2800].rstrip() + "\n… (rút gọn — xem đầy đủ trên web)"
+        await self.chat.chat_client.post_message(
+            channel=channel,
+            text=f"📄 PR — {view.title}",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*📄 {pr_doc.title or pr_doc.filename}* — {view.title}",
+                    },
+                },
+                {"type": "section", "text": {"type": "mrkdwn", "text": f"```{body}```"}},
+            ],
+        )
 
     # ------------------------------------------------- decision buttons (P4) --
     async def _handle_decision_action(
