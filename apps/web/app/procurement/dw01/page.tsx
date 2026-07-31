@@ -181,11 +181,13 @@ export default function Dw01ListPage() {
         description="Tiếp nhận PR đã duyệt, kiểm tra thông tin đầu vào và xây dựng hồ sơ mời thầu theo từng bước có người chịu trách nhiệm phê duyệt."
         actions={
           <>
-            <Button variant="outline" asChild>
-              <a href="/templates/dw01/01-approved-pr.md" download>
-                <FileText /> Tải mẫu PR
-              </a>
-            </Button>
+            {!DW01_READONLY && (
+              <Button variant="outline" asChild>
+                <a href="/templates/dw01/01-approved-pr.md" download>
+                  <FileText /> Tải mẫu PR
+                </a>
+              </Button>
+            )}
             {canCreate && (
               <Button onClick={() => setFormOpen(true)}>
                 <Upload /> Tạo hồ sơ

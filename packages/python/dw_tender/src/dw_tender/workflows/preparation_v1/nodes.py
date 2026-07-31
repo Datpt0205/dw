@@ -755,7 +755,11 @@ class PreparationNodes:
                     stage="cp1_gate",
                     dedupe=_hash(gate)[:12],
                     heading="⚠️ Gate CP1 CHƯA ĐẠT — cần bổ sung",
-                    lines=[*result.reasons, "Mở hồ sơ để bổ sung/làm rõ rồi chạy tiếp."],
+                    lines=[
+                        *result.reasons,
+                        "Trả lời làm rõ NGAY TẠI ĐÂY bằng cách nhắn cho tôi — "
+                        "tôi sẽ ghi nhận và chạy tiếp.",
+                    ],
                 )
             await uow.cases.save(case)
             await uow.commit()

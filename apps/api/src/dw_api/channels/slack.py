@@ -30,6 +30,7 @@ logger = logging.getLogger("dw_api.channels.slack")
 
 _CONFIRM_ACTION = "dw01_chat_confirm"
 _EDIT_ACTION = "dw01_chat_edit"
+_PICK_CASE_ACTION = "dw01_chat_pick"
 # P4: decision/publication buttons on worker-sent cards.
 _INTAKE_APPROVE = "dw01_intake_approve"
 _INTAKE_REJECT = "dw01_intake_reject"
@@ -170,6 +171,7 @@ class SlackFrontOfficeService:
         known = (
             _CONFIRM_ACTION,
             _EDIT_ACTION,
+            _PICK_CASE_ACTION,
             _INTAKE_APPROVE,
             _INTAKE_REJECT,
             _CP_APPROVE,
@@ -213,6 +215,13 @@ class SlackFrontOfficeService:
         try:
             conv_uuid = UUID(value)
         except ValueError:
+            return
+        if action_id == _PICK_CASE_ACTION:
+            picked = await self.chat.conversation_service.handle_pick_case(
+                conversation_id=conv_uuid, context=context
+            )
+            for reply in picked.replies:
+                await self._send_reply(channel, message.get("thread_ts"), reply)
             return
         outcome = await self.chat.conversation_service.handle_action(
             action="confirm" if action_id == _CONFIRM_ACTION else "edit",
@@ -494,7 +503,23 @@ class SlackFrontOfficeService:
 
     async def _send_reply(self, channel: str, thread_ts: str | None, reply: Any) -> None:
         blocks: list[dict[str, Any]] | None = None
-        if reply.kind == "confirm_card" and reply.conversation_id is not None:
+        if getattr(reply, "case_options", ()):
+            blocks = [
+                {"type": "section", "text": {"type": "mrkdwn", "text": reply.text}},
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": title[:70], "emoji": True},
+                            "action_id": _PICK_CASE_ACTION,
+                            "value": conv_id,
+                        }
+                        for conv_id, title in reply.case_options
+                    ],
+                },
+            ]
+        elif reply.kind == "confirm_card" and reply.conversation_id is not None:
             summary = "\n".join(reply.summary_lines)
             blocks = [
                 {"type": "section", "text": {"type": "mrkdwn", "text": f"*{reply.text}*"}},

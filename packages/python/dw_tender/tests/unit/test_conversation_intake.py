@@ -98,6 +98,16 @@ class FakeStore:
         matches = [c for c in self.conversations.values() if c.channel_key == channel_key]
         return matches[-1] if matches else None
 
+    async def list_case_conversations(self, *, tenant_id, workspace_id, channel_key):
+        return [
+            c
+            for c in self.conversations.values()
+            if c.channel_key == channel_key and c.state == "case_created" and c.case_id
+        ][::-1]
+
+    async def touch(self, *, conversation_id, tenant_id):
+        return None
+
     async def get(self, *, conversation_id, tenant_id):
         return self.conversations.get(conversation_id)
 
@@ -327,3 +337,32 @@ async def test_cancel_intent_closes_conversation() -> None:
 def test_chat_reply_defaults() -> None:
     reply = ChatReply(text="hi")
     assert reply.kind == "message" and reply.summary_lines == ()
+
+
+def test_parse_vnd_amounts_units_and_plain() -> None:
+    from dw_tender.application.conversation.schemas import parse_vnd_amounts
+
+    assert 2_000_000_000 in parse_vnd_amounts("ngân sách 2 tỷ nhé")
+    assert 1_500_000_000 in parse_vnd_amounts("khoảng 1,5 tỷ")
+    assert 500_000_000 in parse_vnd_amounts("tầm 500 triệu")
+    assert 80_000_000 in parse_vnd_amounts("80tr thôi")
+    assert 2_000_000_000 in parse_vnd_amounts("2.000.000.000 VND")
+    assert parse_vnd_amounts("mua 100 laptop trong 45 ngày") == set()
+
+
+async def test_money_guard_drops_mismatched_llm_value() -> None:
+    store = FakeStore()
+    turn = IntakeChatTurn(
+        intent="provide_info",
+        # LLM mis-converted "2 tỷ" into 200 triệu:
+        slots=IntakeSlots(estimated_value_vnd=200_000_000),
+        reply_vi="Đã ghi nhận ngân sách.",
+        reasoning_summary="",
+    )
+    outcome = await make_service(store, turn).handle_message(
+        channel_key="slack:D1", text="ngân sách 2 tỷ", context=CONTEXT, display_name="An"
+    )
+    conv = next(iter(store.conversations.values()))
+    assert conv.slots.estimated_value_vnd is None  # mismatch -> dropped, not committed
+    assert "chưa khớp" in outcome.replies[0].text
+    assert "Kiểm chéo số tiền" in outcome.thinking

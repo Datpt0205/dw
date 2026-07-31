@@ -8,6 +8,7 @@ the versioned rule pack — never from the model.
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -90,6 +91,27 @@ class SubmissionInfo(BaseModel):
     )
 
 
+class ClarificationAnswerItem(BaseModel):
+    """One answered clarification, mapped from the user's natural reply."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    clarification_id: str = Field(description="ID câu hỏi làm rõ được trả lời")
+    answer: str = Field(description="Câu trả lời rút từ tin nhắn (hoặc gợi ý nếu user đồng ý)")
+
+
+class ClarifyTurn(BaseModel):
+    """Structured output when the case is waiting for clarifications."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    answers: list[ClarificationAnswerItem] = Field(
+        default_factory=list,
+        description="CHỈ các câu hỏi mà tin nhắn này thực sự trả lời",
+    )
+    reply_vi: str = Field(description="Phản hồi tiếng Việt gửi lại Slack")
+
+
 class IntakeChatTurn(BaseModel):
     """Structured output of one chat turn (validated model response)."""
 
@@ -120,6 +142,29 @@ _REQUIRED_LABELS: tuple[tuple[str, str], ...] = (
     ("deadline_days", "Thời hạn cần hàng (số ngày hoặc ngày cụ thể)"),
     ("delivery_location", "Địa điểm giao hàng"),
 )
+
+
+_VND_UNIT = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*(tỷ|tỉ|ty\b|triệu|tr\b)", re.IGNORECASE
+)
+_VND_PLAIN = re.compile(r"\b(\d{1,3}(?:[.,]\d{3}){2,}|\d{7,})\b")
+
+
+def parse_vnd_amounts(text: str) -> set[int]:
+    """Deterministic VND mentions in a message — cross-check for LLM parsing.
+
+    "2 tỷ" -> 2_000_000_000; "500 triệu"/"500tr" -> 500_000_000; plain digit
+    runs (>=7 digits, optionally dot/comma-grouped). Advisory only: used to
+    catch an LLM mis-conversion, never to silently override the user.
+    """
+    amounts: set[int] = set()
+    for number, unit in _VND_UNIT.findall(text):
+        value = float(number.replace(",", "."))
+        scale = 1_000_000_000 if unit.lower() in ("tỷ", "tỉ", "ty") else 1_000_000
+        amounts.add(round(value * scale))
+    for raw in _VND_PLAIN.findall(text):
+        amounts.add(int(raw.replace(".", "").replace(",", "")))
+    return amounts
 
 
 def missing_required(slots: IntakeSlots, rules: ProcurementRules) -> list[str]:

@@ -463,9 +463,6 @@ export default function Dw01CaseDetail({
   const submissionItems = (latestByType.get("submission_register")?.content[
     "items"
   ] ?? []) as any[];
-  const addendumDraft = latestByType.get("addendum_draft")?.content as
-    | Record<string, any>
-    | undefined;
   const addendumDecision = latestByType.get("addendum_decision")?.content as
     | Record<string, any>
     | undefined;

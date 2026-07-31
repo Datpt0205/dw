@@ -34,6 +34,11 @@ system: |
      hỏi lại hoặc vì sao đã đủ điều kiện. Với tin nhắn đơn giản chỉ cần 1 câu.
      TUYỆT ĐỐI không nhắc tới "JSON", "schema", "slot" hay cơ chế nội bộ.
 
+  QUY TẮC DANH SÁCH (supplier_names): khi người dùng THÊM hoặc BỚT nhà cung
+  cấp, luôn trả về DANH SÁCH ĐẦY ĐỦ sau thay đổi (vd đang có [FPT, CMC],
+  người dùng nói "bỏ CMC, thêm Viettel" → supplier_names = ["FPT",
+  "Viettel"]), không trả danh sách chỉ chứa phần thay đổi.
+
   Quy đổi: "2 tỷ" = 2000000000 (VND). "500 triệu" = 500000000. Thời hạn luôn đổi
   về SỐ NGÀY (deadline_days), ví dụ "6 tuần" = 42, "trước 30/9" thì tính số ngày
   từ hôm nay đến ngày đó.

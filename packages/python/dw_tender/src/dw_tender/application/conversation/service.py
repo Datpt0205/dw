@@ -11,24 +11,30 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC
-from typing import ClassVar, Literal, Protocol
+from typing import Any, ClassVar, Literal, Protocol
 
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.ports import ModelRequest, TracedModelGateway
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
 from dw_tender.application.conversation.schemas import (
+    ClarifyTurn,
     IntakeChatTurn,
     IntakeSlots,
     missing_required,
+    parse_vnd_amounts,
     render_pr_markdown,
 )
 from dw_tender.application.preparation.handlers import (
+    AnswerPreparationClarificationsHandler,
+    ClarificationAnswer,
     CreatePreparationCaseCommand,
     CreatePreparationCaseHandler,
+    GetPreparationCaseHandler,
     RecordPreparationSubmissionHandler,
     RecordSubmissionCommand,
     RequestCp4Handler,
+    RunPreparationHandler,
     SubmitAddendumCommand,
     SubmitPreparationAddendumHandler,
 )
@@ -65,6 +71,16 @@ class ConversationStorePort(Protocol):
         self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, channel_key: str
     ) -> ConversationView | None:
         """Most recent conversation on this channel regardless of state."""
+        ...
+
+    async def list_case_conversations(
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, channel_key: str
+    ) -> list[ConversationView]:
+        """Conversations owning a live case on this channel, focus-order."""
+        ...
+
+    async def touch(self, *, conversation_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
+        """Bump the conversation's recency (case-picker focus switch)."""
         ...
 
     async def get(
@@ -104,6 +120,8 @@ class ChatReply:
     summary_lines: tuple[str, ...] = ()
     conversation_id: uuid.UUID | None = None
     case_id: uuid.UUID | None = None
+    # Case picker (multi-case DMs): [(conversation_id, case title), ...]
+    case_options: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +153,10 @@ class ConversationIntakeService:
     submit_addendum: SubmitPreparationAddendumHandler | None = None
     record_submission: RecordPreparationSubmissionHandler | None = None
     request_cp4: RequestCp4Handler | None = None
+    # Clarification loop over chat (the web form is read-only now).
+    get_case: GetPreparationCaseHandler | None = None
+    answer_clarifications: AnswerPreparationClarificationsHandler | None = None
+    run_case: RunPreparationHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
     prompt_version: str = "1.1.0"
@@ -156,16 +178,20 @@ class ConversationIntakeService:
             channel_key=channel_key,
         )
         if conversation is None:
-            # No intake in flight — the previous conversation on this channel
-            # may own a live case whose lifecycle chat continues here.
-            latest = await self.store.find_latest(
+            # No intake in flight — conversations on this channel may own live
+            # cases; lifecycle chat targets the most recently focused one.
+            case_convs = await self.store.list_case_conversations(
                 tenant_id=context.tenant_id,
                 workspace_id=context.workspace_id,
                 channel_key=channel_key,
             )
-            if latest is not None and latest.state == "case_created" and latest.case_id:
+            if case_convs:
                 lifecycle = await self._try_lifecycle_turn(
-                    latest, text, context, display_name
+                    case_convs[0],
+                    text,
+                    context,
+                    display_name,
+                    siblings=case_convs[1:],
                 )
                 if lifecycle is not None:
                     return lifecycle
@@ -179,6 +205,22 @@ class ConversationIntakeService:
 
         turn = await self._run_turn(conversation, text, context, display_name)
         merged = conversation.slots.merged_with(turn.slots)
+
+        # Deterministic money cross-check: if the message names an amount and
+        # the LLM's conversion doesn't match any of them, do NOT trust it —
+        # drop the slot and ask for the exact figure instead of mis-committing.
+        money_guard = ""
+        if (
+            turn.slots.estimated_value_vnd is not None
+            and turn.slots.estimated_value_vnd != conversation.slots.estimated_value_vnd
+        ):
+            mentioned = parse_vnd_amounts(text)
+            if mentioned and turn.slots.estimated_value_vnd not in mentioned:
+                merged = merged.model_copy(update={"estimated_value_vnd": None})
+                money_guard = (
+                    " Riêng ngân sách, con số tôi hiểu chưa khớp với tin nhắn — "
+                    "bạn ghi rõ số tiền VND (vd: 2.000.000.000) giúp nhé?"
+                )
 
         if turn.intent == "cancel":
             await self.store.update(
@@ -208,8 +250,15 @@ class ConversationIntakeService:
             slots=merged,
         )
 
+        if money_guard:
+            thinking += (
+                "\n• ⚠️ Kiểm chéo số tiền: giá trị LLM quy đổi không khớp con số "
+                "trong tin nhắn → bỏ qua, hỏi lại chính xác."
+            )
         if missing:
-            return TurnOutcome(replies=(ChatReply(text=turn.reply_vi),), thinking=thinking)
+            return TurnOutcome(
+                replies=(ChatReply(text=turn.reply_vi + money_guard),), thinking=thinking
+            )
         return TurnOutcome(
             replies=(self._confirm_card(conversation.id, merged),), thinking=thinking
         )
@@ -303,6 +352,7 @@ class ConversationIntakeService:
         text: str,
         context: AccessContext,
         display_name: str,
+        siblings: list[ConversationView] | None = None,
     ) -> TurnOutcome | None:
         """Route post-publication intents on an existing case.
 
@@ -311,10 +361,33 @@ class ConversationIntakeService:
         are GENERATED from the conversation and stored through the same
         handlers the web upload used — no manual files.
         """
-        turn = await self._run_turn(conversation, text, context, display_name)
         case_id = conversation.case_id
         assert case_id is not None
 
+        # 🔴 Clarification loop: with the web form read-only, chat is the ONLY
+        # way to answer — a dedicated mapping turn, then auto-continue the run.
+        if self.get_case is not None and self.answer_clarifications is not None:
+            view = await self.get_case.handle(case_id, context)
+            if view.state == "waiting_clarification":
+                return await self._clarify_flow(view, case_id, text, context, display_name)
+
+        turn = await self._run_turn(conversation, text, context, display_name)
+        outcome = await self._lifecycle_action(
+            turn, conversation, case_id, text, context, display_name
+        )
+        if outcome is None:
+            return None
+        return await self._with_picker(outcome, conversation, siblings or [], context)
+
+    async def _lifecycle_action(
+        self,
+        turn: IntakeChatTurn,
+        conversation: ConversationView,
+        case_id: uuid.UUID,
+        text: str,
+        context: AccessContext,
+        display_name: str,
+    ) -> TurnOutcome | None:
         if turn.intent == "request_addendum" and self.submit_addendum is not None:
             change = (turn.addendum.change_summary if turn.addendum else "").strip() or text
             impact = (turn.addendum.impact_summary if turn.addendum else "").strip()
@@ -425,7 +498,173 @@ class ConversationIntakeService:
             return None  # new purchase → caller opens a fresh intake conversation
         return TurnOutcome(replies=(ChatReply(text=turn.reply_vi),))
 
+    async def _case_title(self, case_id: uuid.UUID, context: AccessContext) -> str:
+        if self.get_case is None:
+            return str(case_id)[:8]
+        try:
+            return (await self.get_case.handle(case_id, context)).title
+        except Exception:
+            return str(case_id)[:8]
+
+    async def _with_picker(
+        self,
+        outcome: TurnOutcome,
+        target: ConversationView,
+        siblings: list[ConversationView],
+        context: AccessContext,
+    ) -> TurnOutcome:
+        """Multi-case DM: say which case was targeted + offer a focus switch."""
+        if not siblings:
+            return outcome
+        target_title = (
+            await self._case_title(target.case_id, context) if target.case_id else "?"
+        )
+        options: list[tuple[str, str]] = []
+        for sib in siblings[:3]:
+            if sib.case_id is None:
+                continue
+            options.append((str(sib.id), await self._case_title(sib.case_id, context)))
+        picker = ChatReply(
+            text=(
+                f"📌 Áp dụng cho hồ sơ «{target_title}». Nhầm hồ sơ? "
+                "Chọn hồ sơ khác bên dưới rồi nhắn lại yêu cầu."
+            ),
+            case_options=tuple(options),
+        )
+        return TurnOutcome(replies=(*outcome.replies, picker), thinking=outcome.thinking)
+
+    async def handle_pick_case(
+        self, *, conversation_id: uuid.UUID, context: AccessContext
+    ) -> TurnOutcome:
+        """Case-picker button: switch chat focus to the chosen conversation."""
+        conversation = await self.store.get(
+            conversation_id=conversation_id, tenant_id=context.tenant_id
+        )
+        if conversation is None or conversation.case_id is None:
+            return TurnOutcome(replies=(ChatReply(text="Không tìm thấy hồ sơ này nữa."),))
+        await self.store.touch(conversation_id=conversation_id, tenant_id=context.tenant_id)
+        title = await self._case_title(conversation.case_id, context)
+        return TurnOutcome(
+            replies=(
+                ChatReply(
+                    text=(
+                        f"✅ Đã chuyển ngữ cảnh sang hồ sơ «{title}» — bạn nhắn lại "
+                        "yêu cầu giúp nhé."
+                    )
+                ),
+            )
+        )
+
+    async def _clarify_flow(
+        self,
+        view: Any,
+        case_id: uuid.UUID,
+        text: str,
+        context: AccessContext,
+        display_name: str,
+    ) -> TurnOutcome:
+        """Map a natural reply onto the pending clarification questions."""
+        items: list[dict[str, Any]] = []
+        for artifact in view.artifacts:
+            if artifact.artifact_type == "clarification_list":
+                items = [
+                    dict(item)
+                    for item in artifact.content.get("items", [])
+                    if isinstance(item, dict)
+                ]
+        pending = [item for item in items if item.get("blocking")]
+        if not pending:
+            return TurnOutcome(
+                replies=(
+                    ChatReply(
+                        text="Không còn câu hỏi làm rõ nào — Digital Worker sẽ tự chạy tiếp."
+                    ),
+                )
+            )
+        questions_text = "\n".join(
+            f"- {item.get('id')} | {item.get('question')} | gợi ý: "
+            f"{item.get('suggested_answer') or '(không có)'}"
+            for item in pending
+        )
+        run_context = self._agent_run_context(context, trace=f"clarify-{str(case_id)[:8]}")
+        turn = await self.gateway.generate_structured(
+            ModelRequest(
+                task="conversation.clarify_answers",
+                prompt_id="conversation.clarify_answers",
+                prompt_version="1.0.0",
+                variables={
+                    "questions": questions_text,
+                    "message": text,
+                    "display_name": display_name,
+                },
+                model_profile=self.model_profile,
+            ),
+            ClarifyTurn,
+            run_context=run_context,
+        )
+        valid_ids = {str(item.get("id")) for item in pending}
+        answers = tuple(
+            ClarificationAnswer(
+                clarification_id=item.clarification_id,
+                question=next(
+                    (
+                        str(p.get("question", ""))
+                        for p in pending
+                        if str(p.get("id")) == item.clarification_id
+                    ),
+                    "",
+                ),
+                answer=item.answer.strip(),
+                source_note=f"Trả lời qua Slack bởi {display_name}",
+            )
+            for item in turn.answers
+            if item.clarification_id in valid_ids and item.answer.strip()
+        )
+        if not answers:
+            return TurnOutcome(
+                replies=(ChatReply(text=turn.reply_vi),),
+                thinking=(
+                    f"• {len(pending)} câu hỏi làm rõ đang chờ; tin nhắn chưa trả lời "
+                    "được câu nào → hỏi lại."
+                ),
+            )
+        await self.answer_clarifications.handle(case_id, answers, context)  # type: ignore[union-attr]
+        remaining = len(pending) - len(answers)
+        thinking = (
+            f"• Ghi nhận {len(answers)}/{len(pending)} câu trả lời làm rõ (lưu "
+            "CLARIFICATION_RESPONSE).\n"
+            + (
+                f"• Còn {remaining} câu chưa trả lời → sẽ hỏi tiếp."
+                if remaining > 0
+                else "• Đã đủ — khởi động lại Digital Worker để chạy tiếp tới CP1."
+            )
+        )
+        if remaining <= 0 and self.run_case is not None:
+            await self.run_case.handle(case_id, context)
+            reply_text = (
+                "✅ Đã ghi nhận đủ các câu trả lời làm rõ — Digital Worker đang chạy "
+                "tiếp, bạn sẽ nhận tiến độ tại đây."
+            )
+        else:
+            reply_text = turn.reply_vi
+        return TurnOutcome(replies=(ChatReply(text=reply_text),), thinking=thinking)
+
     # ------------------------------------------------------------ internals --
+    def _agent_run_context(self, context: AccessContext, *, trace: str) -> RunContext:
+        return RunContext(
+            run_id=self.id_generator.new_uuid(),
+            tenant_id=context.tenant_id,
+            workspace_id=context.workspace_id,
+            actor_id=context.principal_id,
+            worker_id=self.worker_id,
+            worker_version=self.worker_version,
+            channel="slack",
+            plan_id=context.plan_id,
+            roles=context.roles,
+            scopes=context.scopes,
+            trace_id=trace,
+        )
+
     async def _run_turn(
         self,
         conversation: ConversationView,
@@ -447,18 +686,8 @@ class ConversationIntakeService:
             },
             model_profile=self.model_profile,
         )
-        run_context = RunContext(
-            run_id=self.id_generator.new_uuid(),
-            tenant_id=context.tenant_id,
-            workspace_id=context.workspace_id,
-            actor_id=context.principal_id,
-            worker_id=self.worker_id,
-            worker_version=self.worker_version,
-            channel="slack",
-            plan_id=context.plan_id,
-            roles=context.roles,
-            scopes=context.scopes,
-            trace_id=f"chat-{str(conversation.id)[:12]}",
+        run_context = self._agent_run_context(
+            context, trace=f"chat-{str(conversation.id)[:12]}"
         )
         # reasoning_summary/reasoning_content stay available for logging, but
         # the DISPLAYED thinking is system-built (see _build_thinking).

@@ -108,9 +108,19 @@ docker logs dw-api 2>&1 | Select-String "slack"   # "slack socket-mode connected
 | Bot trả lời 2 lần | Không xảy ra: event được dedupe qua `platform.channel_event_dedupe` |
 | Người lạ nhắn bot | Nhận hướng dẫn map ID; không truy cập được dữ liệu case |
 
-## 6. Giới hạn phase này (chủ đích)
+## 6. Phạm vi đã phủ (P0-P8 hoàn tất)
 
-- Socket Mode là đường **local/demo**; production sẽ thêm HTTP Events endpoint
-  + verify chữ ký (`SLACK_SIGNING_SECRET`) theo plan §12.5 — phase sau.
-- Chat mới phủ **intake** (P2). Activity trace ra Slack (P3), duyệt CP qua
-  Slack (P4), Review Agent (P5), autonomy (P6) — theo thứ tự plan §25.
+- **Toàn bộ vòng đời qua Slack**: intake hội thoại → verify → CP1-CP4 (nút
+  duyệt trên card) → phát hành → addendum/CP3 → ghi nhận HSDT → mở thầu/CP4 →
+  handoff. Docs (PR, addendum, biên nhận, biên bản mở thầu) tự sinh — không
+  upload. Trả lời làm rõ (`waiting_clarification`) cũng qua chat.
+- **Review Agent (P5)**: đề xuất + căn cứ trên card CP1/CP2 (deepseek-reasoner).
+- **Autonomy (P6)**: `DW_AUTONOMY_PROFILE=autonomous_demo` → CP1 tự duyệt cho
+  gói chỉ định thầu rủi ro thấp; mặc định `governed_production` luôn chờ người.
+- **App Home (P7)**: tab Home = "Việc của tôi" (cần bot event `app_home_opened`
+  + bật Home Tab).
+- **Production ingress (P8)**: đặt `SLACK_SIGNING_SECRET` để bật HTTPS
+  endpoints `/api/v1/channels/slack/{events,interactions}` (verify chữ ký,
+  chặn replay). Socket Mode vẫn là đường local/demo.
+- **Web = read-only back office** (`NEXT_PUBLIC_DW01_READONLY`, mặc định bật):
+  chỉ theo dõi/tra cứu; build với `=false` để trả lại nút web khi regression.

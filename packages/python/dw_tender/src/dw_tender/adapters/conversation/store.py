@@ -88,6 +88,38 @@ class SqlConversationStore:
             ).one_or_none()
             return _view(row) if row else None
 
+    async def list_case_conversations(
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, channel_key: str
+    ) -> list[ConversationView]:
+        """Conversations on this channel that own a live case, newest focus first."""
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_TENANT, {"tenant_id": str(tenant_id)})
+            rows = (
+                await session.execute(
+                    sa.select(chat_conversations)
+                    .where(
+                        chat_conversations.c.tenant_id == tenant_id,
+                        chat_conversations.c.workspace_id == workspace_id,
+                        chat_conversations.c.channel_key == channel_key,
+                        chat_conversations.c.state == "case_created",
+                        chat_conversations.c.case_id.is_not(None),
+                    )
+                    .order_by(chat_conversations.c.updated_at.desc())
+                    .limit(8)
+                )
+            ).all()
+            return [_view(row) for row in rows]
+
+    async def touch(self, *, conversation_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
+        """Bump updated_at — used by the case picker to switch chat focus."""
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_TENANT, {"tenant_id": str(tenant_id)})
+            await session.execute(
+                sa.update(chat_conversations)
+                .where(chat_conversations.c.id == conversation_id)
+                .values(updated_at=self.clock.now())
+            )
+
     async def get(
         self, *, conversation_id: uuid.UUID, tenant_id: uuid.UUID
     ) -> ConversationView | None:
