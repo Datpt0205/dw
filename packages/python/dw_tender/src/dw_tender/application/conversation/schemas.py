@@ -55,7 +55,38 @@ class IntakeSlots(BaseModel):
         return IntakeSlots.model_validate(data)
 
 
-ChatIntent = Literal["create_request", "provide_info", "ask_status", "cancel", "other"]
+ChatIntent = Literal[
+    "create_request",
+    "provide_info",
+    "ask_status",
+    "cancel",
+    "other",
+    # Post-publication lifecycle (only meaningful when the case exists):
+    "request_addendum",
+    "record_submission",
+]
+
+
+class AddendumRequest(BaseModel):
+    """Details for a post-publication amendment (CP3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    change_summary: str = Field(default="", description="Nội dung sửa đổi/làm rõ")
+    impact_summary: str = Field(
+        default="", description="Ảnh hưởng tới NCC/thời hạn (nếu người dùng nêu)"
+    )
+
+
+class SubmissionInfo(BaseModel):
+    """A supplier bid submission reported through chat."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    supplier_name: str = Field(default="", description="Tên nhà cung cấp nộp hồ sơ")
+    external_reference: str = Field(
+        default="", description="Mã tham chiếu/số văn bản nếu có"
+    )
 
 
 class IntakeChatTurn(BaseModel):
@@ -67,6 +98,12 @@ class IntakeChatTurn(BaseModel):
     slots: IntakeSlots = Field(
         default_factory=IntakeSlots,
         description="CHỈ những thông tin tin nhắn này cung cấp",
+    )
+    addendum: AddendumRequest | None = Field(
+        default=None, description="Khi intent=request_addendum"
+    )
+    submission: SubmissionInfo | None = Field(
+        default=None, description="Khi intent=record_submission"
     )
     reply_vi: str = Field(description="Câu trả lời tiếng Việt gửi lại Slack")
     reasoning_summary: str = Field(

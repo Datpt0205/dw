@@ -92,6 +92,7 @@ def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
         cp_label = {
             "CP1": "CP1 — Duyệt phương án mua sắm",
             "CP2": "CP2 — Duyệt hồ sơ trước phát hành",
+            "CP3": "CP3 — Duyệt làm rõ/sửa đổi sau phát hành",
         }.get(cp, cp)
         heading = f"🔔 {cp_label}: chờ bạn quyết định"
         body = f"*{message.case_title}*\n" + "\n".join(f"• {line}" for line in message.lines)

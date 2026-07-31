@@ -26,6 +26,10 @@ from dw_tender.application.conversation.schemas import (
 from dw_tender.application.preparation.handlers import (
     CreatePreparationCaseCommand,
     CreatePreparationCaseHandler,
+    RecordPreparationSubmissionHandler,
+    RecordSubmissionCommand,
+    SubmitAddendumCommand,
+    SubmitPreparationAddendumHandler,
 )
 from dw_tender.application.preparation.rules import ProcurementRules
 from dw_tender.domain.preparation.entities import BusinessDomain, ProcurementType
@@ -55,6 +59,12 @@ class ConversationStorePort(Protocol):
     async def find_active(
         self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, channel_key: str
     ) -> ConversationView | None: ...
+
+    async def find_latest(
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, channel_key: str
+    ) -> ConversationView | None:
+        """Most recent conversation on this channel regardless of state."""
+        ...
 
     async def get(
         self, *, conversation_id: uuid.UUID, tenant_id: uuid.UUID
@@ -119,9 +129,13 @@ class ConversationIntakeService:
     rules: ProcurementRules
     clock: UtcClock
     id_generator: IdGenerator
+    # Post-publication lifecycle driven from chat (docs are GENERATED from the
+    # conversation — no manual uploads). Optional so intake-only wiring works.
+    submit_addendum: SubmitPreparationAddendumHandler | None = None
+    record_submission: RecordPreparationSubmissionHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.0.0"
+    prompt_version: str = "1.1.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 
@@ -140,6 +154,19 @@ class ConversationIntakeService:
             channel_key=channel_key,
         )
         if conversation is None:
+            # No intake in flight — the previous conversation on this channel
+            # may own a live case whose lifecycle chat continues here.
+            latest = await self.store.find_latest(
+                tenant_id=context.tenant_id,
+                workspace_id=context.workspace_id,
+                channel_key=channel_key,
+            )
+            if latest is not None and latest.state == "case_created" and latest.case_id:
+                lifecycle = await self._try_lifecycle_turn(
+                    latest, text, context, display_name
+                )
+                if lifecycle is not None:
+                    return lifecycle
             conversation = await self.store.create(
                 conversation_id=self.id_generator.new_uuid(),
                 tenant_id=context.tenant_id,
@@ -266,6 +293,117 @@ class ConversationIntakeService:
                 ),
             )
         )
+
+    # ----------------------------------------------------- lifecycle (P4b) ---
+    async def _try_lifecycle_turn(
+        self,
+        conversation: ConversationView,
+        text: str,
+        context: AccessContext,
+        display_name: str,
+    ) -> TurnOutcome | None:
+        """Route post-publication intents on an existing case.
+
+        Returns None when the message is a NEW purchase request — the caller
+        then opens a fresh intake conversation. Documents (addendum, biên nhận)
+        are GENERATED from the conversation and stored through the same
+        handlers the web upload used — no manual files.
+        """
+        turn = await self._run_turn(conversation, text, context, display_name)
+        case_id = conversation.case_id
+        assert case_id is not None
+
+        if turn.intent == "request_addendum" and self.submit_addendum is not None:
+            change = (turn.addendum.change_summary if turn.addendum else "").strip() or text
+            impact = (turn.addendum.impact_summary if turn.addendum else "").strip()
+            markdown = (
+                f"# Văn bản sửa đổi/làm rõ HSMT (addendum)\n\n"
+                f"- Hồ sơ: {conversation.channel_key}\n"
+                f"- Người yêu cầu: {display_name} (qua Slack)\n"
+                f"- Ngày lập: {self.clock.now().astimezone(UTC):%d/%m/%Y %H:%M}\n\n"
+                f"## Nội dung sửa đổi\n\n{change}\n\n"
+                f"## Đánh giá ảnh hưởng\n\n{impact or 'Chưa đánh giá — cần CP3 xem xét.'}\n"
+            )
+            await self.submit_addendum.handle(
+                case_id,
+                SubmitAddendumCommand(
+                    filename="addendum-from-chat.md",
+                    content_type="text/markdown; charset=utf-8",
+                    content=markdown.encode("utf-8"),
+                    change_summary=change,
+                    impact_summary=impact,
+                ),
+                context,
+            )
+            return TurnOutcome(
+                replies=(
+                    ChatReply(
+                        text=(
+                            "📝 Đã lập văn bản sửa đổi (addendum) từ nội dung bạn nêu và "
+                            "trình duyệt CP3. Quản lý sẽ nhận thẻ quyết định trên Slack."
+                        )
+                    ),
+                ),
+                thinking=(
+                    "• Nhận diện yêu cầu sửa đổi sau phát hành.\n"
+                    f"• Nội dung: {change[:160]}\n"
+                    "• Văn bản addendum được hệ thống tự soạn và lưu vào hồ sơ → chờ CP3."
+                ),
+            )
+
+        if turn.intent == "record_submission" and self.record_submission is not None:
+            supplier = (turn.submission.supplier_name if turn.submission else "").strip()
+            if not supplier:
+                return TurnOutcome(
+                    replies=(
+                        ChatReply(text="Bạn cho tôi biết tên nhà cung cấp đã nộp hồ sơ nhé?"),
+                    )
+                )
+            reference = (turn.submission.external_reference if turn.submission else "").strip()
+            now = self.clock.now().astimezone(UTC)
+            receipt = (
+                f"# Biên nhận hồ sơ dự thầu\n\n"
+                f"- Nhà cung cấp: {supplier}\n"
+                f"- Tham chiếu: {reference or '—'}\n"
+                f"- Thời điểm tiếp nhận: {now:%d/%m/%Y %H:%M}\n"
+                f"- Ghi nhận bởi: {display_name} (qua Slack)\n"
+            )
+            await self.record_submission.handle(
+                case_id,
+                RecordSubmissionCommand(
+                    filename=f"submission-{supplier.lower().replace(' ', '-')}.md",
+                    content_type="text/markdown; charset=utf-8",
+                    content=receipt.encode("utf-8"),
+                    supplier_name=supplier,
+                    received_at=now.isoformat(),
+                    receipt_status="received",
+                    external_reference=reference,
+                ),
+                context,
+            )
+            return TurnOutcome(
+                replies=(
+                    ChatReply(
+                        text=(
+                            f"📥 Đã ghi nhận hồ sơ dự thầu của «{supplier}» và lưu biên nhận "
+                            "vào sổ tiếp nhận."
+                        )
+                    ),
+                ),
+                thinking=(
+                    f"• Ghi nhận HSDT từ «{supplier}»"
+                    + (f" (tham chiếu {reference})" if reference else "")
+                    + ".\n• Biên nhận được hệ thống tự lập và niêm phong vào hồ sơ."
+                ),
+            )
+
+        if turn.intent == "ask_status":
+            return TurnOutcome(
+                replies=(self._case_link(case_id, "Trạng thái chi tiết của hồ sơ:"),)
+            )
+        if turn.intent == "create_request":
+            return None  # new purchase → caller opens a fresh intake conversation
+        return TurnOutcome(replies=(ChatReply(text=turn.reply_vi),))
 
     # ------------------------------------------------------------ internals --
     async def _run_turn(

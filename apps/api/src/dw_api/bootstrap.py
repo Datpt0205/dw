@@ -702,6 +702,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                         rules=procurement_rules,
                         clock=clock,
                         id_generator=id_generator,
+                        submit_addendum=preparation.submit_addendum,
+                        record_submission=preparation.record_submission,
                         model_profile=settings.model_profile,
                         web_base_url=settings.public_web_url,
                     ),

@@ -85,7 +85,7 @@ class SlackApprovalConsumer:
         # A CP decision card is only worth sending while that checkpoint is
         # actually pending — a stale card would offer buttons for a dead state.
         if job.event_type.value == "cp.approval_requested":
-            expected = {"CP1": "cp1_pending", "CP2": "cp2_pending"}.get(
+            expected = {"CP1": "cp1_pending", "CP2": "cp2_pending", "CP3": "cp3_pending"}.get(
                 str(job.payload.get("checkpoint", ""))
             )
             if expected is not None and delivery.case_state != expected:

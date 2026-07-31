@@ -94,6 +94,10 @@ class FakeStore:
                 return conv
         return None
 
+    async def find_latest(self, *, tenant_id, workspace_id, channel_key):
+        matches = [c for c in self.conversations.values() if c.channel_key == channel_key]
+        return matches[-1] if matches else None
+
     async def get(self, *, conversation_id, tenant_id):
         return self.conversations.get(conversation_id)
 

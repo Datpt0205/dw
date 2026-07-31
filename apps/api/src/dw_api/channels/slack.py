@@ -280,6 +280,20 @@ class SlackFrontOfficeService:
             cp, _, case_raw = value.partition(":")
             case_id = UUID(case_raw)
             approve = action_id == _CP_APPROVE
+            if cp == "cp3":
+                # CP3 is a domain decision (no LangGraph interrupt behind it).
+                await preparation.decide_cp3.handle(
+                    case_id,
+                    approve=approve,
+                    approval_reference=f"SLACK-{now:%Y%m%d-%H%M%S}",
+                    comment=f"Quyết định qua Slack bởi {display_name}",
+                    context=context,
+                )
+                return (
+                    "✅ Đã duyệt CP3 — addendum có hiệu lực."
+                    if approve
+                    else "⛔ Đã từ chối CP3 — HSMT giữ nguyên."
+                )
             approval_id = await self._find_pending_approval(cp, case_id, context)
             if approval_id is None:
                 return (

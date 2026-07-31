@@ -702,6 +702,36 @@ class SubmitPreparationAddendumHandler:
                 status=ArtifactStatus.SUBMITTED,
             )
             case.submit_addendum()
+            # P4: decision card for the approver — CP3 is decided in Slack.
+            approver = await uow.notifications.find_recipient_for_role("approver")
+            if approver is not None:
+                await uow.notifications.enqueue(
+                    IntakeNotificationJob(
+                        id=self.id_generator.new_uuid(),
+                        tenant_id=case.tenant_id,
+                        workspace_id=case.workspace_id,
+                        case_id=case.id,
+                        event_type=IntakeNotificationType.CP_APPROVAL_REQUESTED,
+                        recipient_user_id=approver,
+                        due_at=self.clock.now(),
+                        idempotency_key=(
+                            f"dw01:{case.id.value}:cpcard:CP3:{document.content_hash[:12]}"
+                        ),
+                        payload={
+                            "title": case.title,
+                            "checkpoint": "CP3",
+                            "case_id": str(case.id.value),
+                            "lines": [
+                                f"Nội dung sửa đổi: {command.change_summary.strip()[:200]}",
+                                (
+                                    "Ảnh hưởng: "
+                                    + (command.impact_summary.strip()[:200] or "chưa đánh giá")
+                                ),
+                                "Văn bản addendum do hệ thống soạn từ trao đổi Slack.",
+                            ],
+                        },
+                    )
+                )
             await uow.cases.save(case)
             await uow.commit()
 
@@ -763,6 +793,38 @@ class DecidePreparationCp3Handler:
                 status=ArtifactStatus.APPROVED if approve else ArtifactStatus.DRAFT,
             )
             case.resolve_cp3()
+            # P3 trace: tell the owner what was decided.
+            await uow.notifications.enqueue(
+                IntakeNotificationJob(
+                    id=self.id_generator.new_uuid(),
+                    tenant_id=case.tenant_id,
+                    workspace_id=case.workspace_id,
+                    case_id=case.id,
+                    event_type=IntakeNotificationType.RUN_PROGRESS,
+                    recipient_user_id=case.created_by,
+                    due_at=self.clock.now(),
+                    idempotency_key=(
+                        f"dw01:{case.id.value}:progress:cp3_decision:{draft.content_hash[:12]}"
+                    ),
+                    payload={
+                        "title": case.title,
+                        "heading": (
+                            "✅ CP3 — Sửa đổi ĐÃ ĐƯỢC DUYỆT"
+                            if approve
+                            else "⛔ CP3 — Sửa đổi bị TỪ CHỐI"
+                        ),
+                        "lines": [
+                            f"Tham chiếu phê duyệt: {approval_reference.strip()}.",
+                            (comment.strip() or "Không có nhận xét."),
+                            (
+                                "Addendum có hiệu lực — tiếp tục tiếp nhận hồ sơ dự thầu."
+                                if approve
+                                else "Addendum không có hiệu lực; HSMT giữ nguyên."
+                            ),
+                        ],
+                    },
+                )
+            )
             await uow.cases.save(case)
             await uow.commit()
 
