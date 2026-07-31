@@ -508,6 +508,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 knowledge=knowledge_gateway,
                 model_gateway=gateway,
                 model_profile=settings.model_profile,
+                autonomy_profile=settings.autonomy_profile,
             )
 
             graph_registry = GraphRegistry()

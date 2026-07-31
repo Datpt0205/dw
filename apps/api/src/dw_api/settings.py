@@ -142,6 +142,12 @@ class ApiSettings(BaseSettings):
         validation_alias=AliasChoices("DW_API_TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN"),
     )
 
+    # P6 delegated autonomy: governed_production | autonomous_demo
+    autonomy_profile: str = Field(
+        default="governed_production",
+        validation_alias=AliasChoices("DW_API_AUTONOMY_PROFILE", "DW_AUTONOMY_PROFILE"),
+    )
+
     # --- Slack chat front office (conversation-first plan P1) ---
     chat_front_office_enabled: bool = Field(
         default=False,
@@ -152,6 +158,11 @@ class ApiSettings(BaseSettings):
     slack_app_token: str | None = Field(
         default=None,
         validation_alias=AliasChoices("DW_API_SLACK_APP_TOKEN", "SLACK_APP_TOKEN"),
+    )
+    # P8: enables the signature-verified HTTPS ingress (production path).
+    slack_signing_secret: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DW_API_SLACK_SIGNING_SECRET", "SLACK_SIGNING_SECRET"),
     )
     public_web_url: str = Field(
         default="http://localhost:3000",

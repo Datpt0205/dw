@@ -19,7 +19,7 @@ from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.ports import ModelRequest
 from dw_kernel.errors import DomainError
-from dw_kernel.ids import TenantId
+from dw_kernel.ids import TenantId, UserId
 from dw_knowledge.contracts import SearchQuery
 from dw_tender.application.preparation.drafts import CriteriaDraft, SolicitationDraft
 from dw_tender.application.preparation.extraction import PreparationExtraction
@@ -160,6 +160,7 @@ class PreparationNodes:
         heading: str,
         lines: list[str],
         buttons: list[dict[str, str]] | None = None,
+        recipient: UserId | None = None,
     ) -> None:
         """Durable Slack progress card for the case owner (P3 activity trace).
 
@@ -179,7 +180,7 @@ class PreparationNodes:
                 workspace_id=case.workspace_id,
                 case_id=case.id,
                 event_type=IntakeNotificationType.RUN_PROGRESS,
-                recipient_user_id=case.created_by,
+                recipient_user_id=recipient or case.created_by,
                 due_at=self.services.clock.now(),
                 idempotency_key=f"dw01:{case.id.value}:progress:{stage}:{dedupe}",
                 payload=payload,
@@ -656,13 +657,27 @@ class PreparationNodes:
                 CaseState.CP1_PENDING if result.passed else CaseState.WAITING_CLARIFICATION,
                 "cp1",
             )
+            # P6 delegated autonomy: low-risk method (direct purchase per rule
+            # pack) + reviewer approves + demo profile → auto-approve CP1 with
+            # a recorded, auditable decision. Everything else pauses for a human.
+            autopilot = (
+                result.passed
+                and review is not None
+                and review.recommendation == "approve"
+                and method.min_suppliers == 1
+                and self.services.autonomy_profile == "autonomous_demo"
+            )
             if result.passed:
                 await self._notify_progress(
                     uow,
                     case,
                     stage="cp1_gate",
                     dedupe=_hash(gate)[:12],
-                    heading="⚖️ Gate CP1: ĐẠT — chờ Quản lý phê duyệt",
+                    heading=(
+                        "⚖️ Gate CP1: ĐẠT — đủ điều kiện tự phê duyệt"
+                        if autopilot
+                        else "⚖️ Gate CP1: ĐẠT — chờ Quản lý phê duyệt"
+                    ),
                     lines=[
                         (
                             f"Giá trị {_fmt_vnd(state.get('estimated_value_minor', 0))} → "
@@ -672,7 +687,12 @@ class PreparationNodes:
                             f"NCC dự kiến: {state.get('supplier_count_planned', 0)} "
                             f"(tối thiểu {method.min_suppliers})."
                         ),
-                        "Đã trình duyệt CP1 — hồ sơ tạm dừng chờ quyết định.",
+                        (
+                            "Gói rủi ro thấp trong phạm vi ủy quyền — Review Agent "
+                            "sẽ tự phê duyệt CP1."
+                            if autopilot
+                            else "Đã trình duyệt CP1 — hồ sơ tạm dừng chờ quyết định."
+                        ),
                     ],
                 )
                 cp1_lines = [
@@ -695,17 +715,39 @@ class PreparationNodes:
                             "checkpoint": "CP1",
                             "agent_id": "dw01.review_agent",
                             "prompt_version": "1.0.0",
+                            "decision_mode": (
+                                "delegated_autonomy" if autopilot else "advisory"
+                            ),
                             **review.model_dump(),
                         },
                     )
                     cp1_lines += review_card_lines(review)
-                await self._notify_cp_approval(
-                    uow,
-                    case,
-                    checkpoint="CP1",
-                    dedupe=_hash(gate)[:12],
-                    lines=cp1_lines,
-                )
+                if autopilot:
+                    # Inform the approver (no buttons) — with a standing override path.
+                    approver = await uow.notifications.find_recipient_for_role("approver")
+                    if approver is not None:
+                        await self._notify_progress(
+                            uow,
+                            case,
+                            stage="cp1_autonomy_fyi",
+                            dedupe=_hash(gate)[:12],
+                            heading="🤖 CP1 đã được Review Agent phê duyệt theo ủy quyền",
+                            lines=[
+                                *cp1_lines,
+                                "Chính sách: AUTONOMOUS_DEMO — gói «chỉ định thầu» "
+                                "rủi ro thấp.",
+                                "Bạn có thể yêu cầu xem xét lại bằng cách mở hồ sơ.",
+                            ],
+                            recipient=approver,
+                        )
+                else:
+                    await self._notify_cp_approval(
+                        uow,
+                        case,
+                        checkpoint="CP1",
+                        dedupe=_hash(gate)[:12],
+                        lines=cp1_lines,
+                    )
             else:
                 await self._notify_progress(
                     uow,
@@ -717,6 +759,18 @@ class PreparationNodes:
                 )
             await uow.cases.save(case)
             await uow.commit()
+        if autopilot and review is not None:
+            return {
+                "approach_gate": gate,
+                "cp1_payload": payload,
+                "cp1_decision": {
+                    "approved": True,
+                    "mode": "delegated_autonomy",
+                    "decided_by_agent": "dw01.review_agent",
+                    "policy": "AUTONOMOUS_DEMO",
+                    "comment": review.rationale_summary,
+                },
+            }
         return {"approach_gate": gate, "cp1_payload": payload}
 
     # -- 6/7. CP1 interrupt + apply --------------------------------------
@@ -737,9 +791,15 @@ class PreparationNodes:
                 CaseState.CP1_APPROVED if approved else CaseState.CP1_REJECTED,
                 "build_solicitation" if approved else "cp1_rejected",
             )
+            delegated = decision.get("mode") == "delegated_autonomy"
             if approved:
                 lines = [
-                    "Phương án mua sắm đã được phê duyệt.",
+                    (
+                        "Quyết định theo ủy quyền bởi Review Agent "
+                        f"(policy {decision.get('policy', '')})."
+                        if delegated
+                        else "Phương án mua sắm đã được phê duyệt."
+                    ),
                     "Tiếp theo: dựng hồ sơ mời thầu (HSMT), tiêu chí đánh giá, "
                     "shortlist NCC và kiểm tra rủi ro…",
                 ]
@@ -754,7 +814,9 @@ class PreparationNodes:
                 stage="cp1_decision",
                 dedupe=rc.run_id.hex[:12],
                 heading=(
-                    "✅ CP1 — Phương án mua sắm ĐÃ ĐƯỢC DUYỆT"
+                    "🤖 CP1 — TỰ PHÊ DUYỆT theo ủy quyền"
+                    if approved and delegated
+                    else "✅ CP1 — Phương án mua sắm ĐÃ ĐƯỢC DUYỆT"
                     if approved
                     else "⛔ CP1 — Phương án bị TỪ CHỐI"
                 ),

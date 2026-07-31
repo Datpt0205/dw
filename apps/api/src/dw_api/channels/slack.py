@@ -437,12 +437,21 @@ class SlackFrontOfficeService:
         return re.sub(r"<@[A-Z0-9]+>", "", text).strip()
 
 
-def start_slack_front_office(
+def build_front_office(
     container: ApiContainer, chat: ChatFrontOffice, repo_root: Path
+) -> SlackFrontOfficeService:
+    return SlackFrontOfficeService(container=container, chat=chat, repo_root=repo_root)
+
+
+def start_slack_front_office(
+    container: ApiContainer,
+    chat: ChatFrontOffice,
+    repo_root: Path,
+    service: SlackFrontOfficeService | None = None,
 ) -> asyncio.Task[None]:
     """Spawn the Socket Mode loop as a background task (cancelled on shutdown)."""
     from dw_connectors.adapters.slack_chat import SlackSocketModeRunner
 
-    service = SlackFrontOfficeService(container=container, chat=chat, repo_root=repo_root)
+    service = service or build_front_office(container, chat, repo_root)
     runner = SlackSocketModeRunner(app_token=chat.app_token, handler=service.handle_envelope)
     return asyncio.get_running_loop().create_task(runner.run_forever())

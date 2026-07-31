@@ -27,7 +27,7 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
     container = container or build_container()
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         bot_task = None
         slack_task = None
         settings = container.settings
@@ -44,7 +44,9 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
             from dw_api.bootstrap import REPO_ROOT
             from dw_api.channels.slack import start_slack_front_office
 
-            slack_task = start_slack_front_office(container, container.chat, REPO_ROOT)
+            slack_task = start_slack_front_office(
+                container, container.chat, REPO_ROOT, service=app.state.slack_front_office
+            )
         try:
             yield
         finally:
@@ -62,6 +64,25 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
         openapi_url="/api/openapi.json",
     )
     app.state.container = container
+    # Slack front office: one service instance shared by the Socket Mode task
+    # and (when a signing secret is configured) the HTTPS ingress (P8).
+    app.state.slack_front_office = None
+    if container.chat is not None:
+        from dw_api.bootstrap import REPO_ROOT
+        from dw_api.channels.slack import build_front_office
+
+        app.state.slack_front_office = build_front_office(container, container.chat, REPO_ROOT)
+        if container.settings.slack_signing_secret:
+            from dw_api.routes.v1.slack_channel import build_slack_channel_router
+            from dw_connectors.adapters.slack_signature import SlackSignatureVerifier
+
+            app.include_router(
+                build_slack_channel_router(
+                    app.state.slack_front_office,
+                    SlackSignatureVerifier(container.settings.slack_signing_secret),
+                ),
+                prefix="/api/v1",
+            )
     # Middleware runs in reverse registration order: request-id first, then limit.
     app.add_middleware(
         RateLimitMiddleware, requests_per_minute=container.settings.rate_limit_per_minute

@@ -43,7 +43,13 @@ def _route_after_cp1(state: PreparationState) -> str:
 
 
 def _route_after_approach_gate(state: PreparationState) -> str:
-    return "cp1_review" if state.get("approach_gate", {}).get("passed") else "close_incomplete"
+    if not state.get("approach_gate", {}).get("passed"):
+        return "close_incomplete"
+    # P6: the gate node pre-fills cp1_decision when delegated autonomy applies —
+    # skip the human interrupt and apply the (recorded, auditable) decision.
+    if state.get("cp1_decision"):
+        return "apply_cp1"
+    return "cp1_review"
 
 
 def _route_after_cp2(state: PreparationState) -> str:
@@ -72,7 +78,11 @@ def build_preparation_graph(services: PreparationServices) -> StateGraph:  # typ
     graph.add_conditional_edges(
         "approach_gate",
         _route_after_approach_gate,
-        {"cp1_review": "cp1_review", "close_incomplete": "close_incomplete"},
+        {
+            "cp1_review": "cp1_review",
+            "apply_cp1": "apply_cp1",  # P6 delegated autonomy skips the interrupt
+            "close_incomplete": "close_incomplete",
+        },
     )
     graph.add_edge("cp1_review", "apply_cp1")
 

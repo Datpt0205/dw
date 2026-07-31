@@ -36,6 +36,10 @@ class PreparationServices:
     # absent (or on failure), the node falls back to deterministic line parsing.
     model_gateway: ModelGateway | None = None
     model_profile: str = "balanced"
+    # P6 delegated autonomy: "governed_production" (default) always pauses for
+    # a human; "autonomous_demo" lets the Review Agent auto-approve CP1 for
+    # low-risk methods (min_suppliers == 1, i.e. direct purchase per rule pack).
+    autonomy_profile: str = "governed_production"
     prompt_bundle_version: str = "1.0.0"
     schema_version: str = "1.0"
     exports_bucket_prefix: str = "exports"
