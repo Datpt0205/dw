@@ -93,32 +93,48 @@ def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
             "CP1": "CP1 — Duyệt phương án mua sắm",
             "CP2": "CP2 — Duyệt hồ sơ trước phát hành",
             "CP3": "CP3 — Duyệt làm rõ/sửa đổi sau phát hành",
+            "CP4": "CP4 — Xác nhận mở thầu & bàn giao DW02",
         }.get(cp, cp)
         heading = f"🔔 {cp_label}: chờ bạn quyết định"
         body = f"*{message.case_title}*\n" + "\n".join(f"• {line}" for line in message.lines)
         text = f"{heading} — {message.case_title}"
+        if cp == "CP4":
+            decision_elements: list[dict[str, Any]] = [
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "✅ Xác nhận mở thầu & bàn giao",
+                        "emoji": True,
+                    },
+                    "action_id": "dw01_cp4_confirm",
+                    "value": str(message.case_id),
+                },
+            ]
+        else:
+            decision_elements = [
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "text": {"type": "plain_text", "text": f"✅ Duyệt {cp}", "emoji": True},
+                    "action_id": "dw01_cp_approve",
+                    "value": f"{cp.lower()}:{message.case_id}",
+                },
+                {
+                    "type": "button",
+                    "style": "danger",
+                    "text": {"type": "plain_text", "text": "❌ Từ chối", "emoji": True},
+                    "action_id": "dw01_cp_reject",
+                    "value": f"{cp.lower()}:{message.case_id}",
+                },
+            ]
         blocks = [
             {"type": "section", "text": {"type": "mrkdwn", "text": f"*{heading}*"}},
             {"type": "section", "text": {"type": "mrkdwn", "text": body}},
             {
                 "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "style": "primary",
-                        "text": {"type": "plain_text", "text": f"✅ Duyệt {cp}", "emoji": True},
-                        "action_id": "dw01_cp_approve",
-                        "value": f"{cp.lower()}:{message.case_id}",
-                    },
-                    {
-                        "type": "button",
-                        "style": "danger",
-                        "text": {"type": "plain_text", "text": "❌ Từ chối", "emoji": True},
-                        "action_id": "dw01_cp_reject",
-                        "value": f"{cp.lower()}:{message.case_id}",
-                    },
-                    _link_button(message, "Xem chi tiết"),
-                ],
+                "elements": [*decision_elements, _link_button(message, "Xem chi tiết")],
             },
             {
                 "type": "context",

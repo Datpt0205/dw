@@ -64,6 +64,7 @@ ChatIntent = Literal[
     # Post-publication lifecycle (only meaningful when the case exists):
     "request_addendum",
     "record_submission",
+    "open_bids",
 ]
 
 

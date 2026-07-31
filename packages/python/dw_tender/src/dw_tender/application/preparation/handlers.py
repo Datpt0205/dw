@@ -917,6 +917,69 @@ class RecordPreparationSubmissionHandler:
             await uow.commit()
 
 
+@dataclass
+class RequestCp4Handler:
+    """Owner (via chat) asks to close the register and open bids: notify the
+    approver with a CP4 confirmation card. No state change — CP4 itself is
+    confirmed by the approver (SoD)."""
+
+    uow_factory: PreparationUnitOfWorkFactory
+    authorization: ScopeAuthorizationService
+    clock: UtcClock
+    id_generator: IdGenerator
+
+    async def handle(self, case_id: uuid.UUID, context: AccessContext) -> int:
+        await self.authorization.require(
+            context=context,
+            action="tender.write",
+            resource_type="preparation_cp4",
+            resource_id=str(case_id),
+        )
+        async with self.uow_factory(TenantId(context.tenant_id)) as uow:
+            case = await uow.cases.get(PreparationCaseId(case_id))
+            if case is None:
+                raise NotFoundError("preparation case not found")
+            if case.state is not CaseState.RECEIVING_BIDS:
+                raise ConflictError(
+                    "case is not receiving bids", details={"state": case.state.value}
+                )
+            documents = await uow.documents.list_for_case(case.id)
+            submissions = [
+                d for d in documents if d.kind is DocumentKind.SUPPLIER_SUBMISSION
+            ]
+            if not submissions:
+                raise DomainError("chưa có hồ sơ dự thầu nào — không thể mở thầu")
+            approver = await uow.notifications.find_recipient_for_role("approver")
+            if approver is not None:
+                await uow.notifications.enqueue(
+                    IntakeNotificationJob(
+                        id=self.id_generator.new_uuid(),
+                        tenant_id=case.tenant_id,
+                        workspace_id=case.workspace_id,
+                        case_id=case.id,
+                        event_type=IntakeNotificationType.CP_APPROVAL_REQUESTED,
+                        recipient_user_id=approver,
+                        due_at=self.clock.now(),
+                        idempotency_key=(
+                            f"dw01:{case.id.value}:cpcard:CP4:n{len(submissions)}"
+                        ),
+                        payload={
+                            "title": case.title,
+                            "checkpoint": "CP4",
+                            "case_id": str(case.id.value),
+                            "lines": [
+                                f"Sổ tiếp nhận: {len(submissions)} hồ sơ dự thầu.",
+                                "Người tạo đề nghị chốt sổ và mở thầu.",
+                                "Xác nhận sẽ tự lập biên bản mở thầu và bàn giao "
+                                "gói đánh giá cho DW02.",
+                            ],
+                        },
+                    )
+                )
+            await uow.commit()
+            return len(submissions)
+
+
 @dataclass(frozen=True)
 class CompleteCp4Command:
     filename: str
@@ -1043,6 +1106,29 @@ class CompletePreparationCp4Handler:
                 status=ArtifactStatus.OFFICIAL,
             )
             case.complete_cp4_handoff()
+            # P3 trace: closing card for the owner.
+            await uow.notifications.enqueue(
+                IntakeNotificationJob(
+                    id=self.id_generator.new_uuid(),
+                    tenant_id=case.tenant_id,
+                    workspace_id=case.workspace_id,
+                    case_id=case.id,
+                    event_type=IntakeNotificationType.RUN_PROGRESS,
+                    recipient_user_id=case.created_by,
+                    due_at=self.clock.now(),
+                    idempotency_key=f"dw01:{case.id.value}:progress:cp4_done",
+                    payload={
+                        "title": case.title,
+                        "heading": "🎉 CP4 hoàn tất — đã mở thầu và bàn giao DW02",
+                        "lines": [
+                            f"{len(submissions)} hồ sơ dự thầu đã mở; biên bản mở thầu "
+                            "được hệ thống lập và lưu vào hồ sơ.",
+                            "Gói bàn giao đánh giá (evaluation handoff) đã niêm phong.",
+                            "Quy trình DW01 kết thúc — cảm ơn bạn!",
+                        ],
+                    },
+                )
+            )
             await uow.cases.save(case)
             await uow.commit()
 

@@ -35,6 +35,7 @@ _INTAKE_APPROVE = "dw01_intake_approve"
 _INTAKE_REJECT = "dw01_intake_reject"
 _CP_APPROVE = "dw01_cp_approve"
 _CP_REJECT = "dw01_cp_reject"
+_CP4_CONFIRM = "dw01_cp4_confirm"
 _PUBLISH = "dw01_publish"
 
 # Slack section blocks cap at 3000 chars; keep the thinking readable.
@@ -170,6 +171,7 @@ class SlackFrontOfficeService:
             _INTAKE_REJECT,
             _CP_APPROVE,
             _CP_REJECT,
+            _CP4_CONFIRM,
             _PUBLISH,
         )
         if action_id not in known:
@@ -187,7 +189,14 @@ class SlackFrontOfficeService:
             return
         context, display_name = resolved
 
-        if action_id in (_INTAKE_APPROVE, _INTAKE_REJECT, _CP_APPROVE, _CP_REJECT, _PUBLISH):
+        if action_id in (
+            _INTAKE_APPROVE,
+            _INTAKE_REJECT,
+            _CP_APPROVE,
+            _CP_REJECT,
+            _CP4_CONFIRM,
+            _PUBLISH,
+        ):
             await self._handle_decision_action(
                 action_id=action_id,
                 value=value,
@@ -311,6 +320,38 @@ class SlackFrontOfficeService:
             if approve:
                 return f"✅ Đã duyệt {label} — quy trình tiếp tục chạy tự động."
             return f"⛔ Đã từ chối {label} — quy trình dừng, người tạo sẽ được thông báo."
+
+        if action_id == _CP4_CONFIRM:
+            from dw_tender.application.preparation.handlers import CompleteCp4Command
+
+            case_id = UUID(value)
+            # Biên bản do hệ thống lập từ hồ sơ (danh mục HSDT nằm trong sổ
+            # tiếp nhận đã niêm phong) — không ai phải upload file.
+            minutes_md = (
+                f"# Biên bản mở thầu\n\n"
+                f"- Thời điểm mở: {now:%d/%m/%Y %H:%M} (UTC)\n"
+                f"- Người xác nhận: {display_name} (qua Slack)\n"
+                f"- Danh mục hồ sơ dự thầu: theo sổ tiếp nhận (SUBMISSION_REGISTER) "
+                f"đã niêm phong trong hồ sơ.\n"
+                f"- Ghi chú: biên bản do hệ thống lập tự động trong môi trường mô phỏng.\n"
+            )
+            await preparation.complete_cp4.handle(
+                case_id,
+                CompleteCp4Command(
+                    filename="bid-opening-minutes.md",
+                    content_type="text/markdown; charset=utf-8",
+                    content=minutes_md.encode("utf-8"),
+                    opening_at=now.isoformat(),
+                    witnesses=(display_name,),
+                    approval_reference=f"SLACK-{now:%Y%m%d-%H%M%S}",
+                    comment=f"Xác nhận CP4 qua Slack bởi {display_name}",
+                ),
+                context,
+            )
+            return (
+                "🎉 CP4 hoàn tất — biên bản mở thầu đã lập, gói bàn giao DW02 đã "
+                "niêm phong. Quy trình DW01 kết thúc."
+            )
 
         if action_id == _PUBLISH:
             case_id = UUID(value)

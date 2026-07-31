@@ -28,6 +28,7 @@ from dw_tender.application.preparation.handlers import (
     CreatePreparationCaseHandler,
     RecordPreparationSubmissionHandler,
     RecordSubmissionCommand,
+    RequestCp4Handler,
     SubmitAddendumCommand,
     SubmitPreparationAddendumHandler,
 )
@@ -133,6 +134,7 @@ class ConversationIntakeService:
     # conversation — no manual uploads). Optional so intake-only wiring works.
     submit_addendum: SubmitPreparationAddendumHandler | None = None
     record_submission: RecordPreparationSubmissionHandler | None = None
+    request_cp4: RequestCp4Handler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
     prompt_version: str = "1.1.0"
@@ -394,6 +396,24 @@ class ConversationIntakeService:
                     f"• Ghi nhận HSDT từ «{supplier}»"
                     + (f" (tham chiếu {reference})" if reference else "")
                     + ".\n• Biên nhận được hệ thống tự lập và niêm phong vào hồ sơ."
+                ),
+            )
+
+        if turn.intent == "open_bids" and self.request_cp4 is not None:
+            count = await self.request_cp4.handle(case_id, context)
+            return TurnOutcome(
+                replies=(
+                    ChatReply(
+                        text=(
+                            f"🔒 Đã đề nghị chốt sổ ({count} hồ sơ dự thầu) và mở thầu. "
+                            "Quản lý sẽ nhận thẻ xác nhận CP4 trên Slack — khi xác nhận, "
+                            "biên bản mở thầu và gói bàn giao DW02 sẽ được lập tự động."
+                        )
+                    ),
+                ),
+                thinking=(
+                    f"• Sổ tiếp nhận có {count} hồ sơ dự thầu.\n"
+                    "• CP4 cần người có thẩm quyền xác nhận (SoD) → gửi thẻ cho Quản lý."
                 ),
             )
 

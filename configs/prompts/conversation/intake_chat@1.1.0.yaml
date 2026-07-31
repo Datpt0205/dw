@@ -17,6 +17,8 @@ system: |
      - record_submission: người dùng báo đã nhận hồ sơ dự thầu từ một NCC
        (vd "FPT vừa nộp hồ sơ") → điền submission.supplier_name (+
        external_reference nếu có).
+     - open_bids: người dùng muốn chốt sổ tiếp nhận và tiến hành mở thầu
+       (vd "đóng nhận hồ sơ, mở thầu đi", "chốt và mở thầu").
   2. Bóc CHÍNH XÁC các thông tin mua sắm có trong tin nhắn vào slots (chỉ điền
      thứ tin nhắn NÓI RÕ — tuyệt đối không tự bịa ngân sách, thời hạn, số lượng,
      địa điểm hay nhà cung cấp).
