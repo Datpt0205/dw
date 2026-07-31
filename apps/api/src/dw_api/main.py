@@ -29,6 +29,7 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         bot_task = None
+        slack_task = None
         settings = container.settings
         if (
             settings.telegram_bot_token
@@ -39,11 +40,18 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
             from dw_api.channels.telegram import start_telegram_bot
 
             bot_task = start_telegram_bot(container, settings.telegram_bot_token, REPO_ROOT)
+        if container.chat is not None and settings.profile != "test":
+            from dw_api.bootstrap import REPO_ROOT
+            from dw_api.channels.slack import start_slack_front_office
+
+            slack_task = start_slack_front_office(container, container.chat, REPO_ROOT)
         try:
             yield
         finally:
             if bot_task is not None:
                 bot_task.cancel()
+            if slack_task is not None:
+                slack_task.cancel()
             await container.shutdown()
 
     app = FastAPI(

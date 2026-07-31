@@ -39,6 +39,7 @@ from dw_agent_runtime.tools import ToolRegistry
 from dw_api.health import HealthService, database_probe
 from dw_api.settings import ApiSettings
 from dw_connectors.adapters.mock_task_connector import MockTaskConnectorAdapter
+from dw_connectors.adapters.slack_chat import SlackChatClient
 from dw_kernel.net_guard import ensure_allowed_outbound_url
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_kernel.resilience import CircuitBreaker
@@ -63,10 +64,12 @@ from dw_platform.application.ports import (
     PlatformUnitOfWorkFactory,
     TokenVerifierPort,
 )
+from dw_tender.adapters.conversation.store import SqlConversationStore
 from dw_tender.adapters.persistence.repositories import SqlTenderUnitOfWorkFactory
 from dw_tender.adapters.policy_loader import load_scoring_policy
 from dw_tender.adapters.preparation.repositories import SqlPreparationUnitOfWorkFactory
 from dw_tender.adapters.preparation.rules_loader import load_procurement_rules
+from dw_tender.application.conversation.service import ConversationIntakeService
 from dw_tender.application.handlers import (
     AnalyzeCaseHandler,
     CreateTenderCaseHandler,
@@ -160,6 +163,17 @@ class PreparationHandlers:
 
 
 @dataclass
+class ChatFrontOffice:
+    """Slack chat front office (conversation-first plan P1) — wired when enabled."""
+
+    app_token: str
+    chat_client: SlackChatClient
+    conversation_service: ConversationIntakeService
+    conversation_store: SqlConversationStore
+    slack_user_reverse_map: dict[str, str]
+
+
+@dataclass
 class ApiContainer:
     """Wired dependencies for the API process."""
 
@@ -182,6 +196,7 @@ class ApiContainer:
     object_storage: ObjectStoragePort | None = None
     memory_service: MemoryService | None = None
     tool_registry: ToolRegistry | None = None
+    chat: ChatFrontOffice | None = None
 
     def run_context_for(self, context: AccessContext, run_id: uuid.UUID) -> RunContext:
         return RunContext(
@@ -325,6 +340,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
     object_storage: ObjectStoragePort | None = None
     memory_service: MemoryService | None = None
     tool_registry: ToolRegistry | None = None
+    chat: ChatFrontOffice | None = None
 
     if settings.database_url:
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
@@ -477,12 +493,13 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
 
             # ---- DW01 preparation slice ----------------------------------
             preparation_uow_factory = SqlPreparationUnitOfWorkFactory(session_factory)
+            procurement_rules = load_procurement_rules(
+                REPO_ROOT / "configs" / "policies" / "dw01" / "procurement_rules_v1.yaml"
+            )
             preparation_services = PreparationServices(
                 uow_factory=preparation_uow_factory,
                 storage=storage,  # type: ignore[arg-type]
-                rules=load_procurement_rules(
-                    REPO_ROOT / "configs" / "policies" / "dw01" / "procurement_rules_v1.yaml"
-                ),
+                rules=procurement_rules,
                 # Supplier candidates are case input, never a hidden fixture.
                 suppliers=(),
                 clock=clock,
@@ -664,6 +681,32 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     id_generator=id_generator,
                 ),
             )
+
+            # ---- Slack chat front office (conversation-first P1) ----------
+            if (
+                settings.chat_front_office_enabled
+                and settings.slack_bot_token
+                and settings.slack_app_token
+            ):
+                conversation_store = SqlConversationStore(
+                    session_factory=session_factory, clock=clock
+                )
+                chat = ChatFrontOffice(
+                    app_token=settings.slack_app_token,
+                    chat_client=SlackChatClient(bot_token=settings.slack_bot_token),
+                    conversation_store=conversation_store,
+                    conversation_service=ConversationIntakeService(
+                        store=conversation_store,
+                        gateway=gateway,
+                        create_case=preparation.create_case,
+                        rules=procurement_rules,
+                        clock=clock,
+                        id_generator=id_generator,
+                        model_profile=settings.model_profile,
+                        web_base_url=settings.public_web_url,
+                    ),
+                    slack_user_reverse_map=settings.slack_user_reverse_map(),
+                )
     elif settings.profile == "production":
         settings.require_database_url()
 
@@ -687,4 +730,5 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         object_storage=object_storage,
         memory_service=memory_service,
         tool_registry=tool_registry,
+        chat=chat,
     )

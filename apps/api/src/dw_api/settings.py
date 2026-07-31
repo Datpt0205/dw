@@ -141,6 +141,45 @@ class ApiSettings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("DW_API_TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN"),
     )
+
+    # --- Slack chat front office (conversation-first plan P1) ---
+    chat_front_office_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "DW_API_CHAT_FRONT_OFFICE_ENABLED", "DW_CHAT_FRONT_OFFICE_ENABLED"
+        ),
+    )
+    slack_app_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DW_API_SLACK_APP_TOKEN", "SLACK_APP_TOKEN"),
+    )
+    public_web_url: str = Field(
+        default="http://localhost:3000",
+        validation_alias=AliasChoices("DW_API_PUBLIC_WEB_URL", "DW_PUBLIC_WEB_URL"),
+    )
+    # Slack member IDs are deliberately configuration (never guessed from
+    # display names). Same env names the worker's outbound notifier uses.
+    slack_user_an_id: str = Field(default="", validation_alias=AliasChoices("SLACK_USER_AN_ID"))
+    slack_user_binh_id: str = Field(default="", validation_alias=AliasChoices("SLACK_USER_BINH_ID"))
+    slack_user_chi_id: str = Field(default="", validation_alias=AliasChoices("SLACK_USER_CHI_ID"))
+    slack_user_map_json: str = Field(
+        default="", validation_alias=AliasChoices("SLACK_USER_MAP_JSON")
+    )
+
+    def slack_user_reverse_map(self) -> dict[str, str]:
+        """slack_member_id -> dev subject, from the same env map as outbound."""
+        forward = {
+            "dev|an.nguyen": self.slack_user_an_id.strip(),
+            "dev|binh.tran": self.slack_user_binh_id.strip(),
+            "dev|chi.le": self.slack_user_chi_id.strip(),
+        }
+        if self.slack_user_map_json.strip():
+            import json
+
+            raw = json.loads(self.slack_user_map_json)
+            if isinstance(raw, dict):
+                forward.update({str(k): str(v).strip() for k, v in raw.items()})
+        return {slack_id: subject for subject, slack_id in forward.items() if slack_id}
     approval_reminder_seconds: int = Field(
         default=5,
         ge=1,

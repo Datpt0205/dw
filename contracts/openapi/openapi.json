@@ -1192,6 +1192,17 @@
             "title": "Size Bytes",
             "type": "integer"
           },
+          "text_content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Content"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -3600,6 +3611,49 @@
           }
         },
         "summary": "Publish",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/cases/{case_id}/publish-auto": {
+      "post": {
+        "operationId": "publish_auto_api_v1_procurement_preparation_cases__case_id__publish_auto_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Auto",
         "tags": [
           "preparation"
         ]

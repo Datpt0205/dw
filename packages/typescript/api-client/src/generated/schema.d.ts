@@ -472,6 +472,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/procurement/preparation/cases/{case_id}/publish-auto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish Auto */
+        post: operations["publish_auto_api_v1_procurement_preparation_cases__case_id__publish_auto_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/procurement/preparation/cases/{case_id}/reject-intake": {
         parameters: {
             query?: never;
@@ -1149,6 +1166,8 @@ export interface components {
             kind: string;
             /** Size Bytes */
             size_bytes: number;
+            /** Text Content */
+            text_content?: string | null;
             /** Title */
             title: string;
         };
@@ -2467,6 +2486,37 @@ export interface operations {
                 "multipart/form-data": components["schemas"]["Body_publish_api_v1_procurement_preparation_cases__case_id__publication_post"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_auto_api_v1_procurement_preparation_cases__case_id__publish_auto_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

@@ -797,6 +797,7 @@ dependencies = [
     { name = "dw-kernel" },
     { name = "httpx" },
     { name = "pydantic" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -804,6 +805,7 @@ requires-dist = [
     { name = "dw-kernel", editable = "packages/python/dw_kernel" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "pydantic", specifier = ">=2.10,<3" },
+    { name = "websockets", specifier = ">=13.1,<16" },
 ]
 
 [[package]]
