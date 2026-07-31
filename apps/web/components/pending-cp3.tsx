@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import type { PreparationCase } from "@dw/api-client";
 import { Badge, Button, Card, CardContent, Input } from "@dw/ui";
 import { useAuth } from "../lib/auth/auth-context";
+import { DW01_READONLY } from "../lib/readonly";
 import { apiClient } from "../lib/session";
 import { formatVnd } from "../app/procurement/dw01/state";
 
@@ -17,7 +18,8 @@ import { formatVnd } from "../app/procurement/dw01/state";
  */
 export function PendingCp3Decision() {
   const { hasScope } = useAuth();
-  const canDecide = hasScope("approvals.decide");
+  // Read-only back office: CP3 is decided on the Slack card.
+  const canDecide = hasScope("approvals.decide") && !DW01_READONLY;
   const [cases, setCases] = useState<PreparationCase[] | null>(null);
   const [refs, setRefs] = useState<Record<string, string>>({});
   const [comments, setComments] = useState<Record<string, string>>({});

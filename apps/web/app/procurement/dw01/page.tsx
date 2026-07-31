@@ -30,6 +30,7 @@ import { EmptyState } from "../../../components/empty-state";
 import { PageHeading } from "../../../components/page-heading";
 import { TagInput } from "../../../components/tag-input";
 import { useAuth } from "../../../lib/auth/auth-context";
+import { DW01_READONLY } from "../../../lib/readonly";
 import { apiClient } from "../../../lib/session";
 import {
   BUSINESS_DOMAINS,
@@ -60,7 +61,9 @@ export default function Dw01ListPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { hasScope } = useAuth();
-  const canCreate = hasScope("tender.write");
+  // Read-only back office: cases are created by chatting with the Digital
+  // Worker in Slack; the web only tracks them.
+  const canCreate = hasScope("tender.write") && !DW01_READONLY;
   const [cases, setCases] = useState<PreparationCase[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -195,6 +198,16 @@ export default function Dw01ListPage() {
       {error && (
         <Alert variant="destructive">
           <p>{error}</p>
+        </Alert>
+      )}
+
+      {DW01_READONLY && (
+        <Alert>
+          <p>
+            💬 Hồ sơ mua sắm được tạo bằng cách <strong>nhắn tin cho Digital
+            Worker trên Slack</strong> (vd: «Tôi muốn mua 100 laptop»). Trang
+            web chỉ dùng để theo dõi tiến trình, tài liệu và audit.
+          </p>
         </Alert>
       )}
 

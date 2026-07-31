@@ -28,6 +28,7 @@ import { PageHeading } from "./page-heading";
 import { PendingIntakeVerification } from "./pending-intake";
 import { PendingCp3Decision } from "./pending-cp3";
 import { useAuth } from "../lib/auth/auth-context";
+import { DW01_READONLY } from "../lib/readonly";
 import { apiClient } from "../lib/session";
 
 interface ApprovalActionRow {
@@ -95,7 +96,8 @@ export function ApprovalsView({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<string, string>>({});
   const { hasScope } = useAuth();
-  const canDecide = hasScope("approvals.decide");
+  // Read-only back office: decisions happen on Slack cards.
+  const canDecide = hasScope("approvals.decide") && !DW01_READONLY;
 
   const refresh = useCallback(() => {
     apiClient()

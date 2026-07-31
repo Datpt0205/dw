@@ -34,6 +34,7 @@ import {
   cn,
 } from "@dw/ui";
 import { useAuth } from "../../../../../lib/auth/auth-context";
+import { DW01_READONLY } from "../../../../../lib/readonly";
 import { apiClient } from "../../../../../lib/session";
 import { TagInput } from "../../../../../components/tag-input";
 import { Modal } from "../../../../../components/modal";
@@ -136,7 +137,8 @@ export default function Dw01CaseDetail({
 }) {
   const { caseId } = use(params);
   const { hasScope } = useAuth();
-  const canRun = hasScope("tender.write");
+  // Read-only back office: Slack is the front office for every action.
+  const canRun = hasScope("tender.write") && !DW01_READONLY;
   const [data, setData] = useState<PreparationCase | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -473,7 +475,7 @@ export default function Dw01CaseDetail({
   const official = latestByType.get("official_package_manifest");
   const runnable = data.state === "intake_ready" && canRun;
   const hasRunBefore = latestByType.has("demand_snapshot");
-  const canVerify = hasScope("approvals.decide");
+  const canVerify = hasScope("approvals.decide") && !DW01_READONLY;
   const clarificationItems = (
     (latestByType.get("clarification_list")?.content["items"] ?? []) as any[]
   ).filter((item) => item.blocking);
@@ -851,7 +853,8 @@ export default function Dw01CaseDetail({
         </Alert>
       )}
 
-      {data.state === "waiting_clarification" &&
+      {!DW01_READONLY &&
+        data.state === "waiting_clarification" &&
         clarificationItems.length > 0 && (
           <Card className="border-warning/50">
             <CardHeader>

@@ -77,6 +77,13 @@ class SlackChatClient:
         payload["blocks"] = blocks or []
         await self._call("/chat.update", payload)
 
+    async def publish_home_view(self, *, user_id: str, blocks: list[dict[str, Any]]) -> None:
+        """P7 App Home: publish the user's personal "Việc của tôi" tab."""
+        await self._call(
+            "/views.publish",
+            {"user_id": user_id, "view": {"type": "home", "blocks": blocks}},
+        )
+
     async def _call(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(

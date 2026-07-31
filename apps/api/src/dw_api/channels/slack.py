@@ -93,6 +93,9 @@ class SlackFrontOfficeService:
 
     async def _handle_event(self, payload: dict[str, Any]) -> None:
         event = payload.get("event") or {}
+        if event.get("type") == "app_home_opened":
+            await self._publish_home(str(event.get("user", "")))
+            return
         if event.get("type") not in ("message", "app_mention"):
             return
         if event.get("bot_id") or event.get("subtype"):
@@ -226,6 +229,94 @@ class SlackFrontOfficeService:
         thread_ts = message.get("thread_ts")
         for reply in outcome.replies:
             await self._send_reply(channel, thread_ts, reply)
+
+    # --------------------------------------------------------- app home (P7) --
+    async def _publish_home(self, slack_user_id: str) -> None:
+        """P7: the "Việc của tôi" tab — pending items first, then running cases."""
+        subject = self._resolve_subject(slack_user_id)
+        if subject is None:
+            return
+        resolved = await self._access_context(subject)
+        if resolved is None or self.container.preparation is None:
+            return
+        context, display_name = resolved
+        cases = await self.container.preparation.list_cases.handle(context)
+
+        labels = {
+            "draft": "Chờ xác minh đầu vào",
+            "waiting_clarification": "Chờ làm rõ",
+            "cp1_pending": "Chờ duyệt CP1",
+            "cp2_pending": "Chờ duyệt CP2",
+            "cp3_pending": "Chờ duyệt CP3 (addendum)",
+            "receiving_bids": "Đang nhận hồ sơ dự thầu",
+            "package_official": "Hồ sơ chính thức — chờ phát hành",
+            "published": "Đã phát hành",
+            "completed": "Hoàn tất",
+        }
+        decide_states = {"draft", "cp1_pending", "cp2_pending", "cp3_pending", "receiving_bids"}
+        can_decide = context.has_scope("approvals.decide")
+
+        pending, running = [], []
+        for case in cases:
+            state = str(case.state)
+            line = (
+                f"• *{case.title}* — {labels.get(state, state)}\n"
+                f"  <{self.chat.conversation_service.web_base_url}/procurement/dw01/cases/"
+                f"{case.id}|Mở hồ sơ>"
+            )
+            if can_decide and state in decide_states:
+                pending.append(line)
+            elif state not in ("completed", "intake_rejected"):
+                running.append(line)
+
+        blocks: list[dict[str, Any]] = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": f"Việc của {display_name}", "emoji": True},
+            }
+        ]
+        if pending:
+            blocks += [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*⏳ Chờ quyết định của bạn*\n" + "\n".join(pending[:10]),
+                    },
+                }
+            ]
+        if running:
+            blocks += [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*📁 Hồ sơ đang chạy*\n" + "\n".join(running[:10]),
+                    },
+                }
+            ]
+        if not pending and not running:
+            blocks += [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Không có việc nào đang chờ. Nhắn tin cho tôi khi cần mua sắm nhé!",
+                    },
+                }
+            ]
+        blocks += [
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "Cập nhật mỗi lần bạn mở tab này — quyết định qua thẻ trong DM.",
+                    }
+                ],
+            }
+        ]
+        await self.chat.chat_client.publish_home_view(user_id=slack_user_id, blocks=blocks)
 
     # ------------------------------------------------- decision buttons (P4) --
     async def _handle_decision_action(
