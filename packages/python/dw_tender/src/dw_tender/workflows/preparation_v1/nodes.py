@@ -23,6 +23,7 @@ from dw_kernel.ids import TenantId
 from dw_knowledge.contracts import SearchQuery
 from dw_tender.application.preparation.drafts import CriteriaDraft, SolicitationDraft
 from dw_tender.application.preparation.extraction import PreparationExtraction
+from dw_tender.application.preparation.review import ReviewRecommendation, review_card_lines
 from dw_tender.application.preparation.rules import approach_gate, solicitation_gate
 from dw_tender.domain.preparation.entities import (
     ArtifactStatus,
@@ -222,6 +223,65 @@ class PreparationNodes:
                 },
             )
         )
+
+    async def _run_review(
+        self,
+        rc: RunContext,
+        *,
+        checkpoint: str,
+        artifact_json: dict[str, Any],
+        gate: dict[str, Any],
+    ) -> ReviewRecommendation | None:
+        """P5 Independent Review Agent: advisory recommendation for a checkpoint.
+
+        Independence guarantees (plan §4.3): its own run identity
+        (worker dw01.review_agent, fresh run_id), context rebuilt ONLY from the
+        submitted payload + deterministic gate verdict, output schema-validated.
+        Failure degrades to "no recommendation" — review never blocks the flow.
+        """
+        gateway = self.services.model_gateway
+        if gateway is None:
+            return None
+        rules = self.services.rules
+        rules_summary = f"Rule pack v{rules.version}: " + "; ".join(
+            f"«{m.label}» tới {_fmt_vnd(m.max_value) if m.max_value else 'không giới hạn'}, "
+            f"tối thiểu {m.min_suppliers} NCC"
+            for m in rules.methods
+        )
+        review_context = RunContext(
+            run_id=self.services.id_generator.new_uuid(),
+            tenant_id=rc.tenant_id,
+            workspace_id=rc.workspace_id,
+            actor_id=rc.actor_id,
+            worker_id="dw01.review_agent",
+            worker_version="1.0.0",
+            channel="agent",
+            plan_id=rc.plan_id,
+            roles=rc.roles,
+            scopes=rc.scopes,
+            trace_id=f"review-{rc.run_id.hex[:12]}",
+        )
+        try:
+            return await gateway.generate_structured(
+                ModelRequest(
+                    task="preparation.review",
+                    prompt_id="preparation.review_checkpoint",
+                    prompt_version="1.0.0",
+                    variables={
+                        "checkpoint": checkpoint,
+                        "gate_json": json.dumps(gate, ensure_ascii=False),
+                        "rules_summary": rules_summary,
+                        "artifact_json": json.dumps(artifact_json, ensure_ascii=False)[:12000],
+                    },
+                    model_profile=self.services.model_profile,
+                    # The heavy reasoning route (deepseek-reasoner when configured).
+                    route_kind="deep_reasoning",
+                ),
+                ReviewRecommendation,
+                run_context=review_context,
+            )
+        except Exception:  # advisory only — never a gate
+            return None
 
     # -- 1. intake --------------------------------------------------------
     async def load_case(self, state: PreparationState, config: RunnableConfig) -> PreparationState:
@@ -572,6 +632,16 @@ class PreparationNodes:
             "estimated_value": _fmt_vnd(state.get("estimated_value_minor", 0)),
             "supplier_count_planned": state.get("supplier_count_planned", 0),
         }
+        # P5: independent advisory review BEFORE the approver card (outside the
+        # transaction — the reasoner call may take a while).
+        review = None
+        if result.passed:
+            review = await self._run_review(
+                rc,
+                checkpoint="CP1",
+                artifact_json={**payload, "requirements": state.get("requirements", [])},
+                gate=gate,
+            )
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
@@ -605,22 +675,36 @@ class PreparationNodes:
                         "Đã trình duyệt CP1 — hồ sơ tạm dừng chờ quyết định.",
                     ],
                 )
+                cp1_lines = [
+                    (
+                        f"Giá trị {_fmt_vnd(state.get('estimated_value_minor', 0))} → "
+                        f"hình thức «{method.label}» (rule pack v{rules.version})."
+                    ),
+                    (
+                        f"NCC dự kiến: {state.get('supplier_count_planned', 0)} "
+                        f"(tối thiểu {method.min_suppliers})."
+                    ),
+                    f"Gate CP1 tự động: ĐẠT. PR tham chiếu: {state.get('source_pr_ref', '—')}.",
+                ]
+                if review is not None:
+                    await self._add_artifact(
+                        uow,
+                        case,
+                        ArtifactType.REVIEW_RECOMMENDATION,
+                        {
+                            "checkpoint": "CP1",
+                            "agent_id": "dw01.review_agent",
+                            "prompt_version": "1.0.0",
+                            **review.model_dump(),
+                        },
+                    )
+                    cp1_lines += review_card_lines(review)
                 await self._notify_cp_approval(
                     uow,
                     case,
                     checkpoint="CP1",
                     dedupe=_hash(gate)[:12],
-                    lines=[
-                        (
-                            f"Giá trị {_fmt_vnd(state.get('estimated_value_minor', 0))} → "
-                            f"hình thức «{method.label}» (rule pack v{rules.version})."
-                        ),
-                        (
-                            f"NCC dự kiến: {state.get('supplier_count_planned', 0)} "
-                            f"(tối thiểu {method.min_suppliers})."
-                        ),
-                        f"Gate CP1 tự động: ĐẠT. PR tham chiếu: {state.get('source_pr_ref', '—')}.",
-                    ],
+                    lines=cp1_lines,
                 )
             else:
                 await self._notify_progress(
@@ -895,6 +979,19 @@ class PreparationNodes:
                 "chưa được hệ thống bên ngoài xác minh."
             ),
         }
+        # P5: advisory review of the full package before the CP2 card.
+        review = None
+        if result.passed:
+            review = await self._run_review(
+                rc,
+                checkpoint="CP2",
+                artifact_json={
+                    **payload,
+                    "criteria": state.get("criteria", {}),
+                    "shortlist": state.get("shortlist", []),
+                },
+                gate=gate,
+            )
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
@@ -921,19 +1018,33 @@ class PreparationNodes:
                         "Đã trình duyệt CP2 — hồ sơ tạm dừng chờ quyết định.",
                     ],
                 )
+                cp2_lines = [
+                    (
+                        f"Tiêu chí đánh giá: tổng trọng số "
+                        f"{int(criteria.get('weighted_total', 0))}/100."
+                    ),
+                    f"Shortlist: {len(state.get('shortlist', []))} nhà cung cấp.",
+                    "Gate CP2 tự động: ĐẠT — hồ sơ mời thầu sẵn sàng để duyệt.",
+                ]
+                if review is not None:
+                    await self._add_artifact(
+                        uow,
+                        case,
+                        ArtifactType.REVIEW_RECOMMENDATION,
+                        {
+                            "checkpoint": "CP2",
+                            "agent_id": "dw01.review_agent",
+                            "prompt_version": "1.0.0",
+                            **review.model_dump(),
+                        },
+                    )
+                    cp2_lines += review_card_lines(review)
                 await self._notify_cp_approval(
                     uow,
                     case,
                     checkpoint="CP2",
                     dedupe=_hash(gate)[:12],
-                    lines=[
-                        (
-                            f"Tiêu chí đánh giá: tổng trọng số "
-                            f"{int(criteria.get('weighted_total', 0))}/100."
-                        ),
-                        f"Shortlist: {len(state.get('shortlist', []))} nhà cung cấp.",
-                        "Gate CP2 tự động: ĐẠT — hồ sơ mời thầu sẵn sàng để duyệt.",
-                    ],
+                    lines=cp2_lines,
                 )
             else:
                 await self._notify_progress(

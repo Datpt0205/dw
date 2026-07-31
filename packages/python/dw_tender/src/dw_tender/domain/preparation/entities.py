@@ -65,6 +65,9 @@ class ArtifactType(StrEnum):
     SUBMISSION_REGISTER = "submission_register"
     BID_OPENING_RECORD = "bid_opening_record"
     EVALUATION_HANDOFF = "evaluation_handoff"
+    # P5: independent review agent's recommendation for a checkpoint. The agent
+    # never decides — its output is advisory input to the human approver.
+    REVIEW_RECOMMENDATION = "review_recommendation"
 
 
 class ArtifactStatus(StrEnum):
