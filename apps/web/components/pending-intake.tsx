@@ -62,8 +62,9 @@ export function PendingIntakeVerification() {
       </div>
       <CardContent className="pt-3">
         <p className="pb-2 text-xs text-muted-foreground">
-          Bước xác minh nằm trong từng hồ sơ (không qua hàng chờ CP1–CP4). Mở hồ
-          sơ để xác minh trước khi Digital Worker chạy.
+          Xác minh được thực hiện trên thẻ Slack gửi tới bạn (nút «Xác minh
+          &amp; chạy DW01» kèm «Xem PR»). Danh sách dưới đây để theo dõi; mở hồ
+          sơ nếu cần xem chi tiết.
         </p>
         <div className="divide-y divide-amber-200/60">
           {cases.map((item) => (
@@ -85,7 +86,7 @@ export function PendingIntakeVerification() {
                 </span>
               </span>
               <span className="hidden shrink-0 text-xs font-semibold text-primary sm:inline">
-                Mở để xác minh
+                Xem chi tiết
               </span>
               <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
             </Link>

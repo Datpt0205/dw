@@ -129,6 +129,20 @@ export default function Dw01ListPage() {
 
   useEffect(() => refresh(), [refresh]);
 
+  // Side-by-side demo: cases created/advanced over Slack must appear here
+  // without a manual reload — same 5s visible-tab poll as the case page.
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const id = setInterval(tick, 5000);
+    window.addEventListener("focus", tick);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("focus", tick);
+    };
+  }, [refresh]);
+
   useEffect(() => {
     if (!formOpen) return;
     const previousOverflow = document.body.style.overflow;
