@@ -32,6 +32,10 @@ from dw_tender.domain.preparation.entities import (
     PreparationArtifact,
     PreparationCase,
 )
+from dw_tender.domain.preparation.notifications import (
+    IntakeNotificationJob,
+    IntakeNotificationType,
+)
 from dw_tender.domain.value_objects.ids import ArtifactId, PreparationCaseId
 from dw_tender.workflows.preparation_v1.services import PreparationServices
 from dw_tender.workflows.preparation_v1.state import (
@@ -145,6 +149,80 @@ class PreparationNodes:
         await uow.artifacts.add(artifact)
         return artifact
 
+    async def _notify_progress(
+        self,
+        uow: Any,
+        case: PreparationCase,
+        *,
+        stage: str,
+        dedupe: str,
+        heading: str,
+        lines: list[str],
+        buttons: list[dict[str, str]] | None = None,
+    ) -> None:
+        """Durable Slack progress card for the case owner (P3 activity trace).
+
+        An outbox row in the same transaction as the step's own writes; the
+        worker renders and delivers it. Content is SYSTEM-BUILT from real node
+        events. ``dedupe`` keeps continue-runs idempotent (enqueue is
+        ON CONFLICT DO NOTHING on the idempotency key). ``buttons`` renders
+        Slack actions (P4) — the click is authorized server-side, never here.
+        """
+        payload: dict[str, Any] = {"title": case.title, "heading": heading, "lines": lines}
+        if buttons:
+            payload["buttons"] = buttons
+        await uow.notifications.enqueue(
+            IntakeNotificationJob(
+                id=self.services.id_generator.new_uuid(),
+                tenant_id=case.tenant_id,
+                workspace_id=case.workspace_id,
+                case_id=case.id,
+                event_type=IntakeNotificationType.RUN_PROGRESS,
+                recipient_user_id=case.created_by,
+                due_at=self.services.clock.now(),
+                idempotency_key=f"dw01:{case.id.value}:progress:{stage}:{dedupe}",
+                payload=payload,
+            )
+        )
+
+    async def _notify_cp_approval(
+        self,
+        uow: Any,
+        case: PreparationCase,
+        *,
+        checkpoint: str,
+        dedupe: str,
+        lines: list[str],
+    ) -> None:
+        """Decision card with Duyệt/Từ chối buttons for the approver (P4).
+
+        Recipient comes from the membership directory (role ``approver``) — the
+        same trust path the intake notifications use. The click resolves back
+        through identity → AccessContext → the normal decide handlers; Slack
+        itself never authorizes anything.
+        """
+        approver = await uow.notifications.find_recipient_for_role("approver")
+        if approver is None:
+            return
+        await uow.notifications.enqueue(
+            IntakeNotificationJob(
+                id=self.services.id_generator.new_uuid(),
+                tenant_id=case.tenant_id,
+                workspace_id=case.workspace_id,
+                case_id=case.id,
+                event_type=IntakeNotificationType.CP_APPROVAL_REQUESTED,
+                recipient_user_id=approver,
+                due_at=self.services.clock.now(),
+                idempotency_key=f"dw01:{case.id.value}:cpcard:{checkpoint}:{dedupe}",
+                payload={
+                    "title": case.title,
+                    "checkpoint": checkpoint,
+                    "lines": lines,
+                    "case_id": str(case.id.value),
+                },
+            )
+        )
+
     # -- 1. intake --------------------------------------------------------
     async def load_case(self, state: PreparationState, config: RunnableConfig) -> PreparationState:
         rc = _run_context(config)
@@ -225,7 +303,23 @@ class PreparationNodes:
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
-            await self._add_artifact(uow, case, ArtifactType.DEMAND_SNAPSHOT, content)
+            snapshot = await self._add_artifact(uow, case, ArtifactType.DEMAND_SNAPSHOT, content)
+            source_label = "AI (LLM)" if source == "ai" else "phân tích dòng (deterministic)"
+            await self._notify_progress(
+                uow,
+                case,
+                stage="extract",
+                dedupe=f"v{snapshot.artifact_version}",
+                heading="📋 Đã bóc tách yêu cầu từ PR",
+                lines=[
+                    f"{len(requirements)} yêu cầu được nhận diện (nguồn: {source_label}).",
+                    (
+                        f"{len(unknowns)} điểm thương mại cần làm rõ."
+                        if unknowns
+                        else "Không có điểm nào cần làm rõ — PR đầy đủ."
+                    ),
+                ],
+            )
             await uow.commit()
         return {"requirements": requirements, "unknowns": unknowns}
 
@@ -492,6 +586,51 @@ class PreparationNodes:
                 CaseState.CP1_PENDING if result.passed else CaseState.WAITING_CLARIFICATION,
                 "cp1",
             )
+            if result.passed:
+                await self._notify_progress(
+                    uow,
+                    case,
+                    stage="cp1_gate",
+                    dedupe=_hash(gate)[:12],
+                    heading="⚖️ Gate CP1: ĐẠT — chờ Quản lý phê duyệt",
+                    lines=[
+                        (
+                            f"Giá trị {_fmt_vnd(state.get('estimated_value_minor', 0))} → "
+                            f"hình thức «{method.label}» (rule pack v{rules.version})."
+                        ),
+                        (
+                            f"NCC dự kiến: {state.get('supplier_count_planned', 0)} "
+                            f"(tối thiểu {method.min_suppliers})."
+                        ),
+                        "Đã trình duyệt CP1 — hồ sơ tạm dừng chờ quyết định.",
+                    ],
+                )
+                await self._notify_cp_approval(
+                    uow,
+                    case,
+                    checkpoint="CP1",
+                    dedupe=_hash(gate)[:12],
+                    lines=[
+                        (
+                            f"Giá trị {_fmt_vnd(state.get('estimated_value_minor', 0))} → "
+                            f"hình thức «{method.label}» (rule pack v{rules.version})."
+                        ),
+                        (
+                            f"NCC dự kiến: {state.get('supplier_count_planned', 0)} "
+                            f"(tối thiểu {method.min_suppliers})."
+                        ),
+                        f"Gate CP1 tự động: ĐẠT. PR tham chiếu: {state.get('source_pr_ref', '—')}.",
+                    ],
+                )
+            else:
+                await self._notify_progress(
+                    uow,
+                    case,
+                    stage="cp1_gate",
+                    dedupe=_hash(gate)[:12],
+                    heading="⚠️ Gate CP1 CHƯA ĐẠT — cần bổ sung",
+                    lines=[*result.reasons, "Mở hồ sơ để bổ sung/làm rõ rồi chạy tiếp."],
+                )
             await uow.cases.save(case)
             await uow.commit()
         return {"approach_gate": gate, "cp1_payload": payload}
@@ -504,13 +643,38 @@ class PreparationNodes:
     async def apply_cp1(self, state: PreparationState, config: RunnableConfig) -> PreparationState:
         rc = _run_context(config)
         case_id = _case_id(state)
-        approved = bool(state.get("cp1_decision", {}).get("approved"))
+        decision = state.get("cp1_decision", {})
+        approved = bool(decision.get("approved"))
+        comment = str(decision.get("comment", "") or "").strip()
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
             case.advance(
                 CaseState.CP1_APPROVED if approved else CaseState.CP1_REJECTED,
                 "build_solicitation" if approved else "cp1_rejected",
+            )
+            if approved:
+                lines = [
+                    "Phương án mua sắm đã được phê duyệt.",
+                    "Tiếp theo: dựng hồ sơ mời thầu (HSMT), tiêu chí đánh giá, "
+                    "shortlist NCC và kiểm tra rủi ro…",
+                ]
+            else:
+                lines = [
+                    f"Lý do: {comment}" if comment else "Không có nhận xét kèm theo.",
+                    "Quy trình dừng tại đây — mở hồ sơ để xem chi tiết và chuẩn bị lại.",
+                ]
+            await self._notify_progress(
+                uow,
+                case,
+                stage="cp1_decision",
+                dedupe=rc.run_id.hex[:12],
+                heading=(
+                    "✅ CP1 — Phương án mua sắm ĐÃ ĐƯỢC DUYỆT"
+                    if approved
+                    else "⛔ CP1 — Phương án bị TỪ CHỐI"
+                ),
+                lines=lines,
             )
             await uow.cases.save(case)
             await uow.commit()
@@ -741,6 +905,45 @@ class PreparationNodes:
                 merged = {**package.content, "gate": gate}
                 await self._add_artifact(uow, case, ArtifactType.SOLICITATION_PACKAGE, merged)
             case.advance(CaseState.CP2_PENDING if result.passed else CaseState.PACKAGE_READY, "cp2")
+            if result.passed:
+                await self._notify_progress(
+                    uow,
+                    case,
+                    stage="cp2_gate",
+                    dedupe=_hash(gate)[:12],
+                    heading="📄 HSMT đã dựng xong — gate CP2: ĐẠT, chờ duyệt",
+                    lines=[
+                        (
+                            f"Tiêu chí đánh giá: tổng trọng số "
+                            f"{int(criteria.get('weighted_total', 0))}/100."
+                        ),
+                        f"Shortlist: {len(state.get('shortlist', []))} nhà cung cấp.",
+                        "Đã trình duyệt CP2 — hồ sơ tạm dừng chờ quyết định.",
+                    ],
+                )
+                await self._notify_cp_approval(
+                    uow,
+                    case,
+                    checkpoint="CP2",
+                    dedupe=_hash(gate)[:12],
+                    lines=[
+                        (
+                            f"Tiêu chí đánh giá: tổng trọng số "
+                            f"{int(criteria.get('weighted_total', 0))}/100."
+                        ),
+                        f"Shortlist: {len(state.get('shortlist', []))} nhà cung cấp.",
+                        "Gate CP2 tự động: ĐẠT — hồ sơ mời thầu sẵn sàng để duyệt.",
+                    ],
+                )
+            else:
+                await self._notify_progress(
+                    uow,
+                    case,
+                    stage="cp2_gate",
+                    dedupe=_hash(gate)[:12],
+                    heading="⚠️ Gate CP2 CHƯA ĐẠT — hồ sơ cần chỉnh",
+                    lines=[*result.reasons, "Mở hồ sơ để xem chi tiết."],
+                )
             await uow.cases.save(case)
             await uow.commit()
         return {"package_gate": gate, "cp2_payload": payload}
@@ -752,13 +955,34 @@ class PreparationNodes:
     async def apply_cp2(self, state: PreparationState, config: RunnableConfig) -> PreparationState:
         rc = _run_context(config)
         case_id = _case_id(state)
-        approved = bool(state.get("cp2_decision", {}).get("approved"))
+        decision = state.get("cp2_decision", {})
+        approved = bool(decision.get("approved"))
+        comment = str(decision.get("comment", "") or "").strip()
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
             case.advance(
                 CaseState.CP2_APPROVED if approved else CaseState.CP2_REJECTED,
                 "official" if approved else "cp2_rejected",
+            )
+            if approved:
+                lines = ["Bộ hồ sơ mời thầu được phê duyệt — đang niêm phong bản chính thức…"]
+            else:
+                lines = [
+                    f"Lý do: {comment}" if comment else "Không có nhận xét kèm theo.",
+                    "Quy trình dừng tại đây — mở hồ sơ để xem chi tiết.",
+                ]
+            await self._notify_progress(
+                uow,
+                case,
+                stage="cp2_decision",
+                dedupe=rc.run_id.hex[:12],
+                heading=(
+                    "✅ CP2 — Hồ sơ mời thầu ĐÃ ĐƯỢC DUYỆT"
+                    if approved
+                    else "⛔ CP2 — Hồ sơ bị TỪ CHỐI"
+                ),
+                lines=lines,
             )
             await uow.cases.save(case)
             await uow.commit()
@@ -819,6 +1043,26 @@ class PreparationNodes:
             )
             # lock_official already lands in PACKAGE_OFFICIAL (single version bump).
             case.lock_official(official.id.value, manifest_ref)
+            await self._notify_progress(
+                uow,
+                case,
+                stage="official",
+                dedupe=rc.run_id.hex[:12],
+                heading="🏁 Bộ hồ sơ mời thầu CHÍNH THỨC đã sẵn sàng",
+                lines=[
+                    f"Hình thức: {state.get('method_label', '')}.",
+                    f"{len(artifacts)} artifact được niêm phong trong manifest.",
+                    "Bấm nút bên dưới để phát hành gói thầu (gửi RFQ qua email).",
+                ],
+                buttons=[
+                    {
+                        "action_id": "dw01_publish",
+                        "label": "📧 Phát hành RFQ",
+                        "value": str(case.id.value),
+                        "style": "primary",
+                    }
+                ],
+            )
             await uow.cases.save(case)
             await uow.commit()
         return {"official_manifest": manifest, "export_ref": manifest_ref}

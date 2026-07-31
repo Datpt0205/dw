@@ -85,3 +85,24 @@ def _patch_client(monkeypatch, handler) -> None:
         real_init(self, *args, **kwargs)
 
     monkeypatch.setattr(httpx.AsyncClient, "__init__", fake_init)
+
+
+def test_render_run_progress_card() -> None:
+    from dw_connectors.adapters.slack_approval_notifier import SlackApprovalMessage, _render
+
+    text, blocks = _render(
+        SlackApprovalMessage(
+            message_id=uuid.uuid4(),
+            recipient_slack_user_id="U123",
+            event_type="run.progress",
+            case_id=uuid.uuid4(),
+            case_title="Mua 100 laptop",
+            web_url="http://localhost:3000/procurement/dw01/cases/x",
+            heading="⚖️ Gate CP1: ĐẠT — chờ Quản lý phê duyệt",
+            lines=("Giá trị 2 tỷ → «Đấu thầu»", "Đã trình duyệt CP1"),
+        )
+    )
+    assert "Gate CP1" in text
+    body = blocks[1]["text"]["text"]
+    assert "• Giá trị 2 tỷ" in body and "• Đã trình duyệt CP1" in body
+    assert blocks[2]["elements"][0]["url"].endswith("/cases/x")

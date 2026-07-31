@@ -16,6 +16,13 @@ class IntakeNotificationType(StrEnum):
     APPROVAL_ESCALATED = "intake.approval_escalated"
     APPROVED = "intake.approved"
     REJECTED = "intake.rejected"
+    # P3 activity trace: a generic per-step progress card for the case owner.
+    # Payload carries {"title", "heading", "lines"}; content is SYSTEM-BUILT
+    # from real node events (gate results, artifact versions) — never model text.
+    RUN_PROGRESS = "run.progress"
+    # P4 Slack approvals: decision card for the approver with Duyệt/Từ chối
+    # buttons. Payload: {"title", "checkpoint": "CP1"|"CP2", "lines", "case_id"}.
+    CP_APPROVAL_REQUESTED = "cp.approval_requested"
 
 
 class NotificationJobStatus(StrEnum):

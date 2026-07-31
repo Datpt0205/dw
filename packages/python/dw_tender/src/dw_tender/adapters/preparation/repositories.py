@@ -9,6 +9,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_kernel.errors import ConflictError
@@ -330,8 +331,10 @@ class SqlIntakeNotificationRepository:
         return UserId(row.user_id) if row is not None else None
 
     async def enqueue(self, job: IntakeNotificationJob) -> None:
+        # Idempotent by key: a re-executed emitter (e.g. a continue-run passing
+        # the same gate) must not blow the transaction nor duplicate the card.
         await self.session.execute(
-            sa.insert(tables.approval_notification_jobs).values(
+            pg_insert(tables.approval_notification_jobs).values(
                 id=job.id,
                 tenant_id=job.tenant_id.value,
                 workspace_id=job.workspace_id.value,
@@ -345,6 +348,7 @@ class SqlIntakeNotificationRepository:
                 attempts=job.attempts,
                 max_attempts=job.max_attempts,
             )
+            .on_conflict_do_nothing(index_elements=["idempotency_key"])
         )
 
     async def list_for_case(self, case_id: PreparationCaseId) -> list[IntakeNotificationJob]:

@@ -13,6 +13,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -29,6 +30,12 @@ logger = logging.getLogger("dw_api.channels.slack")
 
 _CONFIRM_ACTION = "dw01_chat_confirm"
 _EDIT_ACTION = "dw01_chat_edit"
+# P4: decision/publication buttons on worker-sent cards.
+_INTAKE_APPROVE = "dw01_intake_approve"
+_INTAKE_REJECT = "dw01_intake_reject"
+_CP_APPROVE = "dw01_cp_approve"
+_CP_REJECT = "dw01_cp_reject"
+_PUBLISH = "dw01_publish"
 
 # Slack section blocks cap at 3000 chars; keep the thinking readable.
 _THINKING_MAX_CHARS = 2200
@@ -156,9 +163,18 @@ class SlackFrontOfficeService:
         if not actions:
             return
         action_id = str(actions[0].get("action_id", ""))
-        if action_id not in (_CONFIRM_ACTION, _EDIT_ACTION):
+        known = (
+            _CONFIRM_ACTION,
+            _EDIT_ACTION,
+            _INTAKE_APPROVE,
+            _INTAKE_REJECT,
+            _CP_APPROVE,
+            _CP_REJECT,
+            _PUBLISH,
+        )
+        if action_id not in known:
             return
-        conversation_id = str(actions[0].get("value", ""))
+        value = str(actions[0].get("value", ""))
         user = str((payload.get("user") or {}).get("id", ""))
         channel = str((payload.get("channel") or {}).get("id", ""))
         message = payload.get("message") or {}
@@ -171,8 +187,19 @@ class SlackFrontOfficeService:
             return
         context, display_name = resolved
 
+        if action_id in (_INTAKE_APPROVE, _INTAKE_REJECT, _CP_APPROVE, _CP_REJECT, _PUBLISH):
+            await self._handle_decision_action(
+                action_id=action_id,
+                value=value,
+                channel=channel,
+                message=message,
+                context=context,
+                display_name=display_name,
+            )
+            return
+
         try:
-            conv_uuid = UUID(conversation_id)
+            conv_uuid = UUID(value)
         except ValueError:
             return
         outcome = await self.chat.conversation_service.handle_action(
@@ -190,6 +217,110 @@ class SlackFrontOfficeService:
         thread_ts = message.get("thread_ts")
         for reply in outcome.replies:
             await self._send_reply(channel, thread_ts, reply)
+
+    # ------------------------------------------------- decision buttons (P4) --
+    async def _handle_decision_action(
+        self,
+        *,
+        action_id: str,
+        value: str,
+        channel: str,
+        message: dict[str, Any],
+        context: AccessContext,
+        display_name: str,
+    ) -> None:
+        """Intake verify / CP1-CP2 decide / publish — driven from Slack cards.
+
+        Slack chỉ là kênh: mọi call đi qua đúng application handler với
+        AccessContext thật của người bấm (scope + SoD + RLS đều được kiểm tra
+        lại phía server; thiếu quyền → từ chối, không leo thang).
+        """
+        preparation = self.container.preparation
+        if preparation is None:
+            return
+        try:
+            reply = await self._execute_decision(action_id, value, context, display_name)
+        except Exception as exc:
+            logger.warning("slack decision failed action=%s: %s", action_id, exc)
+            reply = f"⚠️ Không thực hiện được: {str(exc)[:300]}"
+        if message.get("ts"):
+            await self.chat.chat_client.update_message(
+                channel=channel,
+                ts=str(message["ts"]),
+                text="🕘 Đã ghi nhận thao tác — kết quả ở tin nhắn tiếp theo.",
+            )
+        await self.chat.chat_client.post_message(channel=channel, text=reply)
+
+    async def _execute_decision(
+        self, action_id: str, value: str, context: AccessContext, display_name: str
+    ) -> str:
+        preparation = self.container.preparation
+        assert preparation is not None
+        now = datetime.now(tz=UTC)
+
+        if action_id in (_INTAKE_APPROVE, _INTAKE_REJECT):
+            case_id = UUID(value)
+            if action_id == _INTAKE_APPROVE:
+                await preparation.verify_intake.handle(
+                    case_id,
+                    approval_reference=f"SLACK-{now:%Y%m%d-%H%M%S}",
+                    comment=f"Xác minh qua Slack bởi {display_name}",
+                    context=context,
+                )
+                return (
+                    "✅ Đã xác minh intake — Digital Worker bắt đầu chạy. "
+                    "Người tạo hồ sơ sẽ nhận tiến độ từng bước."
+                )
+            await preparation.reject_intake.handle(
+                case_id, comment=f"Từ chối qua Slack bởi {display_name}", context=context
+            )
+            return "❌ Đã từ chối hồ sơ — người tạo sẽ nhận thông báo kèm lý do."
+
+        if action_id in (_CP_APPROVE, _CP_REJECT):
+            cp, _, case_raw = value.partition(":")
+            case_id = UUID(case_raw)
+            approve = action_id == _CP_APPROVE
+            approval_id = await self._find_pending_approval(cp, case_id, context)
+            if approval_id is None:
+                return (
+                    "⚠️ Không còn yêu cầu phê duyệt đang chờ cho checkpoint này "
+                    "(có thể đã được quyết định)."
+                )
+            await self.container.approval_flow.decide(  # type: ignore[union-attr]
+                approval_id=approval_id,
+                approve=approve,
+                comment=f"Quyết định qua Slack bởi {display_name}",
+                context=context,
+                authorization=self.container.authorization,
+            )
+            label = cp.upper()
+            if approve:
+                return f"✅ Đã duyệt {label} — quy trình tiếp tục chạy tự động."
+            return f"⛔ Đã từ chối {label} — quy trình dừng, người tạo sẽ được thông báo."
+
+        if action_id == _PUBLISH:
+            case_id = UUID(value)
+            result = await preparation.auto_publish.handle(case_id, context)
+            recipient = str(result.get("recipient", "")) if isinstance(result, dict) else ""
+            suffix = f" tới {recipient}" if recipient else ""
+            return f"📧 Đã phát hành RFQ qua email{suffix} và ghi nhận phát hành vào hồ sơ."
+
+        raise ValueError(f"unknown action {action_id}")
+
+    async def _find_pending_approval(
+        self, cp: str, case_id: UUID, context: AccessContext
+    ) -> UUID | None:
+        uow_factory = self.container.uow_factory
+        if uow_factory is None:
+            return None
+        wanted_type = f"preparation.{cp}"
+        async with uow_factory(context) as uow:
+            for request in await uow.approvals.list_pending():
+                if request.approval_type == wanted_type and str(
+                    request.payload.get("case_id", "")
+                ) == str(case_id):
+                    return request.id
+        return None
 
     # -------------------------------------------------------------- render ---
     async def _reveal_thinking(self, channel: str, thinking_ts: str, thinking: str) -> None:

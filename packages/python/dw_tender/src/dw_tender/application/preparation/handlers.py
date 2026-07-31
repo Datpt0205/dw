@@ -7,7 +7,7 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from dw_agent_runtime.contracts import RunContext
@@ -1084,6 +1084,30 @@ class RunPreparationHandler:
                 str(case.created_by.value) if on_behalf_of_owner else context.principal_id
             )
             case.start_run(run_id)
+            # P3 activity trace: first progress card for the owner's Slack DM.
+            await uow.notifications.enqueue(
+                IntakeNotificationJob(
+                    id=self.id_generator.new_uuid(),
+                    tenant_id=case.tenant_id,
+                    workspace_id=case.workspace_id,
+                    case_id=case.id,
+                    event_type=IntakeNotificationType.RUN_PROGRESS,
+                    recipient_user_id=case.created_by,
+                    due_at=datetime.now(tz=UTC),
+                    idempotency_key=(
+                        f"dw01:{case.id.value}:progress:run_started:{run_id.hex[:12]}"
+                    ),
+                    payload={
+                        "title": case.title,
+                        "heading": "🚀 Digital Worker bắt đầu xử lý hồ sơ",
+                        "lines": [
+                            "Các bước: bóc yêu cầu từ PR → đối chiếu quy định → "
+                            "lập phương án → trình duyệt CP1 → dựng HSMT → CP2.",
+                            "Bạn sẽ nhận cập nhật từng bước tại đây.",
+                        ],
+                    },
+                )
+            )
             await uow.cases.save(case)
             await uow.commit()
 

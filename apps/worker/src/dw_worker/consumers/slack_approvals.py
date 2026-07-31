@@ -82,6 +82,18 @@ class SlackApprovalConsumer:
                 reason=f"case no longer pending intake ({delivery.case_state})",
             )
             return
+        # A CP decision card is only worth sending while that checkpoint is
+        # actually pending — a stale card would offer buttons for a dead state.
+        if job.event_type.value == "cp.approval_requested":
+            expected = {"CP1": "cp1_pending", "CP2": "cp2_pending"}.get(
+                str(job.payload.get("checkpoint", ""))
+            )
+            if expected is not None and delivery.case_state != expected:
+                await self.store.mark_cancelled(
+                    delivery,
+                    reason=f"checkpoint no longer pending ({delivery.case_state})",
+                )
+                return
         slack_user_id = self.user_map.get(delivery.recipient_subject)
         if not slack_user_id:
             await self.store.mark_failed(
@@ -93,6 +105,18 @@ class SlackApprovalConsumer:
         estimated_value = payload.get("estimated_value_minor", 0)
         if not isinstance(estimated_value, (int, str)):
             estimated_value = 0
+        raw_lines = payload.get("lines", [])
+        lines = tuple(str(item) for item in raw_lines) if isinstance(raw_lines, list) else ()
+        raw_buttons = payload.get("buttons", [])
+        buttons = (
+            tuple(
+                {str(k): str(v) for k, v in item.items()}
+                for item in raw_buttons
+                if isinstance(item, dict)
+            )
+            if isinstance(raw_buttons, list)
+            else ()
+        )
         try:
             ref = await self.notifier.send(
                 SlackApprovalMessage(
@@ -110,6 +134,10 @@ class SlackApprovalConsumer:
                     estimated_value_minor=int(estimated_value),
                     currency=str(payload.get("currency", "VND")),
                     comment=str(payload.get("comment", "")),
+                    heading=str(payload.get("heading", "")),
+                    lines=lines,
+                    buttons=buttons,
+                    checkpoint=str(payload.get("checkpoint", "")),
                 )
             )
         except Exception as exc:

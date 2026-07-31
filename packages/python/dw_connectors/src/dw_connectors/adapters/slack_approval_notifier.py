@@ -27,6 +27,13 @@ class SlackApprovalMessage:
     estimated_value_minor: int = 0
     currency: str = "VND"
     comment: str = ""
+    # run.progress cards (P3 activity trace): system-built heading + bullets.
+    heading: str = ""
+    lines: tuple[str, ...] = ()
+    # P4: interactive buttons [{action_id, label, value, style?}]. Rendering
+    # only — every click is re-authorized server-side via the normal handlers.
+    buttons: tuple[dict[str, str], ...] = ()
+    checkpoint: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,8 +46,93 @@ def _money(message: SlackApprovalMessage) -> str:
     return f"{message.estimated_value_minor:,.0f} {message.currency}".replace(",", ".")
 
 
+def _action_buttons(message: SlackApprovalMessage) -> list[dict[str, Any]]:
+    elements: list[dict[str, Any]] = []
+    for button in message.buttons:
+        element: dict[str, Any] = {
+            "type": "button",
+            "text": {"type": "plain_text", "text": button.get("label", "—"), "emoji": True},
+            "action_id": button.get("action_id", ""),
+            "value": button.get("value", ""),
+        }
+        if button.get("style") in ("primary", "danger"):
+            element["style"] = button["style"]
+        elements.append(element)
+    return elements
+
+
+def _link_button(message: SlackApprovalMessage, label: str = "Mở hồ sơ DW01") -> dict[str, Any]:
+    return {
+        "type": "button",
+        "text": {"type": "plain_text", "text": label, "emoji": True},
+        "url": message.web_url,
+        "action_id": "open_dw01_case",
+    }
+
+
 def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
     event = message.event_type
+    if event == "run.progress":
+        heading = message.heading or "Cập nhật tiến trình"
+        body = f"*{message.case_title}*\n" + "\n".join(f"• {line}" for line in message.lines)
+        context = "Tiến trình tự động của Digital Worker DW01 — bấm nút để xem chi tiết."
+        text = f"{heading}: {message.case_title}"
+        blocks: list[dict[str, Any]] = [
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*{heading}*"}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": body}},
+            {
+                "type": "actions",
+                "elements": [*_action_buttons(message), _link_button(message)],
+            },
+            {"type": "context", "elements": [{"type": "mrkdwn", "text": context}]},
+        ]
+        return text, blocks
+    if event == "cp.approval_requested":
+        cp = message.checkpoint or "CP"
+        cp_label = {
+            "CP1": "CP1 — Duyệt phương án mua sắm",
+            "CP2": "CP2 — Duyệt hồ sơ trước phát hành",
+        }.get(cp, cp)
+        heading = f"🔔 {cp_label}: chờ bạn quyết định"
+        body = f"*{message.case_title}*\n" + "\n".join(f"• {line}" for line in message.lines)
+        text = f"{heading} — {message.case_title}"
+        blocks = [
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*{heading}*"}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": body}},
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "style": "primary",
+                        "text": {"type": "plain_text", "text": f"✅ Duyệt {cp}", "emoji": True},
+                        "action_id": "dw01_cp_approve",
+                        "value": f"{cp.lower()}:{message.case_id}",
+                    },
+                    {
+                        "type": "button",
+                        "style": "danger",
+                        "text": {"type": "plain_text", "text": "❌ Từ chối", "emoji": True},
+                        "action_id": "dw01_cp_reject",
+                        "value": f"{cp.lower()}:{message.case_id}",
+                    },
+                    _link_button(message, "Xem chi tiết"),
+                ],
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            "Quyết định được ghi nhận với danh tính của bạn và "
+                            "lưu vào audit — người tạo hồ sơ không thể tự duyệt (SoD)."
+                        ),
+                    }
+                ],
+            },
+        ]
+        return text, blocks
     if event == "intake.approval_requested":
         heading = "Yêu cầu mới cần phê duyệt"
         body = (
@@ -48,7 +140,7 @@ def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
             f"Người tạo: {message.owner_name or '—'}\n"
             f"PR: `{message.source_pr_ref or '—'}` · Giá trị: {_money(message)}"
         )
-        context = "Vui lòng mở DW01 bằng tài khoản approver để phê duyệt hoặc từ chối."
+        context = "Bấm nút để quyết định ngay tại đây — hoặc mở DW01 xem chi tiết trước."
     elif event == "intake.approval_escalated":
         heading = "Nhắc việc phê duyệt quá hạn"
         body = (
@@ -69,6 +161,26 @@ def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
     else:
         raise InfrastructureError("unsupported Slack approval event", details={"event_type": event})
     text = f"{heading}: {message.case_title}"
+    # P4: the intake request card carries decision buttons so the approver never
+    # needs the web UI. Clicks are re-authorized server-side (identity → scopes).
+    action_elements: list[dict[str, Any]] = []
+    if event == "intake.approval_requested":
+        action_elements = [
+            {
+                "type": "button",
+                "style": "primary",
+                "text": {"type": "plain_text", "text": "✅ Xác minh & chạy DW01", "emoji": True},
+                "action_id": "dw01_intake_approve",
+                "value": str(message.case_id),
+            },
+            {
+                "type": "button",
+                "style": "danger",
+                "text": {"type": "plain_text", "text": "❌ Từ chối", "emoji": True},
+                "action_id": "dw01_intake_reject",
+                "value": str(message.case_id),
+            },
+        ]
     blocks: list[dict[str, Any]] = [
         {
             "type": "header",
@@ -78,12 +190,13 @@ def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
         {
             "type": "actions",
             "elements": [
+                *action_elements,
                 {
                     "type": "button",
                     "text": {"type": "plain_text", "text": "Mở hồ sơ DW01", "emoji": True},
                     "url": message.web_url,
                     "action_id": "open_dw01_case",
-                }
+                },
             ],
         },
         {
