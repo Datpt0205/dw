@@ -38,6 +38,7 @@ import { DW01_READONLY } from "../../../../../lib/readonly";
 import { apiClient } from "../../../../../lib/session";
 import { TagInput } from "../../../../../components/tag-input";
 import { Modal } from "../../../../../components/modal";
+import { ExecutionTrace } from "./execution-trace";
 import { businessDomainLabel, procurementTypeLabel } from "../../catalog";
 import { ComplianceChecklist } from "../../compliance-checklist";
 import { STATE_BADGE, STEPPER, currentStepIndex, formatVnd } from "../../state";
@@ -1254,6 +1255,9 @@ export default function Dw01CaseDetail({
           </CardContent>
         </Card>
       )}
+
+      {/* Work tree: per-step trace with RAG evidence (click to expand) */}
+      <ExecutionTrace artifacts={artifacts} />
 
       {/* Artifacts */}
       <div className="space-y-3">
