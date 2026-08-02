@@ -634,13 +634,15 @@ class AutoPublishPreparationHandler:
             # each incoming bid with one click, then closes and opens bids.
             approver = await uow.notifications.find_recipient_for_role("approver")
             if approver is not None:
+                # Slack requires UNIQUE action_ids within a block — suffix the
+                # index; the handler dispatches on the prefix before ":".
                 receipt_buttons: list[dict[str, str]] = [
                     {
-                        "action_id": "dw01_record_sub",
+                        "action_id": f"dw01_record_sub:{i}",
                         "label": f"{name} đã nộp",
                         "value": f"{case.id.value}|{name}",
                     }
-                    for name in suppliers[:4]
+                    for i, name in enumerate(suppliers[:4])
                 ]
                 receipt_buttons.append(
                     {

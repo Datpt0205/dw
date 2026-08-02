@@ -172,6 +172,9 @@ class SlackFrontOfficeService:
         if not actions:
             return
         action_id = str(actions[0].get("action_id", ""))
+        # Buttons repeated in one block carry an index suffix (Slack demands
+        # unique action_ids) — dispatch on the prefix.
+        action_id = action_id.split(":", 1)[0]
         known = (
             _CONFIRM_ACTION,
             _EDIT_ACTION,
