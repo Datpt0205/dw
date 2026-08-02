@@ -685,7 +685,7 @@ class PreparationNodes:
                 case,
                 stage="approach_rag",
                 dedupe=_hash({"m": method.key, "v": value, "n": len(rag_lines)})[:12],
-                heading="🔎 Đã đối chiếu quy định & truy xuất căn cứ",
+                heading="Đã đối chiếu quy định và truy xuất căn cứ",
                 lines=rag_lines,
             )
             await uow.cases.save(case)
@@ -739,7 +739,7 @@ class PreparationNodes:
                 case_id,
                 stage="review_wait_cp1",
                 dedupe=f"rw1-{_hash(gate)[:10]}",
-                heading="🤖 Review Agent đang thẩm định độc lập trước khi trình CP1…",
+                heading="Review Agent đang thẩm định độc lập trước khi trình CP1…",
                 line="Chừng một phút — có kết quả mình trình duyệt ngay.",
             )
             review = await self._run_review(
@@ -779,9 +779,9 @@ class PreparationNodes:
                     stage="cp1_gate",
                     dedupe=_hash(gate)[:12],
                     heading=(
-                        "⚖️ Gate CP1: ĐẠT — đủ điều kiện tự phê duyệt"
+                        "Gate CP1: ĐẠT — đủ điều kiện tự phê duyệt"
                         if autopilot
-                        else "⚖️ Gate CP1: ĐẠT — chờ Quản lý phê duyệt"
+                        else "Gate CP1: ĐẠT — chờ Quản lý phê duyệt"
                     ),
                     lines=[
                         (
@@ -838,7 +838,7 @@ class PreparationNodes:
                             case,
                             stage="cp1_autonomy_fyi",
                             dedupe=_hash(gate)[:12],
-                            heading="🤖 CP1 đã được Review Agent phê duyệt theo ủy quyền",
+                            heading="CP1 đã được Review Agent phê duyệt theo ủy quyền",
                             lines=[
                                 *cp1_lines,
                                 "Chính sách: AUTONOMOUS_DEMO — gói «chỉ định thầu» rủi ro thấp.",
@@ -924,7 +924,7 @@ class PreparationNodes:
                 stage="cp1_decision",
                 dedupe=rc.run_id.hex[:12],
                 heading=(
-                    "🤖 CP1 — TỰ PHÊ DUYỆT theo ủy quyền"
+                    "CP1 — TỰ PHÊ DUYỆT theo ủy quyền"
                     if approved and delegated
                     else "✅ CP1 — Phương án mua sắm ĐÃ ĐƯỢC DUYỆT"
                     if approved
@@ -950,7 +950,7 @@ class PreparationNodes:
             case_id,
             stage="build_start",
             dedupe="start",
-            heading="🛠️ Đang soạn hồ sơ mời thầu và tiêu chí chấm…",
+            heading="Đang soạn hồ sơ mời thầu và tiêu chí chấm…",
             line="Bước này mất một lúc — xong mình gửi trạng thái tiếp tại đây.",
         )
         # LLM drafts the scope + technical requirements; template is the fallback.
@@ -1167,7 +1167,7 @@ class PreparationNodes:
                 case_id,
                 stage="review_wait_cp2",
                 dedupe=f"rw2-{_hash(gate)[:10]}",
-                heading="🤖 Review Agent đang thẩm định bộ hồ sơ trước khi trình CP2…",
+                heading="Review Agent đang thẩm định bộ hồ sơ trước khi trình CP2…",
                 line="Chừng một phút — có kết quả mình trình duyệt ngay.",
             )
             review = await self._run_review(
@@ -1347,7 +1347,7 @@ class PreparationNodes:
                 case,
                 stage="official",
                 dedupe=rc.run_id.hex[:12],
-                heading="🏁 Bộ hồ sơ mời thầu CHÍNH THỨC đã niêm phong",
+                heading="Bộ hồ sơ mời thầu chính thức đã niêm phong",
                 lines=[
                     f"Hình thức: {state.get('method_label', '')}.",
                     f"{len(artifacts)} tài liệu được niêm phong trong bộ chính thức.",

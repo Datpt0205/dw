@@ -70,26 +70,13 @@ def _link_button(message: SlackApprovalMessage, label: str = "Mở hồ sơ DW01
     }
 
 
-def _render(
-    message: SlackApprovalMessage,
-) -> tuple[str, list[dict[str, Any]], tuple[str, ...]]:
-    """Render a card. Returns (fallback_text, blocks, detail_lines).
-
-    ``detail_lines`` are posted as a THREAD reply so the DM reads like an
-    activity feed (one short status line per step); clicking the message
-    expands the details — the Slack-native version of a collapsible block.
-    """
+def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
+    """Render a card: heading + every line in the open (no thread-collapse —
+    actionable content must be visible without extra clicks)."""
     event = message.event_type
     if event == "run.progress":
         heading = message.heading or "Cập nhật tiến trình"
-        visible = message.lines[:1]
-        details = tuple(message.lines[1:])
-        body = f"*{message.case_title}*" + "".join(f"\n• {line}" for line in visible)
-        context = (
-            "Bấm vào tin nhắn để xem chi tiết trong thread."
-            if details
-            else "Ngọc cập nhật tiến độ."
-        )
+        body = f"*{message.case_title}*" + "".join(f"\n• {line}" for line in message.lines)
         text = f"{heading}: {message.case_title}"
         blocks: list[dict[str, Any]] = [
             {"type": "section", "text": {"type": "mrkdwn", "text": f"*{heading}*"}},
@@ -98,9 +85,8 @@ def _render(
                 "type": "actions",
                 "elements": [*_action_buttons(message), _link_button(message)],
             },
-            {"type": "context", "elements": [{"type": "mrkdwn", "text": context}]},
         ]
-        return text, blocks, details
+        return text, blocks
     if event == "cp.approval_requested":
         cp = message.checkpoint or "CP"
         cp_label = {
@@ -109,12 +95,8 @@ def _render(
             "CP3": "CP3 — Duyệt làm rõ/sửa đổi sau phát hành",
             "CP4": "CP4 — Xác nhận mở thầu & bàn giao DW02",
         }.get(cp, cp)
-        heading = f"🔔 {cp_label}: chờ bạn quyết định"
-        # Keep the two key facts on the card; the regulation/review detail
-        # expands in the thread (activity-feed style).
-        cp_visible = message.lines[:2]
-        cp_details = tuple(message.lines[2:])
-        body = f"*{message.case_title}*" + "".join(f"\n• {line}" for line in cp_visible)
+        heading = f"{cp_label}: chờ bạn quyết định"
+        body = f"*{message.case_title}*" + "".join(f"\n• {line}" for line in message.lines)
         text = f"{heading} — {message.case_title}"
         if cp == "CP4":
             decision_elements: list[dict[str, Any]] = [
@@ -162,13 +144,12 @@ def _render(
                         "text": (
                             "Quyết định được ghi nhận với danh tính của bạn và "
                             "lưu vào audit — người tạo hồ sơ không thể tự duyệt (SoD)."
-                            + (" Chi tiết đối chiếu: trong thread." if cp_details else "")
                         ),
                     }
                 ],
             },
         ]
-        return text, blocks, cp_details
+        return text, blocks
     if event == "intake.approval_requested":
         heading = "Yêu cầu mới cần phê duyệt"
         body = (
@@ -218,7 +199,7 @@ def _render(
             },
             {
                 "type": "button",
-                "text": {"type": "plain_text", "text": "📄 Xem PR", "emoji": True},
+                "text": {"type": "plain_text", "text": "Xem PR", "emoji": True},
                 "action_id": "dw01_view_pr",
                 "value": str(message.case_id),
             },
@@ -246,7 +227,7 @@ def _render(
             "elements": [{"type": "mrkdwn", "text": context}],
         },
     ]
-    return text, blocks, ()
+    return text, blocks
 
 
 @dataclass
@@ -268,7 +249,7 @@ class SlackApprovalNotifier:
                     "member_id": message.recipient_slack_user_id[:16],
                 },
             )
-        text, blocks, detail_lines = _render(message)
+        text, blocks = _render(message)
         async with httpx.AsyncClient(
             base_url=_API_BASE,
             headers={"Authorization": f"Bearer {self.bot_token}"},
@@ -295,43 +276,7 @@ class SlackApprovalNotifier:
                     "client_msg_id": str(message.message_id),
                 },
             )
-            ts = str(posted.get("ts", ""))
-            # Details collapse behind the status line: posted as a thread
-            # reply so the DM stays a clean activity feed (click to expand).
-            if detail_lines and ts:
-                await self._call(
-                    client,
-                    "/chat.postMessage",
-                    {
-                        "channel": channel,
-                        "thread_ts": ts,
-                        "text": "Chi tiết bước này",
-                        "blocks": [
-                            {
-                                "type": "section",
-                                "text": {
-                                    "type": "mrkdwn",
-                                    "text": "\n".join(f"• {line}" for line in detail_lines),
-                                },
-                            },
-                            {
-                                "type": "context",
-                                "elements": [
-                                    {
-                                        "type": "mrkdwn",
-                                        "text": (
-                                            "Xem căn cứ đầy đủ trên web — mục "
-                                            "«Vết thực thi» của hồ sơ."
-                                        ),
-                                    }
-                                ],
-                            },
-                        ],
-                        "unfurl_links": False,
-                        "unfurl_media": False,
-                    },
-                )
-        return SlackMessageRef(channel=channel, ts=ts)
+        return SlackMessageRef(channel=channel, ts=str(posted.get("ts", "")))
 
     @staticmethod
     async def _call(

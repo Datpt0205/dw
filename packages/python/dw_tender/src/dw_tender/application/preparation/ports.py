@@ -51,9 +51,7 @@ class IntakeNotificationRepositoryPort(Protocol):
 
     async def enqueue(self, job: IntakeNotificationJob) -> None: ...
 
-    async def list_for_case(
-        self, case_id: PreparationCaseId
-    ) -> list[IntakeNotificationJob]: ...
+    async def list_for_case(self, case_id: PreparationCaseId) -> list[IntakeNotificationJob]: ...
 
 
 class PreparationUnitOfWork(Protocol):

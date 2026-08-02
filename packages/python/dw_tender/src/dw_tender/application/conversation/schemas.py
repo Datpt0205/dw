@@ -86,9 +86,7 @@ class SubmissionInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     supplier_name: str = Field(default="", description="Tên nhà cung cấp nộp hồ sơ")
-    external_reference: str = Field(
-        default="", description="Mã tham chiếu/số văn bản nếu có"
-    )
+    external_reference: str = Field(default="", description="Mã tham chiếu/số văn bản nếu có")
 
 
 class ClarificationAnswerItem(BaseModel):
@@ -129,9 +127,7 @@ class IntakeChatTurn(BaseModel):
         default=None, description="Khi intent=record_submission"
     )
     reply_vi: str = Field(description="Câu trả lời tiếng Việt gửi lại Slack")
-    reasoning_summary: str = Field(
-        default="", description="1-2 câu: đã hiểu gì / vì sao hỏi lại"
-    )
+    reasoning_summary: str = Field(default="", description="1-2 câu: đã hiểu gì / vì sao hỏi lại")
 
 
 # Field → label shown when asking for it. Order matters (asked in this order).
@@ -144,9 +140,7 @@ _REQUIRED_LABELS: tuple[tuple[str, str], ...] = (
 )
 
 
-_VND_UNIT = re.compile(
-    r"(\d+(?:[.,]\d+)?)\s*(tỷ|tỉ|ty\b|triệu|tr\b)", re.IGNORECASE
-)
+_VND_UNIT = re.compile(r"(\d+(?:[.,]\d+)?)\s*(tỷ|tỉ|ty\b|triệu|tr\b)", re.IGNORECASE)
 _VND_PLAIN = re.compile(r"\b(\d{1,3}(?:[.,]\d{3}){2,}|\d{7,})\b")
 
 

@@ -28,7 +28,5 @@ class SlackSignatureVerifier:
         if abs(time.time() - ts) > _MAX_SKEW_SECONDS:
             return False  # replayed or badly skewed request
         base = b"v0:" + timestamp.encode() + b":" + body
-        expected = (
-            "v0=" + hmac.new(self.signing_secret.encode(), base, hashlib.sha256).hexdigest()
-        )
+        expected = "v0=" + hmac.new(self.signing_secret.encode(), base, hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected, signature)

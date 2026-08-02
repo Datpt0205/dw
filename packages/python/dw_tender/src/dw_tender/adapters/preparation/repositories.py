@@ -334,7 +334,8 @@ class SqlIntakeNotificationRepository:
         # Idempotent by key: a re-executed emitter (e.g. a continue-run passing
         # the same gate) must not blow the transaction nor duplicate the card.
         await self.session.execute(
-            pg_insert(tables.approval_notification_jobs).values(
+            pg_insert(tables.approval_notification_jobs)
+            .values(
                 id=job.id,
                 tenant_id=job.tenant_id.value,
                 workspace_id=job.workspace_id.value,

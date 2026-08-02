@@ -142,7 +142,7 @@ class SlackFrontOfficeService:
         # take a while), then replace it with the model's visible reasoning
         # BEFORE the actual replies arrive as separate messages.
         thinking_ts = await self.chat.chat_client.post_message(
-            channel=channel, thread_ts=thread_ts, text="🤔 Đang suy nghĩ…"
+            channel=channel, thread_ts=thread_ts, text="Đang suy nghĩ…"
         )
         try:
             outcome = await self.chat.conversation_service.handle_message(
@@ -521,7 +521,7 @@ class SlackFrontOfficeService:
                 context,
             )
             return (
-                "🎉 CP4 hoàn tất — biên bản mở thầu đã lập, gói bàn giao DW02 đã "
+                "CP4 hoàn tất — biên bản mở thầu đã lập, gói bàn giao DW02 đã "
                 "niêm phong. Quy trình DW01 kết thúc."
             )
 
@@ -530,7 +530,7 @@ class SlackFrontOfficeService:
             result = await preparation.auto_publish.handle(case_id, context)
             recipient = str(result.get("recipient", "")) if isinstance(result, dict) else ""
             suffix = f" tới {recipient}" if recipient else ""
-            return f"📧 Đã phát hành RFQ qua email{suffix} và ghi nhận phát hành vào hồ sơ."
+            return f"Đã phát hành RFQ qua email{suffix} và ghi nhận phát hành vào hồ sơ."
 
         raise ValueError(f"unknown action {action_id}")
 
@@ -554,42 +554,24 @@ class SlackFrontOfficeService:
         """Replace the placeholder with the model's visible reasoning."""
         if not thinking:
             await self.chat.chat_client.update_message(
-                channel=channel, ts=thinking_ts, text="💭 (không có suy luận cho lượt này)"
+                channel=channel, ts=thinking_ts, text="(không có suy luận cho lượt này)"
             )
             return
         trimmed = thinking.strip()
         if len(trimmed) > _THINKING_MAX_CHARS:
             trimmed = trimmed[:_THINKING_MAX_CHARS].rstrip() + "\n… _(đã rút gọn)_"
-        # Collapsed by default: the DM shows ONE representative line; the full
-        # trace lives in the thread (click the message to expand it).
-        first = trimmed.splitlines()[0].lstrip("• ").strip()
-        if len(first) > 120:
-            first = first[:117].rstrip() + "…"
+        # Inline, de-emphasized: a context block renders as small grey text —
+        # visibly "the worker's reasoning" without shouting over the reply.
         await self.chat.chat_client.update_message(
             channel=channel,
             ts=thinking_ts,
-            text=f"💭 {first}",
+            text="Suy nghĩ",
             blocks=[
                 {
                     "type": "context",
                     "elements": [
-                        {
-                            "type": "mrkdwn",
-                            "text": f"💭 {first} — _chi tiết suy nghĩ trong thread_",
-                        }
+                        {"type": "mrkdwn", "text": f"_Suy nghĩ_\n{trimmed}"}
                     ],
-                }
-            ],
-        )
-        quoted = "\n".join(f">{line}" for line in trimmed.splitlines())
-        await self.chat.chat_client.post_message(
-            channel=channel,
-            text="Suy nghĩ đầy đủ",
-            thread_ts=thinking_ts,
-            blocks=[
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"💭 *Suy nghĩ đầy đủ*\n{quoted}"},
                 }
             ],
         )

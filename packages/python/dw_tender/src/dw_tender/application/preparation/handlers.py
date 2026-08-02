@@ -614,7 +614,7 @@ class AutoPublishPreparationHandler:
                     idempotency_key=f"dw01:{case.id.value}:progress:published",
                     payload={
                         "title": case.title,
-                        "heading": "📧 Đã phát hành hồ sơ mời thầu qua email",
+                        "heading": "Đã phát hành hồ sơ mời thầu qua email",
                         "lines": [
                             (
                                 "Đã gửi tới: "
@@ -1144,7 +1144,7 @@ class CompletePreparationCp4Handler:
                     idempotency_key=f"dw01:{case.id.value}:progress:cp4_done",
                     payload={
                         "title": case.title,
-                        "heading": "🎉 CP4 hoàn tất — đã mở thầu và bàn giao DW02",
+                        "heading": "CP4 hoàn tất — đã mở thầu và bàn giao DW02",
                         "lines": [
                             f"{len(submissions)} hồ sơ dự thầu đã mở; biên bản mở thầu "
                             "được hệ thống lập và lưu vào hồ sơ.",
@@ -1268,7 +1268,7 @@ class RunPreparationHandler:
                     ),
                     payload={
                         "title": case.title,
-                        "heading": "🚀 Mình bắt đầu xử lý hồ sơ nhé",
+                        "heading": "Bắt đầu xử lý hồ sơ",
                         "lines": [
                             "Trình tự: đọc yêu cầu → đối chiếu quy định → "
                             "lập phương án → trình duyệt CP1 → soạn HSMT → CP2.",

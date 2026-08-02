@@ -427,7 +427,7 @@ class ConversationIntakeService:
                 replies=(
                     ChatReply(
                         text=(
-                            "📝 Đã lập văn bản sửa đổi (addendum) từ nội dung bạn nêu và "
+                            "Đã lập văn bản sửa đổi (addendum) từ nội dung bạn nêu và "
                             "trình duyệt CP3. Quản lý sẽ nhận thẻ quyết định trên Slack."
                         )
                     ),
@@ -484,7 +484,7 @@ class ConversationIntakeService:
                 replies=(
                     ChatReply(
                         text=(
-                            f"📥 Đã ghi nhận hồ sơ dự thầu của «{supplier}» và lưu biên nhận "
+                            f"Đã ghi nhận hồ sơ dự thầu của {supplier} và lưu biên nhận "
                             "vào sổ tiếp nhận."
                         )
                     ),
@@ -519,7 +519,7 @@ class ConversationIntakeService:
                 replies=(
                     ChatReply(
                         text=(
-                            f"🔒 Đã đề nghị chốt sổ ({count} hồ sơ dự thầu) và mở thầu. "
+                            f"Đã đề nghị chốt sổ với {count} hồ sơ dự thầu và mở thầu. "
                             "Quản lý sẽ nhận thẻ xác nhận CP4 trên Slack — khi xác nhận, "
                             "biên bản mở thầu và gói bàn giao DW02 sẽ được lập tự động."
                         )
@@ -565,7 +565,7 @@ class ConversationIntakeService:
             options.append((str(sib.id), await self._case_title(sib.case_id, context)))
         picker = ChatReply(
             text=(
-                f"📌 Áp dụng cho hồ sơ «{target_title}». Nhầm hồ sơ? "
+                f"Áp dụng cho hồ sơ «{target_title}». Nhầm hồ sơ? "
                 "Chọn hồ sơ khác bên dưới rồi nhắn lại yêu cầu."
             ),
             case_options=tuple(options),
