@@ -16,19 +16,19 @@ An nhắn từng câu:
 ```
 Phòng IT cần mua 500 laptop cho nhân viên mới
 ```
-→ Ngọc 💭 rồi hỏi gộp phần thiếu.
+→ dòng *Suy nghĩ* (chữ xám nhỏ, hiện thẳng) rồi Ngọc hỏi gộp phần thiếu.
 
 ```
 tầm 7,5 tỷ, cần trong 60 ngày, giao về 3 chi nhánh HN, ĐN, HCM
 ```
-→ 💭 **7,5 tỷ > 5 tỷ → Đấu thầu, tối thiểu 3 nhà thầu** (rule pack). Hỏi NCC.
+→ *Suy nghĩ*: **7,5 tỷ > 5 tỷ → Đấu thầu, tối thiểu 3 nhà thầu**. Hỏi NCC.
 
 ```
 mời Synnex FPT, Digiworld với Petrosetco nhé
 ```
 → Thẻ xác nhận → An bấm ✅ → PR tự sinh. *(Web: hồ sơ hiện ra ≤5s.)*
 
-**Bình**: nhận DM → bấm **[📄 Xem PR]** → **[✅ Xác minh & chạy DW01]**.
+**Bình**: nhận DM → bấm **[Xem PR]** → **[✅ Xác minh & chạy DW01]**.
 
 Run chạy vài bước rồi **dừng ở ⚠️ Gate CP1 CHƯA ĐẠT** — card liệt kê 3 câu
 hỏi thương mại kèm gợi ý (bảo hành / bản quyền / thanh toán). An trả lời gộp:
@@ -40,12 +40,17 @@ bảo hành 36 tháng, kèm bản quyền Windows 11 Pro và Office, thanh toán
 (hoặc lười: `cứ lấy theo gợi ý nhé`) → Ngọc ghi nhận 3/3 → **tự chạy tiếp**.
 *Đây là điểm đau P4 được giải ngay trên sân khấu — không form, không upload.*
 
-### 🔎 RAG xuất hiện ở đây
-Run chạy: card **⚖️ Gate CP1** kèm dòng quy định (TCO >5 tỷ, pháp chế >100tr)
-+ 🤖 Review Agent. Trên web mở hồ sơ → khối **«Vết thực thi»**:
-- **Phương án mua sắm — CP1** → badge **📚 n căn cứ** → bấm vào: đọc file nào
+### RAG xuất hiện ở đây
+Ngay trên Slack: card **«Đã đối chiếu quy định và truy xuất căn cứ»** —
+số đoạn căn cứ pháp lý/quy chế + trích đoạn (vd *«Điều 22. Đấu thầu rộng
+rãi…» — độ liên quan 91%*). Card **Gate CP1: ĐẠT** kèm dòng quy định
+(TCO >5 tỷ, pháp chế >100tr) và **Review Agent đang thẩm định…** trước khi
+thẻ duyệt tới Bình.
+
+Trên web mở hồ sơ → khối **«Vết thực thi»**:
+- **Phương án mua sắm — CP1** → badge **n căn cứ** → bấm vào: đọc file nào
   (*Luat Dau Thau PDF*, *Quy che noi bo*), phiên bản, % liên quan, đoạn trích.
-- **Soạn HSMT/RFQ** và **Tiêu chí đánh giá** cũng có 📚 riêng.
+- **Soạn HSMT/RFQ** và **Tiêu chí đánh giá** cũng có căn cứ riêng.
 - Bước không dùng RAG ghi "chạy deterministic".
 
 **Bình**: Duyệt CP1 → duyệt CP2 → **RFQ tự phát hành qua email ngay khi CP2
@@ -76,6 +81,8 @@ sung NCC ngay trong chat → tự chạy tiếp.
 
 - An bấm nút duyệt trên thẻ của Bình → **từ chối (SoD)**.
 - Bình double-click nút duyệt → "đã được quyết định".
+- Bình bấm **[Chốt sổ & mở thầu]** khi CHƯA ghi nhận hồ sơ nào → giải thích
+  tử tế phải ghi nhận nhà cung cấp trước (card vẫn giữ nguyên nút).
 
 Sau phát hành:
 
