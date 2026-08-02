@@ -32,14 +32,19 @@ Phụ lục G: >5 tỷ → đấu thầu, ≥3 nhà thầu, >100tr → pháp ch�
 
 ### Màn 1 — Gói đấu thầu 7,5 tỷ: happy path (6–7')
 
-1. **An** nhắn Ngọc:
-   > *Chị Ngọc ơi, cần mua 500 laptop kèm bản quyền Windows + Office cho nhân
-   > viên 3 chi nhánh HN–ĐN–HCM, ngân sách 7,5 tỷ, cần trong 60 ngày. Dự kiến
-   > mời Synnex FPT, Digiworld, Petrosetco.*
-2. Chỉ vào dòng **💭 suy nghĩ** của Ngọc: 7,5 tỷ > 5 tỷ → **Đấu thầu**, tối
-   thiểu **03 nhà thầu** — đối chiếu rule pack tự động (giải điểm đau P1).
-3. Xác nhận thẻ tóm tắt → hồ sơ + **PR tự sinh** (giải P2, không ai upload gì).
-   *(Web phải: hồ sơ mới hiện trong danh sách ≤5s.)*
+Nhắn **ngắn như người thật** — Ngọc chủ động hỏi cho đủ (giải P4, đúng cảnh
+"đầu vào lúc nào cũng phải sửa" trong tài liệu):
+
+1. **An**: *"Phòng IT cần mua 500 laptop cho nhân viên mới"*
+   → Ngọc 💭 ghi nhận, rồi **hỏi gộp** phần còn thiếu (ngân sách, thời hạn,
+   địa điểm, NCC dự kiến) trong một tin có gạch đầu dòng.
+2. **An**: *"tầm 7,5 tỷ, cần trong 60 ngày, giao về 3 chi nhánh HN, ĐN, HCM"*
+   → chỉ vào 💭: **7,5 tỷ > 5 tỷ → Đấu thầu, tối thiểu 03 nhà thầu** — rule
+   pack đối chiếu tự động (giải P1). Ngọc hỏi tiếp danh sách NCC.
+3. **An**: *"mời Synnex FPT, Digiworld với Petrosetco nhé"*
+   → đủ thông tin → **thẻ xác nhận** tóm tắt.
+4. An bấm ✅ → hồ sơ + **PR tự sinh từ hội thoại** (giải P2, không ai upload
+   gì). *(Web phải: hồ sơ mới hiện trong danh sách ≤5s.)*
 4. **Bình** nhận DM: bấm **[📄 Xem PR]** đọc ngay trong Slack → **[✅ Xác minh
    & chạy DW01]**.
 5. Run chạy: card tiến trình 📋 → **⚖️ Gate CP1** kèm các dòng quy định *"Trên
@@ -82,6 +87,11 @@ thống biết từ chối những gì nằm ngoài quyền của nó."*
 
 ## C. Checklist trước demo
 
+- **Reset sạch dữ liệu test cũ** (Ngọc quên hết, danh sách hồ sơ trống):
+  `bash scripts/demo_reset.sh` — xóa chat context + case DW01 cũ, giữ user/
+  quyền/tri thức. Muốn khung chat Slack trông sạch:
+  `uv run python scripts/slack_clear_dm.py` (chỉ xóa được tin của Ngọc — tin
+  của An/Bình tự xóa tay nếu cần, giới hạn Slack API).
 - Docker stack full chạy; Slack socket healthy (log `wss` established).
 - `.env`: `DW_CHAT_FRONT_OFFICE_ENABLED=true`, `DW_AUTONOMY_PROFILE=autonomous_demo`,
   `DW_APPROVAL_REMINDER_SECONDS=90`, 3 `SLACK_USER_*_ID` đúng member ID.
