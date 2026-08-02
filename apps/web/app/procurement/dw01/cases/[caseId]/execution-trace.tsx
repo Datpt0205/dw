@@ -43,7 +43,6 @@ const STEP_TITLE: Record<string, string> = {
   clarification_list: "Câu hỏi làm rõ",
   clarification_response: "Phản hồi làm rõ",
   procurement_approach: "Phương án mua sắm — CP1",
-  review_recommendation: "Review Agent (độc lập)",
   solicitation_package: "Soạn HSMT/RFQ",
   evaluation_criteria: "Tiêu chí đánh giá — CP2",
   supplier_shortlist: "Shortlist nhà cung cấp",

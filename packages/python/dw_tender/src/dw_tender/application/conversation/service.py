@@ -15,6 +15,7 @@ from typing import Any, ClassVar, Literal, Protocol
 
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.ports import ModelRequest, TracedModelGateway
+from dw_kernel.errors import ConflictError, DomainError
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
 from dw_tender.application.conversation.schemas import (
@@ -399,17 +400,29 @@ class ConversationIntakeService:
                 f"## Nội dung sửa đổi\n\n{change}\n\n"
                 f"## Đánh giá ảnh hưởng\n\n{impact or 'Chưa đánh giá — cần CP3 xem xét.'}\n"
             )
-            await self.submit_addendum.handle(
-                case_id,
-                SubmitAddendumCommand(
-                    filename="addendum-from-chat.md",
-                    content_type="text/markdown; charset=utf-8",
-                    content=markdown.encode("utf-8"),
-                    change_summary=change,
-                    impact_summary=impact,
-                ),
-                context,
-            )
+            try:
+                await self.submit_addendum.handle(
+                    case_id,
+                    SubmitAddendumCommand(
+                        filename="addendum-from-chat.md",
+                        content_type="text/markdown; charset=utf-8",
+                        content=markdown.encode("utf-8"),
+                        change_summary=change,
+                        impact_summary=impact,
+                    ),
+                    context,
+                )
+            except (ConflictError, DomainError):
+                return TurnOutcome(
+                    replies=(
+                        ChatReply(
+                            text=(
+                                "Hiện chưa lập được sửa đổi — hồ sơ phải ở trạng thái "
+                                "đã phát hành và không có sửa đổi nào đang chờ duyệt."
+                            )
+                        ),
+                    )
+                )
             return TurnOutcome(
                 replies=(
                     ChatReply(
@@ -441,19 +454,32 @@ class ConversationIntakeService:
                 f"- Thời điểm tiếp nhận: {now:%d/%m/%Y %H:%M}\n"
                 f"- Ghi nhận bởi: {display_name} (qua Slack)\n"
             )
-            await self.record_submission.handle(
-                case_id,
-                RecordSubmissionCommand(
-                    filename=f"submission-{supplier.lower().replace(' ', '-')}.md",
-                    content_type="text/markdown; charset=utf-8",
-                    content=receipt.encode("utf-8"),
-                    supplier_name=supplier,
-                    received_at=now.isoformat(),
-                    receipt_status="received",
-                    external_reference=reference,
-                ),
-                context,
-            )
+            try:
+                await self.record_submission.handle(
+                    case_id,
+                    RecordSubmissionCommand(
+                        filename=f"submission-{supplier.lower().replace(' ', '-')}.md",
+                        content_type="text/markdown; charset=utf-8",
+                        content=receipt.encode("utf-8"),
+                        supplier_name=supplier,
+                        received_at=now.isoformat(),
+                        receipt_status="on_time",
+                        external_reference=reference,
+                    ),
+                    context,
+                )
+            except (ConflictError, DomainError):
+                return TurnOutcome(
+                    replies=(
+                        ChatReply(
+                            text=(
+                                "Hồ sơ đang không ở giai đoạn tiếp nhận HSDT nên mình "
+                                "chưa ghi nhận được — cần phát hành hồ sơ mời thầu "
+                                "trước đã nhé."
+                            )
+                        ),
+                    )
+                )
             return TurnOutcome(
                 replies=(
                     ChatReply(
@@ -471,7 +497,24 @@ class ConversationIntakeService:
             )
 
         if turn.intent == "open_bids" and self.request_cp4 is not None:
-            count = await self.request_cp4.handle(case_id, context)
+            try:
+                count = await self.request_cp4.handle(case_id, context)
+            except (ConflictError, DomainError):
+                return TurnOutcome(
+                    replies=(
+                        ChatReply(
+                            text=(
+                                "Chưa có hồ sơ dự thầu nào trong sổ tiếp nhận nên mình "
+                                "chưa trình mở thầu được. Bạn báo từng nhà cung cấp đã "
+                                "nộp trước nhé — ví dụ: Synnex FPT vừa nộp hồ sơ."
+                            )
+                        ),
+                    ),
+                    thinking=(
+                        "• Yêu cầu mở thầu nhưng sổ tiếp nhận trống hoặc hồ sơ chưa "
+                        "ở giai đoạn nhận HSDT → hướng dẫn báo nộp trước."
+                    ),
+                )
             return TurnOutcome(
                 replies=(
                     ChatReply(
@@ -717,7 +760,7 @@ class ConversationIntakeService:
             elif name == "supplier_names":
                 captured.append(f"{label}: {', '.join(new)}")
             else:
-                captured.append(f"{label} «{new}»")
+                captured.append(f"{label}: {new}")
         if captured:
             lines.append("• Ghi nhận từ tin nhắn: " + "; ".join(captured))
         else:
@@ -726,9 +769,9 @@ class ConversationIntakeService:
         if merged.estimated_value_vnd:
             method = self.rules.select_method(merged.estimated_value_vnd)
             lines.append(
-                f"• Đối chiếu quy định (rule pack v{self.rules.version}): giá trị "
-                f"{_fmt_vnd(merged.estimated_value_vnd)} → hình thức «{method.label}», "
-                f"tối thiểu {method.min_suppliers} NCC (đang có {len(merged.supplier_names)})."
+                f"• Đối chiếu quy định: giá trị {_fmt_vnd(merged.estimated_value_vnd)} "
+                f"→ hình thức {method.label}, tối thiểu {method.min_suppliers} NCC "
+                f"(đang có {len(merged.supplier_names)})."
             )
         else:
             lines.append(

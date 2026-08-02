@@ -284,6 +284,29 @@ class PreparationNodes:
             )
         )
 
+    async def _notify_working(
+        self,
+        rc: RunContext,
+        case_id: PreparationCaseId,
+        *,
+        stage: str,
+        dedupe: str,
+        heading: str,
+        line: str,
+    ) -> None:
+        """Short "đang làm…" status card, committed BEFORE slow work starts.
+
+        Slack bots have no typing indicator — this is the feed's loading line
+        so long steps (LLM drafting, Review Agent) never look frozen.
+        """
+        async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
+            case = await uow.cases.get(case_id)
+            assert case is not None
+            await self._notify_progress(
+                uow, case, stage=stage, dedupe=dedupe, heading=heading, lines=[line]
+            )
+            await uow.commit()
+
     async def _run_review(
         self,
         rc: RunContext,
@@ -423,22 +446,10 @@ class PreparationNodes:
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
-            snapshot = await self._add_artifact(uow, case, ArtifactType.DEMAND_SNAPSHOT, content)
-            await self._notify_progress(
-                uow,
-                case,
-                stage="extract",
-                dedupe=f"v{snapshot.artifact_version}",
-                heading="📋 Đã đọc xong phiếu đề nghị",
-                lines=[
-                    f"Mình nhận diện được {len(requirements)} yêu cầu.",
-                    (
-                        f"Có {len(unknowns)} điểm thương mại cần hỏi thêm."
-                        if unknowns
-                        else "Không có điểm nào cần hỏi thêm — phiếu đề nghị đầy đủ."
-                    ),
-                ],
-            )
+            # No progress card here: the extract detail is bookkeeping, not a
+            # decision signal — the feed stays down to the steps that matter
+            # (RAG → gate → checkpoints). Details live on the web trace.
+            await self._add_artifact(uow, case, ArtifactType.DEMAND_SNAPSHOT, content)
             await uow.commit()
         return {"requirements": requirements, "unknowns": unknowns}
 
@@ -723,6 +734,14 @@ class PreparationNodes:
         # transaction — the reasoner call may take a while).
         review = None
         if result.passed:
+            await self._notify_working(
+                rc,
+                case_id,
+                stage="review_wait_cp1",
+                dedupe=f"rw1-{_hash(gate)[:10]}",
+                heading="🤖 Review Agent đang thẩm định độc lập trước khi trình CP1…",
+                line="Chừng một phút — có kết quả mình trình duyệt ngay.",
+            )
             review = await self._run_review(
                 rc,
                 checkpoint="CP1",
@@ -924,6 +943,16 @@ class PreparationNodes:
         rc = _run_context(config)
         case_id = _case_id(state)
         requirements = [r["text"] for r in state.get("requirements", [])]
+        # Loading line for the feed — this is the longest stretch after a CP1
+        # approve (LLM drafting), and silence here reads as a freeze.
+        await self._notify_working(
+            rc,
+            case_id,
+            stage="build_start",
+            dedupe="start",
+            heading="🛠️ Đang soạn hồ sơ mời thầu và tiêu chí chấm…",
+            line="Bước này mất một lúc — xong mình gửi trạng thái tiếp tại đây.",
+        )
         # LLM drafts the scope + technical requirements; template is the fallback.
         draft = await self._llm_solicitation(
             rc,
@@ -1133,6 +1162,14 @@ class PreparationNodes:
         # P5: advisory review of the full package before the CP2 card.
         review = None
         if result.passed:
+            await self._notify_working(
+                rc,
+                case_id,
+                stage="review_wait_cp2",
+                dedupe=f"rw2-{_hash(gate)[:10]}",
+                heading="🤖 Review Agent đang thẩm định bộ hồ sơ trước khi trình CP2…",
+                line="Chừng một phút — có kết quả mình trình duyệt ngay.",
+            )
             review = await self._run_review(
                 rc,
                 checkpoint="CP2",

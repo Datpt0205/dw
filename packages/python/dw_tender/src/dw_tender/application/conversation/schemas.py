@@ -179,7 +179,7 @@ def missing_required(slots: IntakeSlots, rules: ProcurementRules) -> list[str]:
         if len(slots.supplier_names) < method.min_suppliers:
             missing.append(
                 f"Nhà cung cấp dự kiến mời (tối thiểu {method.min_suppliers} "
-                f"cho phương án «{method.label}», đang có {len(slots.supplier_names)})"
+                f"cho phương án {method.label}, đang có {len(slots.supplier_names)})"
             )
     elif not slots.supplier_names:
         missing.append("Nhà cung cấp dự kiến mời")

@@ -445,6 +445,8 @@ export default function Dw01CaseDetail({
     // the merged render; the decision/handoff halves are folded in.
     "addendum_decision",
     "evaluation_handoff",
+    // Advisory-only agent output — not part of the back-office story.
+    "review_recommendation",
   ]);
   const artifacts = [...latestByType.values()]
     .filter((a) => !hiddenInFeed.has(a.artifact_type))

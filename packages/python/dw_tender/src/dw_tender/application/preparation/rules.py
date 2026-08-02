@@ -97,8 +97,8 @@ def approach_gate(
         failures.append("Thiếu người phụ trách (owner).")
     if supplier_count_planned < method.min_suppliers:
         failures.append(
-            f"Phương án «{method.label}» cần tối thiểu {method.min_suppliers} nhà cung cấp "
-            f"(đang có {supplier_count_planned})."
+            f"Phương án {method.label} cần tối thiểu {method.min_suppliers} nhà cung cấp "
+            f"— đang có {supplier_count_planned}."
         )
     if open_blocking_clarifications > 0:
         failures.append(

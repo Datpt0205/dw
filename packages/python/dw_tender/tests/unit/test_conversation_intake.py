@@ -228,7 +228,7 @@ async def test_incomplete_message_asks_question_and_keeps_collecting() -> None:
     assert "ngân sách" in replies[0].text
     # Thinking is SYSTEM-BUILT from the validated slot diff + completeness.
     assert "Ghi nhận từ tin nhắn" in outcome.thinking
-    assert "số lượng «100»" in outcome.thinking
+    assert "số lượng: 100" in outcome.thinking
     assert "Còn thiếu" in outcome.thinking
     conv = next(iter(store.conversations.values()))
     assert conv.state == "collecting"

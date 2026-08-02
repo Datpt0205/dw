@@ -486,6 +486,11 @@ class SlackFrontOfficeService:
                         f"tự động chưa chạy được ({str(exc)[:160]}). "
                         "Người tạo có thể yêu cầu phát hành lại qua chat."
                     )
+            if cp == "cp1":
+                return (
+                    "✅ Đã duyệt CP1 — mình đang soạn hồ sơ mời thầu và tiêu chí, "
+                    "sẽ trình CP2 trong ít phút."
+                )
             return f"✅ Đã duyệt {label} — quy trình tiếp tục chạy tự động."
 
         if action_id == _CP4_CONFIRM:
@@ -555,15 +560,36 @@ class SlackFrontOfficeService:
         trimmed = thinking.strip()
         if len(trimmed) > _THINKING_MAX_CHARS:
             trimmed = trimmed[:_THINKING_MAX_CHARS].rstrip() + "\n… _(đã rút gọn)_"
-        quoted = "\n".join(f">{line}" for line in trimmed.splitlines())
+        # Collapsed by default: the DM shows ONE representative line; the full
+        # trace lives in the thread (click the message to expand it).
+        first = trimmed.splitlines()[0].lstrip("• ").strip()
+        if len(first) > 120:
+            first = first[:117].rstrip() + "…"
         await self.chat.chat_client.update_message(
             channel=channel,
             ts=thinking_ts,
-            text="💭 Suy nghĩ của Digital Worker",
+            text=f"💭 {first}",
+            blocks=[
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"💭 {first} — _chi tiết suy nghĩ trong thread_",
+                        }
+                    ],
+                }
+            ],
+        )
+        quoted = "\n".join(f">{line}" for line in trimmed.splitlines())
+        await self.chat.chat_client.post_message(
+            channel=channel,
+            text="Suy nghĩ đầy đủ",
+            thread_ts=thinking_ts,
             blocks=[
                 {
                     "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"💭 *Suy nghĩ*\n{quoted}"},
+                    "text": {"type": "mrkdwn", "text": f"💭 *Suy nghĩ đầy đủ*\n{quoted}"},
                 }
             ],
         )

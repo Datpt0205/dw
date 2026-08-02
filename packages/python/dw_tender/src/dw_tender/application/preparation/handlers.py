@@ -622,10 +622,10 @@ class AutoPublishPreparationHandler:
                                 + "."
                             ),
                             "Từ giờ bạn chỉ cần nhắn cho mình:",
-                            "• Có nhà cung cấp nộp hồ sơ → «Synnex FPT vừa nộp hồ sơ».",
-                            "• Cần sửa đổi/gia hạn → nhắn nội dung, mình lập bản "
+                            "Có nhà cung cấp nộp hồ sơ → nhắn: Synnex FPT vừa nộp hồ sơ.",
+                            "Cần sửa đổi/gia hạn → nhắn nội dung, mình lập bản "
                             "sửa đổi trình duyệt.",
-                            "• Nhận đủ hồ sơ → «chốt và mở thầu», mình trình xác nhận mở thầu.",
+                            "Nhận đủ hồ sơ → nhắn: chốt và mở thầu.",
                         ],
                     },
                 )
