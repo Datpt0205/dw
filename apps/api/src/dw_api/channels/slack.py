@@ -228,6 +228,8 @@ class SlackFrontOfficeService:
             _CP_REJECT,
             _CP4_CONFIRM,
             _PUBLISH,
+            _RECORD_SUB,
+            _OPEN_BIDS,
         ):
             await self._handle_decision_action(
                 action_id=action_id,
