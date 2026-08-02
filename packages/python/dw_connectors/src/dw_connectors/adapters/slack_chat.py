@@ -64,6 +64,15 @@ class SlackChatClient:
         data = await self._call("/chat.postMessage", payload)
         return str(data.get("ts", ""))
 
+    async def delete_message(self, *, channel: str, ts: str) -> None:
+        """Delete one of the bot's own messages (used to re-post moving cards)."""
+        async with httpx.AsyncClient(
+            base_url=_API_BASE,
+            headers={"Authorization": f"Bearer {self.bot_token}"},
+            timeout=self.timeout_seconds,
+        ) as client:
+            await client.post("/chat.delete", json={"channel": channel, "ts": ts})
+
     async def download_file(self, url: str, *, max_bytes: int = 10 * 1024 * 1024) -> bytes:
         """Download a user-shared file (url_private) with the bot token.
 

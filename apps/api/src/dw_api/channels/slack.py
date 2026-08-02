@@ -694,18 +694,24 @@ class SlackFrontOfficeService:
         blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": context_text}]})
         return blocks
 
-    async def _refresh_receipt_card(
+    async def _repost_receipt_card(
         self,
         channel: str,
-        card_ts: str,
+        old_ts: str,
         case_id: UUID,
         context: AccessContext,
         pending: str | None,
-    ) -> None:
+    ) -> str:
+        """Move the receipt card to the BOTTOM of the DM (delete + repost).
+
+        Updating in place strands the buttons above newer messages — the next
+        action must always be the last thing on screen.
+        """
         title, suppliers, recorded = await self._receipt_state(case_id, context)
-        await self.chat.chat_client.update_message(
+        if old_ts:
+            await self.chat.chat_client.delete_message(channel=channel, ts=old_ts)
+        return await self.chat.chat_client.post_message(
             channel=channel,
-            ts=card_ts,
             text=f"Tiếp nhận hồ sơ dự thầu — {title}",
             blocks=self._receipt_desk_blocks(
                 case_id=case_id,
@@ -726,14 +732,6 @@ class SlackFrontOfficeService:
         case_raw, _, supplier = value.partition("|")
         case_id = UUID(case_raw)
         supplier = supplier.strip() or "Nhà cung cấp"
-        card_ts = str(message.get("ts", ""))
-        self.pending_uploads[channel] = {
-            "case_id": str(case_id),
-            "supplier": supplier,
-            "card_ts": card_ts,
-        }
-        if card_ts:
-            await self._refresh_receipt_card(channel, card_ts, case_id, context, supplier)
         await self.chat.chat_client.post_message(
             channel=channel,
             text=(
@@ -741,6 +739,15 @@ class SlackFrontOfficeService:
                 "mình lưu làm hồ sơ chính thức và lập biên nhận."
             ),
         )
+        # Card moves to the bottom so the next action is always on screen.
+        new_ts = await self._repost_receipt_card(
+            channel, str(message.get("ts", "")), case_id, context, supplier
+        )
+        self.pending_uploads[channel] = {
+            "case_id": str(case_id),
+            "supplier": supplier,
+            "card_ts": new_ts,
+        }
 
     async def _handle_receipt_file(self, event: dict[str, Any]) -> None:
         channel = str(event.get("channel", ""))
@@ -806,9 +813,6 @@ class SlackFrontOfficeService:
             )
             return
         self.pending_uploads.pop(channel, None)
-        card_ts = pending.get("card_ts", "")
-        if card_ts:
-            await self._refresh_receipt_card(channel, card_ts, case_id, context, None)
         await self.chat.chat_client.post_message(
             channel=channel,
             text=(
@@ -816,6 +820,8 @@ class SlackFrontOfficeService:
                 f"({size // 1024} KB), {display_name} ghi nhận, biên nhận lưu vào hồ sơ."
             ),
         )
+        # Fresh card at the bottom: ✓ line for this supplier + (now) the close button.
+        await self._repost_receipt_card(channel, pending.get("card_ts", ""), case_id, context, None)
 
     # -------------------------------------------------------------- render ---
     async def _reveal_thinking(self, channel: str, thinking_ts: str, thinking: str) -> None:
