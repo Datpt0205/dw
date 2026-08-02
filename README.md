@@ -103,16 +103,18 @@ Chạy `make test-architecture` để kiểm tra. Chi tiết quyết định: [d
 ## Đăng nhập & phân quyền (OIDC — mặc định)
 
 Mặc định hệ thống chạy **Keycloak OIDC** (`DW_API_AUTH_MODE=oidc`,
-`NEXT_PUBLIC_AUTH_MODE=oidc`). Mở web `http://localhost:3000` → màn hình đăng
-nhập có **Đăng nhập** và **Đăng ký tài khoản mới** (ADR-019).
+`NEXT_PUBLIC_AUTH_MODE=oidc`). Web `http://localhost:3000` là **back office
+chỉ đọc**: màn hình đăng nhập có nút một-chạm **«Vào với vai Chi — Quản trị»**
+(`chi` / `demo`). An và Bình làm việc hoàn toàn qua **Slack** (chat với Ngọc,
+duyệt trên thẻ) — web-login của họ bị **disable** trong Keycloak.
 
-Tài khoản demo (realm import từ [infra/keycloak/dw-realm.json](infra/keycloak/dw-realm.json), mật khẩu `demo-password`):
+Danh tính demo (realm import từ [infra/keycloak/dw-realm.json](infra/keycloak/dw-realm.json)):
 
-| User Keycloak | Role trong workspace     | Thấy được gì trên UI                          |
-| ------------- | ------------------------ | --------------------------------------------- |
-| `an.nguyen`   | member                   | Đấu thầu, Cuộc họp, Phê duyệt (không duyệt được) |
-| `binh.tran`   | approver, member         | + nút Phê duyệt/Từ chối                        |
-| `chi.le`      | platform_admin, member   | + link **Quản trị** (bỏ qua mọi kiểm tra scope) |
+| Danh tính     | Kênh làm việc            | Vai trò                                        |
+| ------------- | ------------------------ | ---------------------------------------------- |
+| An (Nguyễn)   | Slack (chat với Ngọc)    | member — tạo yêu cầu, trả lời làm rõ            |
+| Bình (Trần)   | Slack (thẻ phê duyệt)    | approver — xác minh intake, duyệt CP1–CP4       |
+| `chi` / `demo`| Web back office          | platform_admin — theo dõi, kiểm toán, nhận leo thang |
 
 **Đăng ký:** bấm «Đăng ký tài khoản mới» → tạo tài khoản trong Keycloak → lần
 đăng nhập đầu, tài khoản được **lưu thật vào Postgres** (`platform.users` +
@@ -129,7 +131,8 @@ qua dev token (`scripts/issue_dev_token.py`, ADR-013). Bật dev mode bằng
 
 ## Luồng demo end-to-end
 
-Mở web → **Đăng nhập** bằng `an.nguyen` / `demo-password` (hoặc «Đăng ký» tài khoản mới).
+Mở web → **«Vào với vai Chi — Quản trị»** (`chi` / `demo`). Luồng DW01
+conversation-first xem [docs/runbooks/demo-script.md](docs/runbooks/demo-script.md).
 
 1. **Đấu thầu** (`/tender`): «Tạo hồ sơ mẫu» → «Phân tích hồ sơ» → ma trận
    tuân thủ + điểm deterministic (Thiết bị Việt 87.00 thắng; Vật tư Miền Nam

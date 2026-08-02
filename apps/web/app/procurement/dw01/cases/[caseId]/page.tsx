@@ -773,8 +773,8 @@ export default function Dw01CaseDetail({
               </>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Đăng xuất và dùng tài khoản <strong>binh.tran</strong> để xác
-                minh hồ sơ, sau đó quay lại tài khoản người lập.
+                Xác minh do <strong>Bình</strong> thực hiện trên thẻ Slack
+                (nút «Xác minh &amp; chạy DW01»).
               </p>
             )}
           </CardContent>
@@ -1248,7 +1248,7 @@ export default function Dw01CaseDetail({
               </>
             ) : (
               <p className="text-sm md:col-span-2">
-                Đổi sang tài khoản <strong>binh.tran</strong> để xác nhận CP4.
+                CP4 do <strong>Bình</strong> xác nhận trên thẻ Slack.
               </p>
             )}
           </CardContent>

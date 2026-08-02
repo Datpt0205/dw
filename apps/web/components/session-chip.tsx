@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Loader2, LogOut, Repeat } from "lucide-react";
+import { ChevronDown, LogOut } from "lucide-react";
 import { Badge, cn } from "@dw/ui";
 import { useAuth } from "../lib/auth/auth-context";
-import { quickLogin } from "../lib/session";
 
 const ROLE_BADGE: Record<
   string,
@@ -20,20 +19,13 @@ const ROLE_BADGE: Record<
 // though the manager tier includes every member permission.
 const ROLE_RANK = ["member", "approver", "platform_admin"];
 
-// Demo personas for the fast account switcher (public demo credentials).
-const QUICK_PERSONAS = [
-  { username: "an.nguyen", name: "Nguyễn Văn An", role: "nhân viên" },
-  { username: "binh.tran", name: "Trần Thị Bình", role: "quản lý" },
-  { username: "chi.le", name: "Lê Thị Chi", role: "quản trị" },
-];
-const DEMO_PASSWORD = "demo";
-
-/** Header chip: who is signed in + one-click account switch + sign-out. */
+/**
+ * Header chip: who is signed in + sign-out. The web is Chi's read-only back
+ * office — An/Bình act through Slack, so there is no account switcher anymore.
+ */
 export function SessionChip() {
-  const { status, mode, displayName, roles, logout } = useAuth();
+  const { status, displayName, roles, logout } = useAuth();
   const [open, setOpen] = useState(false);
-  const [switching, setSwitching] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -54,21 +46,6 @@ export function SessionChip() {
     .sort((a, b) => ROLE_RANK.indexOf(b) - ROLE_RANK.indexOf(a))[0];
   const topBadge = topRole ? ROLE_BADGE[topRole] : undefined;
   const shown = topBadge ? [topBadge] : [];
-
-  const canQuickSwitch = mode === "oidc";
-  const currentName = (displayName || "").toLowerCase();
-
-  async function switchTo(username: string) {
-    setSwitching(username);
-    setError(null);
-    try {
-      await quickLogin(username, DEMO_PASSWORD);
-      window.location.href = window.location.origin;
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Đổi tài khoản lỗi");
-      setSwitching(null);
-    }
-  }
 
   return (
     <div className="relative flex items-center gap-1.5" ref={ref}>
@@ -97,7 +74,7 @@ export function SessionChip() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 overflow-hidden rounded-xl border bg-popover p-1.5 shadow-xl">
+        <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-64 overflow-hidden rounded-xl border bg-popover p-1.5 shadow-xl">
           <div className="px-2.5 py-2">
             <p className="truncate text-sm font-semibold">{displayName}</p>
             <div className="mt-1 flex flex-wrap gap-1">
@@ -107,55 +84,10 @@ export function SessionChip() {
                 </Badge>
               ))}
             </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Back office chỉ đọc — thao tác nghiệp vụ qua Slack.
+            </p>
           </div>
-
-          {canQuickSwitch && (
-            <>
-              <div className="my-1 border-t" />
-              <p className="flex items-center gap-1.5 px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                <Repeat className="size-3" /> Đổi nhanh tài khoản
-              </p>
-              {QUICK_PERSONAS.map((persona) => {
-                const isCurrent = currentName === persona.name.toLowerCase();
-                return (
-                  <button
-                    key={persona.username}
-                    type="button"
-                    disabled={isCurrent || switching !== null}
-                    onClick={() => void switchTo(persona.username)}
-                    className={cn(
-                      "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
-                      isCurrent
-                        ? "cursor-default text-muted-foreground"
-                        : "hover:bg-accent",
-                      switching !== null && !isCurrent && "opacity-60",
-                    )}
-                  >
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
-                      {persona.name.charAt(0)}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">
-                        {persona.name}
-                      </span>
-                      <span className="block text-xs text-muted-foreground">
-                        {persona.role}
-                      </span>
-                    </span>
-                    {switching === persona.username ? (
-                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                    ) : isCurrent ? (
-                      <Check className="size-4 text-success" />
-                    ) : null}
-                  </button>
-                );
-              })}
-              {error && (
-                <p className="px-2.5 py-1 text-xs text-destructive">{error}</p>
-              )}
-            </>
-          )}
-
           <div className="my-1 border-t" />
           <button
             type="button"

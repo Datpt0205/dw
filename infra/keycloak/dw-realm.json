@@ -18,8 +18,12 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
-      "redirectUris": ["http://localhost:3000/*"],
-      "webOrigins": ["http://localhost:3000"],
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://localhost:3000/*"
@@ -45,10 +49,14 @@
       "email": "an.nguyen@alpha.local",
       "firstName": "An",
       "lastName": "Nguyễn",
-      "enabled": true,
+      "enabled": false,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "demo", "temporary": false }
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
       ]
     },
     {
@@ -57,22 +65,30 @@
       "email": "binh.tran@alpha.local",
       "firstName": "Bình",
       "lastName": "Trần",
-      "enabled": true,
+      "enabled": false,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "demo", "temporary": false }
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
       ]
     },
     {
       "id": "c0000000-0000-4000-8000-0000000000c3",
-      "username": "chi.le",
+      "username": "chi",
       "email": "chi.le@alpha.local",
       "firstName": "Chi",
       "lastName": "Lê",
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "demo", "temporary": false }
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
       ]
     }
   ]
