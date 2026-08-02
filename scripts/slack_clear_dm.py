@@ -56,6 +56,16 @@ def main() -> None:
 
     with httpx.Client(headers={"Authorization": f"Bearer {token}"}, timeout=30) as client:
         deleted = 0
+
+        def _delete(channel: str, ts: str) -> None:
+            nonlocal deleted
+            try:
+                _call(client, "chat.delete", channel=channel, ts=ts)
+                deleted += 1
+                time.sleep(0.4)  # stay under Slack rate limits
+            except SystemExit as exc:  # cant_delete_message etc. — skip
+                print(f"  skip {ts}: {exc}", file=sys.stderr)
+
         for user_id in user_ids:
             channel = _call(client, "conversations.open", users=user_id)["channel"]["id"]
             cursor = ""
@@ -68,15 +78,24 @@ def main() -> None:
                     **({"cursor": cursor} if cursor else {}),
                 )
                 for message in history.get("messages", []):
+                    # Thread replies FIRST — a deleted parent that still has
+                    # replies lingers as a "This message was deleted" stub.
+                    if message.get("reply_count") or message.get("thread_ts"):
+                        replies = _call(
+                            client,
+                            "conversations.replies",
+                            channel=channel,
+                            ts=message["ts"],
+                            limit=200,
+                        )
+                        for reply in replies.get("messages", []):
+                            if reply.get("ts") == message["ts"]:
+                                continue
+                            if reply.get("bot_id"):
+                                _delete(channel, reply["ts"])
                     # Only the bot's own messages are deletable by the bot.
-                    if not message.get("bot_id"):
-                        continue
-                    try:
-                        _call(client, "chat.delete", channel=channel, ts=message["ts"])
-                        deleted += 1
-                        time.sleep(0.4)  # stay under Slack rate limits
-                    except SystemExit as exc:  # cant_delete_message etc. — skip
-                        print(f"  skip {message['ts']}: {exc}", file=sys.stderr)
+                    if message.get("bot_id"):
+                        _delete(channel, message["ts"])
                 cursor = history.get("response_metadata", {}).get("next_cursor", "")
                 if not cursor:
                     break
