@@ -636,6 +636,8 @@ class AutoPublishPreparationHandler:
             if approver is not None:
                 # Slack requires UNIQUE action_ids within a block — suffix the
                 # index; the handler dispatches on the prefix before ":".
+                # No "Chốt sổ" button yet — it only appears (server-rendered)
+                # once at least one bid has been recorded with its file.
                 receipt_buttons: list[dict[str, str]] = [
                     {
                         "action_id": f"dw01_record_sub:{i}",
@@ -644,14 +646,6 @@ class AutoPublishPreparationHandler:
                     }
                     for i, name in enumerate(suppliers[:4])
                 ]
-                receipt_buttons.append(
-                    {
-                        "action_id": "dw01_open_bids",
-                        "label": "Chốt sổ & mở thầu",
-                        "value": str(case.id.value),
-                        "style": "primary",
-                    }
-                )
                 await uow.notifications.enqueue(
                     IntakeNotificationJob(
                         id=self.id_generator.new_uuid(),
@@ -667,9 +661,11 @@ class AutoPublishPreparationHandler:
                             "heading": "Tiếp nhận hồ sơ dự thầu",
                             "lines": [
                                 (f"RFQ đã phát hành tới {len(suppliers) or 1} nhà cung cấp."),
-                                "Khi nhận được hồ sơ dự thầu, bấm ghi nhận theo "
-                                "từng nhà cung cấp (biên nhận lập tự động).",
-                                "Đủ hồ sơ thì bấm Chốt sổ & mở thầu — mình trình xác nhận CP4.",
+                                "Khi nhận hồ sơ dự thầu: bấm nút của nhà cung cấp "
+                                "rồi thả FILE hồ sơ vào DM — mình lưu bản chính "
+                                "thức và lập biên nhận.",
+                                "Nút Chốt sổ & mở thầu sẽ hiện khi có ít nhất 1 "
+                                "hồ sơ được ghi nhận.",
                             ],
                             "buttons": receipt_buttons,
                         },

@@ -51,6 +51,7 @@ Mode không cần Request URL. (Nút «Tạo hồ sơ / Sửa thông tin» dùng
 | `im:history` | Đọc DM gửi cho bot (message.im) |
 | `app_mentions:read` | Đọc tin nhắn @mention |
 | `im:write` | Mở DM (đã dùng cho thông báo phê duyệt) |
+| `files:read` | Tải file HSDT do quản lý thả vào DM (bàn tiếp nhận hồ sơ dự thầu) |
 
 Nếu vừa thêm scope → **Reinstall to Workspace** (Install App → Reinstall).
 Token `xoxb-` giữ nguyên trừ khi Slack yêu cầu cấp lại — nếu cấp lại thì cập

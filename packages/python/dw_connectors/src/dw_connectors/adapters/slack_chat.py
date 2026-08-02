@@ -64,6 +64,31 @@ class SlackChatClient:
         data = await self._call("/chat.postMessage", payload)
         return str(data.get("ts", ""))
 
+    async def download_file(self, url: str, *, max_bytes: int = 10 * 1024 * 1024) -> bytes:
+        """Download a user-shared file (url_private) with the bot token.
+
+        Requires the ``files:read`` scope. Slack file hosts are public
+        (files.slack.com) so the outbound guard allows them.
+        """
+        ensure_allowed_outbound_url(url)
+        async with httpx.AsyncClient(
+            headers={"Authorization": f"Bearer {self.bot_token}"},
+            timeout=self.timeout_seconds,
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            content = response.content
+        if not content or len(content) > max_bytes:
+            raise InfrastructureError(
+                "file download empty or exceeds limit", details={"bytes": len(content)}
+            )
+        # Slack returns an HTML login page instead of bytes when the token
+        # lacks files:read — fail loudly rather than storing garbage.
+        if content[:15].lower().startswith(b"<!doctype html") or content[:6].lower() == b"<html>":
+            raise InfrastructureError("Slack returned HTML — missing files:read scope?")
+        return content
+
     async def update_message(
         self,
         *,

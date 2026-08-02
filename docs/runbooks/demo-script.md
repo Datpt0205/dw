@@ -57,10 +57,17 @@ Trên web mở hồ sơ → khối **«Vết thực thi»**:
 được duyệt** (không ai phải bấm thêm).
 
 Sau phát hành, **Bình** (bộ phận mua sắm — đúng vai bước 8) nhận card
-**«Tiếp nhận hồ sơ dự thầu»** với nút theo từng NCC:
-[Synnex FPT đã nộp] [Digiworld đã nộp] [Petrosetco đã nộp] → bấm lần lượt
-(biên nhận tự lập) → bấm **[Chốt sổ & mở thầu]** → card **CP4** → xác nhận
-→ biên bản mở thầu tự lập, bàn giao DW02 niêm phong — hết luồng DW01.
+**«Tiếp nhận hồ sơ dự thầu»** — nút Chốt sổ CHƯA có (chỉ hiện khi ≥1 hồ sơ):
+
+1. Bấm **[Synnex FPT đã nộp]** → card đổi: "⏳ đang chờ file HSDT".
+2. **Thả file** (PDF/DOCX bất kỳ) vào DM → mình lưu làm hồ sơ chính thức,
+   lập biên nhận → card đổi: "✅ Synnex FPT — đã nhận hồ sơ" và nút
+   **[Chốt sổ & mở thầu]** xuất hiện.
+3. Lặp cho NCC còn lại (hoặc chốt luôn với 1 hồ sơ) → bấm
+   **[Chốt sổ & mở thầu]** → card **CP4** → xác nhận → biên bản mở thầu tự
+   lập, bàn giao DW02 niêm phong — hết luồng DW01.
+
+⚠️ Cần scope Slack **`files:read`** (OAuth & Permissions → thêm → Reinstall).
 
 (An không đụng vào HSDT — chỉ nhắn khi cần **sửa đổi/gia hạn** → CP3, tùy chọn.)
 

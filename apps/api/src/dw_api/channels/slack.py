@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -54,6 +54,10 @@ class SlackFrontOfficeService:
     container: ApiContainer
     chat: ChatFrontOffice
     repo_root: Path
+    # Receipt desk: channel → {case_id, supplier, card_ts} while waiting for
+    # the actual bid file to be dropped into the DM (in-memory is fine for the
+    # demo — a restart just means clicking the supplier button again).
+    pending_uploads: dict[str, dict[str, str]] = field(default_factory=dict)
 
     # ------------------------------------------------------------- identity --
     def _resolve_subject(self, slack_user_id: str) -> str | None:
@@ -102,6 +106,16 @@ class SlackFrontOfficeService:
             await self._publish_home(str(event.get("user", "")))
             return
         if event.get("type") not in ("message", "app_mention"):
+            return
+        if event.get("subtype") == "file_share" and not event.get("bot_id"):
+            # Receipt desk: the actual bid document dropped into the DM.
+            # Dedupe first — a Slack redelivery must not double-record a bid.
+            file_event_id = str(payload.get("event_id") or "")
+            if file_event_id and not await self.chat.conversation_store.claim_event(
+                f"slack:{file_event_id}"
+            ):
+                return
+            await self._handle_receipt_file(event)
             return
         if event.get("bot_id") or event.get("subtype"):
             return  # never react to bots (incl. ourselves) or edits/joins
@@ -401,6 +415,17 @@ class SlackFrontOfficeService:
         preparation = self.container.preparation
         if preparation is None:
             return
+        # Receipt desk: a supplier click does NOT record yet — it arms the
+        # channel to expect the actual bid FILE, and re-renders the card.
+        if action_id == _RECORD_SUB:
+            try:
+                await self._start_receipt_upload(channel, message, value, context)
+            except Exception as exc:
+                logger.warning("receipt upload arm failed: %s", exc)
+                await self.chat.chat_client.post_message(
+                    channel=channel, text=f"⚠️ Không thực hiện được: {str(exc)[:200]}"
+                )
+            return
         try:
             reply = await self._execute_decision(action_id, value, context, display_name)
         except Exception as exc:
@@ -408,9 +433,8 @@ class SlackFrontOfficeService:
             reply = f"⚠️ Không thực hiện được: {str(exc)[:300]}"
         # Replace the card with the outcome in-place (one message, no
         # "đã ghi nhận thao tác" clutter); fall back to a new message.
-        # Receipt-desk clicks must PRESERVE the card (its other buttons are
-        # still needed for the remaining suppliers) — reply separately.
-        preserve_card = action_id in (_RECORD_SUB, _OPEN_BIDS)
+        # A failed close (⚠️) must PRESERVE the receipt card and its buttons.
+        preserve_card = action_id == _OPEN_BIDS and reply.startswith("⚠️")
         if message.get("ts") and not preserve_card:
             await self.chat.chat_client.update_message(
                 channel=channel, ts=str(message["ts"]), text=reply
@@ -536,40 +560,6 @@ class SlackFrontOfficeService:
                 "niêm phong. Quy trình DW01 kết thúc."
             )
 
-        if action_id == _RECORD_SUB:
-            from dw_kernel.errors import ConflictError, DomainError
-            from dw_tender.application.preparation.handlers import RecordSubmissionCommand
-
-            case_raw, _, supplier = value.partition("|")
-            case_id = UUID(case_raw)
-            supplier = supplier.strip() or "Nhà cung cấp"
-            receipt_md = (
-                f"# Biên nhận hồ sơ dự thầu\n\n"
-                f"- Nhà cung cấp: {supplier}\n"
-                f"- Thời điểm tiếp nhận: {now:%d/%m/%Y %H:%M} (UTC)\n"
-                f"- Ghi nhận bởi: {display_name} (bộ phận mua sắm, qua Slack)\n"
-            )
-            try:
-                await preparation.record_submission.handle(
-                    case_id,
-                    RecordSubmissionCommand(
-                        filename=f"submission-{supplier.lower().replace(' ', '-')}.md",
-                        content_type="text/markdown; charset=utf-8",
-                        content=receipt_md.encode("utf-8"),
-                        supplier_name=supplier,
-                        received_at=now.isoformat(),
-                        receipt_status="on_time",
-                        external_reference="",
-                    ),
-                    context,
-                )
-            except (ConflictError, DomainError):
-                return (
-                    "⚠️ Hồ sơ đang không ở giai đoạn tiếp nhận HSDT — "
-                    "kiểm tra trạng thái trên web trước nhé."
-                )
-            return f"Đã ghi nhận hồ sơ dự thầu của {supplier} — biên nhận lưu vào hồ sơ."
-
         if action_id == _OPEN_BIDS:
             from dw_kernel.errors import ConflictError, DomainError
 
@@ -609,6 +599,221 @@ class SlackFrontOfficeService:
                 ) == str(case_id):
                     return request.id
         return None
+
+    # ------------------------------------------------------- receipt desk ---
+    async def _receipt_state(
+        self, case_id: UUID, context: AccessContext
+    ) -> tuple[str, list[str], set[str]]:
+        """(case_title, invited suppliers, suppliers already recorded)."""
+        preparation = self.container.preparation
+        assert preparation is not None
+        view = await preparation.get_case.handle(case_id, context)
+        latest: dict[str, Any] = {}
+        for artifact in view.artifacts:
+            current = latest.get(artifact.artifact_type)
+            if current is None or artifact.artifact_version > current.artifact_version:
+                latest[artifact.artifact_type] = artifact
+        suppliers: list[str] = []
+        supplier_input = latest.get("supplier_input")
+        if supplier_input is not None:
+            suppliers = [
+                str(s.get("name", "")).strip()
+                for s in supplier_input.content.get("suppliers", [])
+                if isinstance(s, dict) and str(s.get("name", "")).strip()
+            ]
+        recorded: set[str] = set()
+        register = latest.get("submission_register")
+        if register is not None:
+            recorded = {
+                str(item.get("supplier_name", "")).strip()
+                for item in register.content.get("items", [])
+                if isinstance(item, dict)
+            }
+        return view.title, suppliers, recorded
+
+    def _receipt_desk_blocks(
+        self,
+        *,
+        case_id: UUID,
+        title: str,
+        suppliers: list[str],
+        recorded: set[str],
+        pending: str | None,
+    ) -> list[dict[str, Any]]:
+        """Server-rendered card state — Slack has no disabled buttons, so the
+        'Chốt sổ' button simply does not exist until ≥1 bid is recorded."""
+        lines: list[str] = []
+        for name in suppliers:
+            if name in recorded:
+                lines.append(f"✅ {name} — đã nhận hồ sơ.")
+            elif name == pending:
+                lines.append(f"⏳ {name} — đang chờ file HSDT, thả file vào DM này.")
+        body = f"*{title}*" + "".join(f"\n{line}" for line in lines)
+        buttons: list[dict[str, Any]] = []
+        for i, name in enumerate(suppliers):
+            if name in recorded or name == pending:
+                continue
+            buttons.append(
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": f"{name} đã nộp", "emoji": True},
+                    "action_id": f"{_RECORD_SUB}:{i}",
+                    "value": f"{case_id}|{name}",
+                }
+            )
+        if recorded:
+            buttons.append(
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Chốt sổ & mở thầu",
+                        "emoji": True,
+                    },
+                    "action_id": _OPEN_BIDS,
+                    "value": str(case_id),
+                }
+            )
+        context_text = (
+            f"Đã nhận {len(recorded)}/{len(suppliers)} hồ sơ."
+            if recorded
+            else "Nút Chốt sổ & mở thầu sẽ hiện khi có ít nhất 1 hồ sơ được ghi nhận."
+        )
+        blocks: list[dict[str, Any]] = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": "*Tiếp nhận hồ sơ dự thầu*"},
+            },
+            {"type": "section", "text": {"type": "mrkdwn", "text": body}},
+        ]
+        if buttons:
+            blocks.append({"type": "actions", "elements": buttons})
+        blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": context_text}]})
+        return blocks
+
+    async def _refresh_receipt_card(
+        self,
+        channel: str,
+        card_ts: str,
+        case_id: UUID,
+        context: AccessContext,
+        pending: str | None,
+    ) -> None:
+        title, suppliers, recorded = await self._receipt_state(case_id, context)
+        await self.chat.chat_client.update_message(
+            channel=channel,
+            ts=card_ts,
+            text=f"Tiếp nhận hồ sơ dự thầu — {title}",
+            blocks=self._receipt_desk_blocks(
+                case_id=case_id,
+                title=title,
+                suppliers=suppliers,
+                recorded=recorded,
+                pending=pending,
+            ),
+        )
+
+    async def _start_receipt_upload(
+        self,
+        channel: str,
+        message: dict[str, Any],
+        value: str,
+        context: AccessContext,
+    ) -> None:
+        case_raw, _, supplier = value.partition("|")
+        case_id = UUID(case_raw)
+        supplier = supplier.strip() or "Nhà cung cấp"
+        card_ts = str(message.get("ts", ""))
+        self.pending_uploads[channel] = {
+            "case_id": str(case_id),
+            "supplier": supplier,
+            "card_ts": card_ts,
+        }
+        if card_ts:
+            await self._refresh_receipt_card(channel, card_ts, case_id, context, supplier)
+        await self.chat.chat_client.post_message(
+            channel=channel,
+            text=(
+                f"Thả file hồ sơ dự thầu của {supplier} vào đây (PDF/DOCX/ZIP…) — "
+                "mình lưu làm hồ sơ chính thức và lập biên nhận."
+            ),
+        )
+
+    async def _handle_receipt_file(self, event: dict[str, Any]) -> None:
+        channel = str(event.get("channel", ""))
+        pending = self.pending_uploads.get(channel)
+        if pending is None:
+            return  # file not related to a receipt-desk flow
+        user = str(event.get("user", ""))
+        subject = self._resolve_subject(user)
+        resolved = await self._access_context(subject) if subject else None
+        if resolved is None:
+            return
+        context, display_name = resolved
+        files = event.get("files") or []
+        if not files:
+            return
+        info = files[0]
+        size = int(info.get("size", 0) or 0)
+        if size > 10 * 1024 * 1024:
+            await self.chat.chat_client.post_message(
+                channel=channel, text="⚠️ File vượt 10MB — gửi bản nhỏ hơn giúp mình nhé."
+            )
+            return
+        url = str(info.get("url_private_download") or info.get("url_private") or "")
+        filename = str(info.get("name") or "ho-so-du-thau.bin")
+        content_type = str(info.get("mimetype") or "application/octet-stream")
+        try:
+            content = await self.chat.chat_client.download_file(url)
+        except Exception as exc:
+            logger.warning("bid file download failed: %s", exc)
+            await self.chat.chat_client.post_message(
+                channel=channel,
+                text=(
+                    "⚠️ Mình chưa tải được file từ Slack — kiểm tra app đã có "
+                    "scope `files:read` và Reinstall chưa nhé."
+                ),
+            )
+            return
+        from dw_kernel.errors import ConflictError, DomainError
+        from dw_tender.application.preparation.handlers import RecordSubmissionCommand
+
+        preparation = self.container.preparation
+        assert preparation is not None
+        case_id = UUID(pending["case_id"])
+        supplier = pending["supplier"]
+        now = datetime.now(tz=UTC)
+        try:
+            await preparation.record_submission.handle(
+                case_id,
+                RecordSubmissionCommand(
+                    filename=filename,
+                    content_type=content_type,
+                    content=content,
+                    supplier_name=supplier,
+                    received_at=now.isoformat(),
+                    receipt_status="on_time",
+                    external_reference=f"slack-file:{info.get('id', '')}",
+                ),
+                context,
+            )
+        except (ConflictError, DomainError) as exc:
+            await self.chat.chat_client.post_message(
+                channel=channel, text=f"⚠️ Không ghi nhận được: {str(exc)[:200]}"
+            )
+            return
+        self.pending_uploads.pop(channel, None)
+        card_ts = pending.get("card_ts", "")
+        if card_ts:
+            await self._refresh_receipt_card(channel, card_ts, case_id, context, None)
+        await self.chat.chat_client.post_message(
+            channel=channel,
+            text=(
+                f"Đã nhận hồ sơ dự thầu của {supplier} — {filename} "
+                f"({size // 1024} KB), {display_name} ghi nhận, biên nhận lưu vào hồ sơ."
+            ),
+        )
 
     # -------------------------------------------------------------- render ---
     async def _reveal_thinking(self, channel: str, thinking_ts: str, thinking: str) -> None:
