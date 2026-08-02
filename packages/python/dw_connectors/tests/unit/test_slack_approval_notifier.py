@@ -90,7 +90,7 @@ def _patch_client(monkeypatch, handler) -> None:
 def test_render_run_progress_card() -> None:
     from dw_connectors.adapters.slack_approval_notifier import SlackApprovalMessage, _render
 
-    text, blocks = _render(
+    text, blocks, details = _render(
         SlackApprovalMessage(
             message_id=uuid.uuid4(),
             recipient_slack_user_id="U123",
@@ -104,5 +104,9 @@ def test_render_run_progress_card() -> None:
     )
     assert "Gate CP1" in text
     body = blocks[1]["text"]["text"]
-    assert "• Giá trị 2 tỷ" in body and "• Đã trình duyệt CP1" in body
+    # Activity feed: first line stays on the card, the rest collapses into
+    # the thread (detail_lines).
+    assert "• Giá trị 2 tỷ" in body
+    assert "Đã trình duyệt CP1" not in body
+    assert details == ("Đã trình duyệt CP1",)
     assert blocks[2]["elements"][0]["url"].endswith("/cases/x")

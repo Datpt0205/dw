@@ -645,11 +645,38 @@ class PreparationNodes:
                 "Không truy xuất được căn cứ Knowledge; người duyệt phải kiểm tra "
                 "rule pack và tài liệu nguồn trước CP1."
             )
+        # Activity-feed card for the RAG step: the status line stays in the
+        # DM, the retrieved passages collapse into the thread.
+        legal_cites = list(content["legal_basis"])
+        policy_cites = list(content["policy_basis"])
+        rag_lines = [f"Phương án đề xuất: {method.label} — gói {_fmt_vnd(value)}."]
+        if legal_cites or policy_cites:
+            rag_lines.append(
+                f"📚 Truy xuất {len(legal_cites)} đoạn căn cứ pháp lý và "
+                f"{len(policy_cites)} đoạn quy chế nội bộ từ kho tri thức."
+            )
+            for cite in [*legal_cites[:2], *policy_cites[:1]]:
+                quote = " ".join(str(cite.get("quote", "")).split())[:110]
+                score = round(float(cite.get("relevance_score", 0)) * 100)
+                rag_lines.append(f"«{quote}…» — độ liên quan {score}%.")
+        else:
+            rag_lines.append(
+                "Không truy xuất được căn cứ từ kho tri thức — người duyệt "
+                "cần đối chiếu quy định thủ công."
+            )
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
             await self._add_artifact(uow, case, ArtifactType.PROCUREMENT_APPROACH, content)
             case.advance(CaseState.APPROACH_READY, "approach", method_key=method.key)
+            await self._notify_progress(
+                uow,
+                case,
+                stage="approach_rag",
+                dedupe=_hash({"m": method.key, "v": value, "n": len(rag_lines)})[:12],
+                heading="🔎 Đã đối chiếu quy định & truy xuất căn cứ",
+                lines=rag_lines,
+            )
             await uow.cases.save(case)
             await uow.commit()
         return {
