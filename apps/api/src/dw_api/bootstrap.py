@@ -157,6 +157,7 @@ class PreparationHandlers:
     record_publication: RecordPreparationPublicationHandler
     auto_publish: AutoPublishPreparationHandler
     record_submission: RecordPreparationSubmissionHandler
+    request_cp4: RequestCp4Handler
     complete_cp4: CompletePreparationCp4Handler
     submit_addendum: SubmitPreparationAddendumHandler
     decide_cp3: DecidePreparationCp3Handler
@@ -657,6 +658,12 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     clock=clock,
                     id_generator=id_generator,
                 ),
+                request_cp4=RequestCp4Handler(
+                    uow_factory=preparation_uow_factory,
+                    authorization=authorization,
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
                 complete_cp4=CompletePreparationCp4Handler(
                     uow_factory=preparation_uow_factory,
                     storage=storage,  # type: ignore[arg-type]
@@ -706,12 +713,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                         id_generator=id_generator,
                         submit_addendum=preparation.submit_addendum,
                         record_submission=preparation.record_submission,
-                        request_cp4=RequestCp4Handler(
-                            uow_factory=preparation_uow_factory,
-                            authorization=authorization,
-                            clock=clock,
-                            id_generator=id_generator,
-                        ),
+                        request_cp4=preparation.request_cp4,
                         get_case=preparation.get_case,
                         answer_clarifications=preparation.answer_clarifications,
                         run_case=preparation.run_case,

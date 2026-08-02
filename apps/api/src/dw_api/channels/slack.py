@@ -39,6 +39,9 @@ _CP_REJECT = "dw01_cp_reject"
 _CP4_CONFIRM = "dw01_cp4_confirm"
 _PUBLISH = "dw01_publish"
 _VIEW_PR = "dw01_view_pr"
+# Receipt desk (bước 8): procurement records incoming bids with one click.
+_RECORD_SUB = "dw01_record_sub"
+_OPEN_BIDS = "dw01_open_bids"
 
 # Slack section blocks cap at 3000 chars; keep the thinking readable.
 _THINKING_MAX_CHARS = 2200
@@ -180,6 +183,8 @@ class SlackFrontOfficeService:
             _CP4_CONFIRM,
             _PUBLISH,
             _VIEW_PR,
+            _RECORD_SUB,
+            _OPEN_BIDS,
         )
         if action_id not in known:
             return
@@ -400,7 +405,10 @@ class SlackFrontOfficeService:
             reply = f"⚠️ Không thực hiện được: {str(exc)[:300]}"
         # Replace the card with the outcome in-place (one message, no
         # "đã ghi nhận thao tác" clutter); fall back to a new message.
-        if message.get("ts"):
+        # Receipt-desk clicks must PRESERVE the card (its other buttons are
+        # still needed for the remaining suppliers) — reply separately.
+        preserve_card = action_id in (_RECORD_SUB, _OPEN_BIDS)
+        if message.get("ts") and not preserve_card:
             await self.chat.chat_client.update_message(
                 channel=channel, ts=str(message["ts"]), text=reply
             )
@@ -525,6 +533,56 @@ class SlackFrontOfficeService:
                 "niêm phong. Quy trình DW01 kết thúc."
             )
 
+        if action_id == _RECORD_SUB:
+            from dw_kernel.errors import ConflictError, DomainError
+            from dw_tender.application.preparation.handlers import RecordSubmissionCommand
+
+            case_raw, _, supplier = value.partition("|")
+            case_id = UUID(case_raw)
+            supplier = supplier.strip() or "Nhà cung cấp"
+            receipt_md = (
+                f"# Biên nhận hồ sơ dự thầu\n\n"
+                f"- Nhà cung cấp: {supplier}\n"
+                f"- Thời điểm tiếp nhận: {now:%d/%m/%Y %H:%M} (UTC)\n"
+                f"- Ghi nhận bởi: {display_name} (bộ phận mua sắm, qua Slack)\n"
+            )
+            try:
+                await preparation.record_submission.handle(
+                    case_id,
+                    RecordSubmissionCommand(
+                        filename=f"submission-{supplier.lower().replace(' ', '-')}.md",
+                        content_type="text/markdown; charset=utf-8",
+                        content=receipt_md.encode("utf-8"),
+                        supplier_name=supplier,
+                        received_at=now.isoformat(),
+                        receipt_status="on_time",
+                        external_reference="",
+                    ),
+                    context,
+                )
+            except (ConflictError, DomainError):
+                return (
+                    "⚠️ Hồ sơ đang không ở giai đoạn tiếp nhận HSDT — "
+                    "kiểm tra trạng thái trên web trước nhé."
+                )
+            return f"Đã ghi nhận hồ sơ dự thầu của {supplier} — biên nhận lưu vào hồ sơ."
+
+        if action_id == _OPEN_BIDS:
+            from dw_kernel.errors import ConflictError, DomainError
+
+            case_id = UUID(value)
+            try:
+                count = await preparation.request_cp4.handle(case_id, context)
+            except (ConflictError, DomainError):
+                return (
+                    "⚠️ Chưa có hồ sơ dự thầu nào được ghi nhận — bấm ghi nhận "
+                    "từng nhà cung cấp trước rồi mới chốt sổ nhé."
+                )
+            return (
+                f"Đã chốt sổ với {count} hồ sơ dự thầu — thẻ xác nhận mở thầu (CP4) "
+                "sẽ đến ngay sau đây."
+            )
+
         if action_id == _PUBLISH:
             case_id = UUID(value)
             result = await preparation.auto_publish.handle(case_id, context)
@@ -569,9 +627,7 @@ class SlackFrontOfficeService:
             blocks=[
                 {
                     "type": "context",
-                    "elements": [
-                        {"type": "mrkdwn", "text": f"_Suy nghĩ_\n{trimmed}"}
-                    ],
+                    "elements": [{"type": "mrkdwn", "text": f"_Suy nghĩ_\n{trimmed}"}],
                 }
             ],
         )

@@ -49,24 +49,15 @@ Run chạy: card **⚖️ Gate CP1** kèm dòng quy định (TCO >5 tỷ, pháp 
 - Bước không dùng RAG ghi "chạy deterministic".
 
 **Bình**: Duyệt CP1 → duyệt CP2 → **RFQ tự phát hành qua email ngay khi CP2
-được duyệt** (không ai phải bấm thêm). Ngọc gửi An card hướng dẫn bước tiếp.
+được duyệt** (không ai phải bấm thêm).
 
-An nhắn tiếp để đi tới mở thầu (CP3 sửa đổi là tùy chọn — bỏ qua được):
+Sau phát hành, **Bình** (bộ phận mua sắm — đúng vai bước 8) nhận card
+**«Tiếp nhận hồ sơ dự thầu»** với nút theo từng NCC:
+[Synnex FPT đã nộp] [Digiworld đã nộp] [Petrosetco đã nộp] → bấm lần lượt
+(biên nhận tự lập) → bấm **[Chốt sổ & mở thầu]** → card **CP4** → xác nhận
+→ biên bản mở thầu tự lập, bàn giao DW02 niêm phong — hết luồng DW01.
 
-```
-Synnex FPT vừa nộp hồ sơ
-```
-```
-Digiworld vừa nộp hồ sơ
-```
-```
-Petrosetco vừa nộp hồ sơ
-```
-```
-đủ rồi, chốt và mở thầu đi
-```
-→ Bình nhận card **CP4** → xác nhận → 🎉 biên bản mở thầu tự lập, bàn giao
-DW02 niêm phong — hết luồng DW01.
+(An không đụng vào HSDT — chỉ nhắn khi cần **sửa đổi/gia hạn** → CP3, tùy chọn.)
 
 ## Màn 2 — Thử phá (kịch bản âm D11.5)
 

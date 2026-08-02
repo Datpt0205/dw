@@ -621,15 +621,58 @@ class AutoPublishPreparationHandler:
                                 + (", ".join(suppliers) if suppliers else self.recipient_email)
                                 + "."
                             ),
-                            "Từ giờ bạn chỉ cần nhắn cho mình:",
-                            "Có nhà cung cấp nộp hồ sơ → nhắn: Synnex FPT vừa nộp hồ sơ.",
-                            "Cần sửa đổi/gia hạn → nhắn nội dung, mình lập bản "
-                            "sửa đổi trình duyệt.",
-                            "Nhận đủ hồ sơ → nhắn: chốt và mở thầu.",
+                            "Nhà cung cấp sẽ nộp hồ sơ về bộ phận mua sắm — quản lý "
+                            "ghi nhận và mở thầu, mình sẽ báo tiến độ tại đây.",
+                            "Riêng bạn: cần sửa đổi/gia hạn thì nhắn nội dung, "
+                            "mình lập bản sửa đổi trình duyệt.",
                         ],
                     },
                 )
             )
+            # Receipt desk for procurement (bước 8 — tiếp nhận HSDT thuộc bộ
+            # phận mua sắm, KHÔNG phải người đề nghị): the approver records
+            # each incoming bid with one click, then closes and opens bids.
+            approver = await uow.notifications.find_recipient_for_role("approver")
+            if approver is not None:
+                receipt_buttons: list[dict[str, str]] = [
+                    {
+                        "action_id": "dw01_record_sub",
+                        "label": f"{name} đã nộp",
+                        "value": f"{case.id.value}|{name}",
+                    }
+                    for name in suppliers[:4]
+                ]
+                receipt_buttons.append(
+                    {
+                        "action_id": "dw01_open_bids",
+                        "label": "Chốt sổ & mở thầu",
+                        "value": str(case.id.value),
+                        "style": "primary",
+                    }
+                )
+                await uow.notifications.enqueue(
+                    IntakeNotificationJob(
+                        id=self.id_generator.new_uuid(),
+                        tenant_id=case.tenant_id,
+                        workspace_id=case.workspace_id,
+                        case_id=case.id,
+                        event_type=IntakeNotificationType.RUN_PROGRESS,
+                        recipient_user_id=approver,
+                        due_at=recorded_at,
+                        idempotency_key=f"dw01:{case.id.value}:progress:receipt_desk",
+                        payload={
+                            "title": case.title,
+                            "heading": "Tiếp nhận hồ sơ dự thầu",
+                            "lines": [
+                                (f"RFQ đã phát hành tới {len(suppliers) or 1} nhà cung cấp."),
+                                "Khi nhận được hồ sơ dự thầu, bấm ghi nhận theo "
+                                "từng nhà cung cấp (biên nhận lập tự động).",
+                                "Đủ hồ sơ thì bấm Chốt sổ & mở thầu — mình trình xác nhận CP4.",
+                            ],
+                            "buttons": receipt_buttons,
+                        },
+                    )
+                )
             await uow.cases.save(case)
             await uow.commit()
         return {"message_id": message_id, "sent_to": self.recipient_email}
