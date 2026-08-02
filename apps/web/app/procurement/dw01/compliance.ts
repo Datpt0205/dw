@@ -6,8 +6,9 @@ import type { PreparationCase } from "@dw/api-client";
  * configs/policies/dw01/procurement_rules_v1.yaml. This is a *presentation* aid;
  * the binding gates still live in the backend workflow.
  *
- * NOTE: thresholds are demo placeholders (like the rule pack). For production
- * these should be served by the backend so there is a single source of truth.
+ * Thresholds theo Phụ lục G — Rule Pack v0 (01-QT/MH/HDCV/FPT v2/0). For
+ * production these should be served by the backend so there is a single
+ * source of truth.
  */
 
 export type CheckStatus = "pass" | "warn" | "fail" | "na";
@@ -21,16 +22,17 @@ export interface ComplianceCheck {
 }
 
 const METHOD_MAX: Record<string, number | null> = {
-  direct_purchase: 100_000_000,
-  rfq: 1_000_000_000,
-  open_tender: null,
+  direct_purchase: 10_000_000, // < 10 triệu (G1)
+  rfq: 5_000_000_000, // 10 triệu – 5 tỷ: chào giá cạnh tranh (G1)
+  open_tender: null, // > 5 tỷ: đấu thầu (G1)
 };
 const METHOD_LABEL: Record<string, string> = {
   direct_purchase: "Mua sắm trực tiếp",
   rfq: "Chào giá cạnh tranh",
-  open_tender: "Đấu thầu rộng rãi",
+  open_tender: "Đấu thầu",
 };
-const LEGAL_REVIEW_ABOVE = 500_000_000;
+const LEGAL_REVIEW_ABOVE = 100_000_000; // G3: hợp đồng > 100 triệu → pháp chế
+const TCO_REQUIRED_ABOVE = 5_000_000_000; // G4: TSCĐ/CNTT > 5 tỷ → tính TCO
 const BID_SECURITY_METHODS = new Set(["rfq", "open_tender"]);
 // Indicative minimum solicitation window (days) before bid closing.
 const MIN_SOLICITATION_DAYS: Record<string, number> = {
@@ -154,10 +156,23 @@ export function evaluateCompliance(c: PreparationCase): ComplianceCheck[] {
   if (c.estimated_value_minor > LEGAL_REVIEW_ABOVE) {
     checks.push({
       code: "LEGAL_REVIEW",
-      label: "Thẩm định trước khi phê duyệt",
+      label: "Pháp chế xem xét hợp đồng",
       status: "warn",
-      detail: "Giá trị lớn — nên có bước thẩm định pháp lý/tài chính",
-      legalRef: "Thẩm định",
+      detail: "Hợp đồng trên 100 triệu — pháp chế xem xét trước phát hành",
+      legalRef: "Phụ lục G3",
+    });
+  }
+
+  if (c.estimated_value_minor > TCO_REQUIRED_ABOVE) {
+    const declared = approach !== null && Boolean(approach["tco_required"]);
+    checks.push({
+      code: "TCO",
+      label: "Tổng chi phí sở hữu (TCO)",
+      status: declared ? "pass" : "warn",
+      detail: declared
+        ? "Gói trên 5 tỷ — yêu cầu TCO đã được ghi nhận trong phương án"
+        : "Gói trên 5 tỷ — bắt buộc tính TCO theo biểu mẫu 01.6-BM",
+      legalRef: "Phụ lục G4",
     });
   }
 

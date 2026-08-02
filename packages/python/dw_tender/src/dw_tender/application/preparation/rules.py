@@ -41,6 +41,10 @@ class ProcurementRules:
     require_budget: bool
     require_deadline: bool
     require_owner: bool
+    # Phụ lục G4: gói TSCĐ/CNTT trên ngưỡng phải tính Tổng chi phí sở hữu.
+    tco_required_above: int = 0
+    # Phụ lục G3: hàng chuyên môn nhóm 1 trên ngưỡng → Trưởng BP mua sắm cho ý kiến.
+    specialist_review_above: int = 0
     mandatory_criteria: tuple[tuple[str, str], ...] = ()
     weighted_criteria: tuple[tuple[str, str, int], ...] = ()
     payment_term_template: str = ""
@@ -59,6 +63,12 @@ class ProcurementRules:
 
     def needs_finance_review(self, value_minor: int) -> bool:
         return value_minor > self.finance_review_required_above
+
+    def needs_tco(self, value_minor: int) -> bool:
+        return self.tco_required_above > 0 and value_minor > self.tco_required_above
+
+    def needs_specialist_review(self, value_minor: int) -> bool:
+        return self.specialist_review_above > 0 and value_minor > self.specialist_review_above
 
 
 def approach_gate(

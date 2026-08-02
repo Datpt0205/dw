@@ -24,7 +24,11 @@ from dw_knowledge.contracts import SearchQuery
 from dw_tender.application.preparation.drafts import CriteriaDraft, SolicitationDraft
 from dw_tender.application.preparation.extraction import PreparationExtraction
 from dw_tender.application.preparation.review import ReviewRecommendation, review_card_lines
-from dw_tender.application.preparation.rules import approach_gate, solicitation_gate
+from dw_tender.application.preparation.rules import (
+    ProcurementRules,
+    approach_gate,
+    solicitation_gate,
+)
 from dw_tender.domain.preparation.entities import (
     ArtifactStatus,
     ArtifactType,
@@ -67,6 +71,37 @@ def _hash(content: dict[str, Any]) -> str:
 
 def _fmt_vnd(minor: int) -> str:
     return f"{minor:,}".replace(",", ".") + " VND"
+
+
+def _solicitation_window_days(method_key: str) -> int:
+    """Minimum bid-preparation window per method (đấu thầu > chào giá)."""
+    return {"open_tender": 22, "rfq": 14}.get(method_key, 7)
+
+
+def _regulation_lines(rules: ProcurementRules, value_minor: int) -> list[str]:
+    """Extra review obligations triggered by the package value (Phụ lục G3/G4).
+
+    Deterministic — read from the versioned rule pack, shown on the approach
+    artifact and the CP1 card so the approver sees every regulation the value
+    crossed without opening the quy định.
+    """
+    lines: list[str] = []
+    if rules.needs_tco(value_minor):
+        lines.append(
+            f"Trên {_fmt_vnd(rules.tco_required_above)} → bắt buộc tính "
+            "Tổng chi phí sở hữu — TCO (01.6-BM, Phụ lục G4)."
+        )
+    if rules.needs_legal_review(value_minor):
+        lines.append(
+            f"Hợp đồng trên {_fmt_vnd(rules.legal_review_required_above)} → "
+            "pháp chế xem xét trước phát hành (G3)."
+        )
+    if rules.needs_specialist_review(value_minor):
+        lines.append(
+            f"Hàng chuyên môn trên {_fmt_vnd(rules.specialist_review_above)} → "
+            "Trưởng BP mua sắm cho ý kiến phương án (G3)."
+        )
+    return lines
 
 
 def _dict_items(value: object) -> list[dict[str, Any]]:
@@ -418,13 +453,9 @@ class PreparationNodes:
 
         lines = [ln.strip() for ln in pr_text.splitlines() if ln.strip()]
         requirements = [
-            {"text": ln.lstrip("-• ").strip()}
-            for ln in lines
-            if ln.startswith(("-", "•"))
+            {"text": ln.lstrip("-• ").strip()} for ln in lines if ln.startswith(("-", "•"))
         ]
-        unknowns = [
-            {"question": ln, "suggested_answer": ""} for ln in lines if "CHƯA RÕ" in ln
-        ]
+        unknowns = [{"question": ln, "suggested_answer": ""} for ln in lines if "CHƯA RÕ" in ln]
         return requirements, unknowns, "rule"
 
     async def _llm_solicitation(
@@ -481,9 +512,7 @@ class PreparationNodes:
             return None
         if not draft.weights_valid():
             return None
-        return [
-            {"code": c.code, "text": c.text, "weight": c.weight} for c in draft.weighted
-        ]
+        return [{"code": c.code, "text": c.text, "weight": c.weight} for c in draft.weighted]
 
     # -- 3. completeness + clarifications ---------------------------------
     async def completeness_check(
@@ -498,9 +527,7 @@ class PreparationNodes:
                 "id": f"c{i + 1}",
                 "question": (u.get("question", "") if isinstance(u, dict) else str(u)),
                 # AI's draft answer — pre-fills the field for the reviewer to confirm/edit.
-                "suggested_answer": (
-                    u.get("suggested_answer", "") if isinstance(u, dict) else ""
-                ),
+                "suggested_answer": (u.get("suggested_answer", "") if isinstance(u, dict) else ""),
                 "blocking": not bool(answers.get(f"c{i + 1}", "").strip()),
                 "answered": bool(answers.get(f"c{i + 1}", "").strip()),
                 "answer": answers.get(f"c{i + 1}", ""),
@@ -555,12 +582,21 @@ class PreparationNodes:
             ),
             "timeline": [
                 {"step": "Phát hành hồ sơ", "offset_days": 0},
-                {"step": "Hạn nộp hồ sơ", "offset_days": 14},
-                {"step": "Đánh giá & trình duyệt", "offset_days": 21},
+                {
+                    "step": "Hạn nộp hồ sơ",
+                    "offset_days": _solicitation_window_days(method.key),
+                },
+                {
+                    "step": "Đánh giá & trình duyệt",
+                    "offset_days": _solicitation_window_days(method.key) + 7,
+                },
             ],
             "approval_path": ["CP1 — duyệt phương án", "CP2 — duyệt bộ hồ sơ chính thức"],
             "legal_review_required": rules.needs_legal_review(value),
             "finance_review_required": rules.needs_finance_review(value),
+            "tco_required": rules.needs_tco(value),
+            "specialist_review_required": rules.needs_specialist_review(value),
+            "regulation_notes": _regulation_lines(rules, value),
             "rationale": (
                 f"Giá trị gói {_fmt_vnd(value)} phù hợp hình thức «{method.label}» theo rule pack "
                 f"v{rules.version}."
@@ -687,6 +723,7 @@ class PreparationNodes:
                             f"NCC dự kiến: {state.get('supplier_count_planned', 0)} "
                             f"(tối thiểu {method.min_suppliers})."
                         ),
+                        *_regulation_lines(rules, state.get("estimated_value_minor", 0)),
                         (
                             "Gói rủi ro thấp trong phạm vi ủy quyền — Review Agent "
                             "sẽ tự phê duyệt CP1."
@@ -704,6 +741,7 @@ class PreparationNodes:
                         f"NCC dự kiến: {state.get('supplier_count_planned', 0)} "
                         f"(tối thiểu {method.min_suppliers})."
                     ),
+                    *_regulation_lines(rules, state.get("estimated_value_minor", 0)),
                     f"Gate CP1 tự động: ĐẠT. PR tham chiếu: {state.get('source_pr_ref', '—')}.",
                 ]
                 if review is not None:
@@ -715,9 +753,7 @@ class PreparationNodes:
                             "checkpoint": "CP1",
                             "agent_id": "dw01.review_agent",
                             "prompt_version": "1.0.0",
-                            "decision_mode": (
-                                "delegated_autonomy" if autopilot else "advisory"
-                            ),
+                            "decision_mode": ("delegated_autonomy" if autopilot else "advisory"),
                             **review.model_dump(),
                         },
                     )
@@ -734,8 +770,7 @@ class PreparationNodes:
                             heading="🤖 CP1 đã được Review Agent phê duyệt theo ủy quyền",
                             lines=[
                                 *cp1_lines,
-                                "Chính sách: AUTONOMOUS_DEMO — gói «chỉ định thầu» "
-                                "rủi ro thấp.",
+                                "Chính sách: AUTONOMOUS_DEMO — gói «chỉ định thầu» rủi ro thấp.",
                                 "Bạn có thể yêu cầu xem xét lại bằng cách mở hồ sơ.",
                             ],
                             recipient=approver,
@@ -844,11 +879,7 @@ class PreparationNodes:
             str(state.get("method_label", "")),
             requirements,
         )
-        scope = (
-            draft.scope
-            if draft
-            else "Cung cấp hàng hoá/dịch vụ theo yêu cầu đã phê duyệt."
-        )
+        scope = draft.scope if draft else "Cung cấp hàng hoá/dịch vụ theo yêu cầu đã phê duyệt."
         tech_requirements = (
             list(draft.technical_requirements)
             if draft and draft.technical_requirements
@@ -866,7 +897,9 @@ class PreparationNodes:
             },
             "response_structure": list(self.services.rules.response_structure),
             "submission": {
-                "deadline_offset_days": 14,
+                # Thời gian chuẩn bị HSDT tối thiểu theo hình thức (đấu thầu
+                # cần cửa sổ dài hơn chào giá) — deterministic theo method.
+                "deadline_offset_days": _solicitation_window_days(state.get("method_key", "")),
                 "method": "Nộp hồ sơ qua cổng/email theo hướng dẫn.",
             },
             "sections_present": [

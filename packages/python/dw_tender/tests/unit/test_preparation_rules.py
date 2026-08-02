@@ -16,15 +16,18 @@ pytestmark = pytest.mark.unit
 RULES = ProcurementRules(
     version="1",
     currency="VND",
+    # Ngưỡng theo Phụ lục G (01-QT/MH/HDCV/FPT v2/0).
     methods=(
-        Method("direct_purchase", "Mua trực tiếp", 100_000_000, 1),
-        Method("rfq", "Chào giá", 1_000_000_000, 3),
+        Method("direct_purchase", "Mua sắm trực tiếp", 10_000_000, 1),
+        Method("rfq", "Chào giá cạnh tranh", 5_000_000_000, 3),
         Method("open_tender", "Đấu thầu", None, 3),
     ),
     weighted_total_must_equal=100,
     require_mandatory_criteria=True,
-    legal_review_required_above=500_000_000,
-    finance_review_required_above=500_000_000,
+    legal_review_required_above=100_000_000,
+    finance_review_required_above=5_000_000_000,
+    tco_required_above=5_000_000_000,
+    specialist_review_above=300_000_000,
     require_approved_pr=True,
     require_budget=True,
     require_deadline=True,
@@ -33,14 +36,23 @@ RULES = ProcurementRules(
 
 
 def test_method_selection_by_value() -> None:
-    assert RULES.select_method(50_000_000).key == "direct_purchase"
+    # G1: <10tr trực tiếp; 10tr-5ty chào giá; >5tỷ đấu thầu.
+    assert RULES.select_method(5_000_000).key == "direct_purchase"
     assert RULES.select_method(500_000_000).key == "rfq"
-    assert RULES.select_method(2_500_000_000).key == "open_tender"
+    assert RULES.select_method(5_000_000_000).key == "rfq"
+    assert RULES.select_method(7_500_000_000).key == "open_tender"
 
 
 def test_review_thresholds() -> None:
+    # G3: pháp chế xem xét hợp đồng trên 100 triệu.
     assert not RULES.needs_legal_review(100_000_000)
     assert RULES.needs_legal_review(2_500_000_000)
+    # G4: TCO bắt buộc cho gói trên 5 tỷ.
+    assert not RULES.needs_tco(2_500_000_000)
+    assert RULES.needs_tco(7_500_000_000)
+    # G3: hàng chuyên môn trên 300 triệu → Trưởng BP cho ý kiến.
+    assert not RULES.needs_specialist_review(300_000_000)
+    assert RULES.needs_specialist_review(2_500_000_000)
 
 
 def test_approach_gate_passes_when_complete() -> None:

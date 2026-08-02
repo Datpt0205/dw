@@ -27,15 +27,18 @@ pytestmark = pytest.mark.unit
 RULES = ProcurementRules(
     version="1",
     currency="VND",
+    # Ngưỡng theo Phụ lục G: <10tr trực tiếp; 10tr-5ty chào giá; >5tỷ đấu thầu.
     methods=(
-        Method("direct_purchase", "Mua trực tiếp", 100_000_000, 1),
-        Method("rfq", "Chào giá", 1_000_000_000, 3),
+        Method("direct_purchase", "Mua sắm trực tiếp", 10_000_000, 1),
+        Method("rfq", "Chào giá cạnh tranh", 5_000_000_000, 3),
         Method("open_tender", "Đấu thầu", None, 3),
     ),
     weighted_total_must_equal=100,
     require_mandatory_criteria=True,
-    legal_review_required_above=500_000_000,
-    finance_review_required_above=500_000_000,
+    legal_review_required_above=100_000_000,
+    finance_review_required_above=5_000_000_000,
+    tco_required_above=5_000_000_000,
+    specialist_review_above=300_000_000,
     require_approved_pr=True,
     require_budget=True,
     require_deadline=True,
@@ -56,10 +59,10 @@ CONTEXT = AccessContext(
 )
 
 FULL_SLOTS = IntakeSlots(
-    title="Mua 100 laptop",
-    item_summary="laptop cho developer",
-    quantity=100,
-    estimated_value_vnd=2_000_000_000,
+    title="Mua 500 laptop kèm bản quyền",
+    item_summary="laptop kèm bản quyền phần mềm cho nhân viên",
+    quantity=500,
+    estimated_value_vnd=7_500_000_000,
     deadline_days=45,
     delivery_location="Hà Nội",
     supplier_names=["FPT", "CMC", "Viettel"],
@@ -191,8 +194,8 @@ def test_missing_required_uses_rule_pack_supplier_minimum() -> None:
     missing = missing_required(slots, RULES)
     assert any("tối thiểu 3" in item for item in missing)
 
-    # Small direct purchase only needs 1 supplier.
-    small = slots.model_copy(update={"estimated_value_vnd": 50_000_000})
+    # Small direct purchase (<10tr theo Phụ lục G) only needs 1 supplier.
+    small = slots.model_copy(update={"estimated_value_vnd": 5_000_000})
     assert missing_required(small, RULES) == []
 
 
@@ -202,7 +205,7 @@ def test_missing_required_empty_when_complete() -> None:
 
 def test_render_pr_markdown_contains_key_facts() -> None:
     text = render_pr_markdown(FULL_SLOTS, requester="Nguyễn Văn An", pr_ref="SLACK-1")
-    assert "2.000.000.000 VND" in text
+    assert "7.500.000.000 VND" in text
     assert "45 ngày" in text
     assert "- FPT" in text
     assert "Chưa nêu trong trao đổi" in text  # warranty not provided
@@ -243,7 +246,7 @@ async def test_thinking_is_deterministic_trace_not_model_narration() -> None:
     outcome = await make_service(store, turn, thinking="raw CoT — KHÔNG hiển thị").handle_message(
         channel_key="slack:D1", text="đủ", context=CONTEXT, display_name="An"
     )
-    # Real rule-pack evaluation shows up (2 tỷ -> Đấu thầu, >=3 NCC)…
+    # Real rule-pack evaluation shows up (7,5 tỷ -> Đấu thầu theo Phụ lục G, >=3 NCC)…
     assert "Đấu thầu" in outcome.thinking
     assert "tối thiểu 3 NCC" in outcome.thinking
     assert "Đã đủ thông tin bắt buộc" in outcome.thinking
@@ -288,7 +291,7 @@ async def test_confirm_creates_case_via_command_and_is_idempotent() -> None:
     assert replies[0].kind == "case_link"
     assert len(create_case.created) == 1
     command = create_case.created[0]
-    assert command.estimated_value_minor == 2_000_000_000
+    assert command.estimated_value_minor == 7_500_000_000
     assert command.supplier_names == ("FPT", "CMC", "Viettel")
     assert command.deadline == "45 ngày"
     assert "laptop" in command.pr_text

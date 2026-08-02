@@ -159,7 +159,7 @@ class ConversationIntakeService:
     run_case: RunPreparationHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.1.0"
+    prompt_version: str = "1.2.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 

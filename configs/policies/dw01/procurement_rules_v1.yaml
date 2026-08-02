@@ -1,9 +1,10 @@
 # =============================================================================
 # DW01 Procurement Rule Pack — v1
 #
-# ⚠️  PLACEHOLDER VALUES. These thresholds/approval tiers are demo defaults, NOT
-#     a real company procurement policy. Replace with confirmed business rules.
-#     Deterministic gates read this file; the LLM never sets thresholds.
+# Căn cứ: Phụ lục G — Rule Pack v0, trích từ 01-QT/MH/HDCV/FPT v2/0
+# (Mô tả quá trình Mua sắm). Deterministic gates read this file; the LLM never
+# sets thresholds (nguyên tắc "Digital Worker không tự đặt hoặc thay đổi
+# ngưỡng"). Trước pilot nghiệp vụ: Chủ sở hữu quy trình xác nhận hiệu lực.
 #
 # Currency: VND (minor units = đồng, no decimals).
 # =============================================================================
@@ -11,23 +12,28 @@ version: "1"
 currency: VND
 
 # --- Hình thức mua sắm theo giá trị gói (estimated_value) --------------------
-# Chọn method rẻ/nhanh nhất mà giá trị gói vẫn nằm trong ngưỡng.
+# Theo G1: chào giá cạnh tranh từ 10 triệu (tối thiểu 03 NCC); đấu thầu khi
+# gói trên 5 tỷ đồng (tối thiểu 03 nhà thầu — G6.3). Dưới 10 triệu: mua trực
+# tiếp. Chỉ định nhà cung cấp theo điều kiện G2 (không theo giá trị) — trong
+# POC ánh xạ vào nhánh mua trực tiếp/min_suppliers=1.
 methods:
-  - key: direct_purchase          # Mua sắm trực tiếp / chỉ định
+  - key: direct_purchase          # Mua sắm trực tiếp / chỉ định (điều kiện G2)
     label: "Mua sắm trực tiếp"
-    max_value: 100000000          # ≤ 100 triệu
+    max_value: 10000000           # < 10 triệu
     min_suppliers: 1
-  - key: rfq                      # Chào giá cạnh tranh
-    label: "Chào giá cạnh tranh (RFQ)"
-    max_value: 1000000000         # ≤ 1 tỷ
+  - key: rfq                      # Chào giá cạnh tranh — G1
+    label: "Chào giá cạnh tranh"
+    max_value: 5000000000         # 10 triệu – 5 tỷ
     min_suppliers: 3
-  - key: open_tender              # Đấu thầu rộng rãi
-    label: "Đấu thầu rộng rãi"
+  - key: open_tender              # Đấu thầu — G1: trên 5 tỷ đồng
+    label: "Đấu thầu"
     max_value: null               # không giới hạn trên
-    min_suppliers: 3
+    min_suppliers: 3              # G6.3: mời tối thiểu 03 nhà thầu
 
 # --- Ma trận phê duyệt: role được phép quyết định theo giá trị gói ----------
-# CP1 = duyệt phương án; CP2 = duyệt bộ hồ sơ chính thức.
+# CP1 = duyệt phương án; CP2 = duyệt bộ hồ sơ chính thức. Theo quy định, chủ
+# thể phê duyệt là Tổng giám đốc/người được ủy quyền — danh sách ủy quyền cụ
+# thể là tham số Config Register #3 (chặn PoC, chưa có).
 approval_tiers:
   - max_value: 500000000          # ≤ 500 triệu
     cp1_role: procurement_manager
@@ -40,9 +46,17 @@ approval_tiers:
 # approval_tiers ở trên là dữ liệu tham chiếu cho bước sau khi có role riêng.
 checkpoint_scope: approvals.decide
 
-# --- Điều kiện cần pháp chế / tài chính tham gia ----------------------------
-legal_review_required_above: 500000000
-finance_review_required_above: 500000000
+# --- Ngưỡng xem xét bổ sung (G3, G4) ----------------------------------------
+# G3: hợp đồng trên 100 triệu (hoặc hợp đồng nguyên tắc) → pháp chế xem xét.
+legal_review_required_above: 100000000
+# G6.6: Giám đốc tài chính/Trưởng ban Tài chính tham gia thương thảo trước khi
+# lựa chọn nhà thầu — POC dùng ngưỡng đấu thầu làm điều kiện kích hoạt.
+finance_review_required_above: 5000000000
+# G4: gói TSCĐ/CNTT trên 5 tỷ → bắt buộc tính Tổng chi phí sở hữu (01.6-BM).
+tco_required_above: 5000000000
+# G3: hàng hóa chuyên môn nhóm 1 trên 300 triệu → Trưởng bộ phận mua sắm xem
+# xét và cho ý kiến về phương án.
+specialist_review_above: 300000000
 
 # --- Ngưỡng tiêu chí đánh giá (Solicitation Gate) ---------------------------
 evaluation:
@@ -68,11 +82,14 @@ evaluation:
 # model tự bịa và phải được procurement/legal thay thế trước pilot nghiệp vụ.
 solicitation_template:
   payment_term: "Thanh toán sau nghiệm thu; điều khoản cuối cùng cần tài chính xác nhận."
-  tax_term: "Nhà cung cấp phải tách rõ giá trước thuế, thuế và tổng giá."
+  # G6.5: yêu cầu mức giá tốt nhất sau khi trừ chiết khấu, hoa hồng.
+  tax_term: >-
+    Nhà cung cấp đưa ra mức giá tốt nhất sau khi đã trừ chiết khấu, hoa hồng;
+    tách rõ giá trước thuế, thuế và tổng giá.
   response_structure:
     - "Hồ sơ năng lực"
     - "Bảng đáp ứng kỹ thuật"
-    - "Bảng giá chi tiết"
+    - "Bảng giá chi tiết (giá tốt nhất, đã trừ chiết khấu/hoa hồng)"
     - "Điều khoản bảo hành và giao hàng"
 
 # --- Điều kiện hợp lệ tối thiểu của case ------------------------------------

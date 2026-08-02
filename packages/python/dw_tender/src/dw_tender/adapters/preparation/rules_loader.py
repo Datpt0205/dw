@@ -38,6 +38,8 @@ def load_procurement_rules(path: Path) -> ProcurementRules:
         require_mandatory_criteria=bool(evaluation.get("require_mandatory_criteria", True)),
         legal_review_required_above=int(data.get("legal_review_required_above", 0)),
         finance_review_required_above=int(data.get("finance_review_required_above", 0)),
+        tco_required_above=int(data.get("tco_required_above", 0)),
+        specialist_review_above=int(data.get("specialist_review_above", 0)),
         require_approved_pr=bool(intake.get("require_approved_pr", True)),
         require_budget=bool(intake.get("require_budget", True)),
         require_deadline=bool(intake.get("require_deadline", True)),
