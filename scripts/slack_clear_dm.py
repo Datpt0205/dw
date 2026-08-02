@@ -30,12 +30,19 @@ def _env() -> dict[str, str]:
 
 
 def _call(client: httpx.Client, method: str, **params: object) -> dict:
-    response = client.post(f"{API}/{method}", data=params)
-    response.raise_for_status()
-    data = response.json()
-    if not data.get("ok"):
-        raise SystemExit(f"Slack {method} failed: {data.get('error')}")
-    return data
+    for _ in range(6):
+        response = client.post(f"{API}/{method}", data=params)
+        if response.status_code == 429:  # rate limited — honour Retry-After
+            wait = int(response.headers.get("Retry-After", "5"))
+            print(f"  rate limited, chờ {wait}s…", file=sys.stderr)
+            time.sleep(wait + 1)
+            continue
+        response.raise_for_status()
+        data = response.json()
+        if not data.get("ok"):
+            raise SystemExit(f"Slack {method} failed: {data.get('error')}")
+        return data
+    raise SystemExit(f"Slack {method}: still rate limited after retries")
 
 
 def main() -> None:
