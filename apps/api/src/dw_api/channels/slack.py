@@ -155,6 +155,19 @@ class SlackFrontOfficeService:
         # DM = one rolling conversation per channel; channel mention = per thread.
         channel_key = f"slack:{channel}" + (f":{thread_ts}" if thread_ts else "")
 
+        # Free-text receipt desk: "Synnex FPT nộp file bên dưới" arms the
+        # file wait exactly like clicking the supplier button (deterministic
+        # name match). Skipped while an intake chat is mid-flight here.
+        active_conv = await self.chat.conversation_store.find_active(
+            tenant_id=context.tenant_id,
+            workspace_id=context.workspace_id,
+            channel_key=channel_key,
+        )
+        if active_conv is None and await self._arm_receipt_from_text(
+            channel, self._strip_mention(text), context
+        ):
+            return
+
         # Thinking-first UX: post a placeholder immediately (the reasoner can
         # take a while), then replace it with the model's visible reasoning
         # BEFORE the actual replies arrive as separate messages.
@@ -749,17 +762,81 @@ class SlackFrontOfficeService:
             "card_ts": new_ts,
         }
 
+    async def _match_receipt_supplier(
+        self, text: str, context: AccessContext, *, require_keyword: bool
+    ) -> tuple[UUID, str] | None:
+        """Free-text receipt: match an INVITED supplier of a case that is
+        receiving bids. Deterministic on purpose — the invited list is known,
+        so name containment beats an LLM here (no hallucination, no latency).
+        """
+        preparation = self.container.preparation
+        if preparation is None or not text.strip():
+            return None
+        lowered = text.casefold()
+        if require_keyword and not any(
+            k in lowered for k in ("nộp", "gửi", "nop", "gui", "submit")
+        ):
+            return None
+        cases = await preparation.list_cases.handle(context)
+        matches: list[tuple[UUID, str]] = []
+        for case in cases:
+            if case.state not in ("published", "receiving_bids"):
+                continue
+            _, suppliers, recorded = await self._receipt_state(case.id, context)
+            for name in suppliers:
+                if name in recorded:
+                    continue
+                n = name.casefold()
+                first = n.split()[0] if n.split() else n
+                if n in lowered or (len(first) >= 4 and first in lowered):
+                    matches.append((case.id, name))
+        # Exactly one unambiguous match, or nothing (a multi-name message is
+        # most likely an intake sentence, not a receipt).
+        return matches[0] if len(matches) == 1 else None
+
+    async def _arm_receipt_from_text(self, channel: str, text: str, context: AccessContext) -> bool:
+        """'Synnex FPT nộp file bên dưới' behaves like clicking the button."""
+        match = await self._match_receipt_supplier(text, context, require_keyword=True)
+        if match is None:
+            return False
+        case_id, supplier = match
+        old_ts = self.pending_uploads.get(channel, {}).get("card_ts", "")
+        await self.chat.chat_client.post_message(
+            channel=channel,
+            text=(
+                f"OK — thả file hồ sơ dự thầu của {supplier} vào đây, "
+                "mình lưu bản chính thức và lập biên nhận."
+            ),
+        )
+        new_ts = await self._repost_receipt_card(channel, old_ts, case_id, context, supplier)
+        self.pending_uploads[channel] = {
+            "case_id": str(case_id),
+            "supplier": supplier,
+            "card_ts": new_ts,
+        }
+        return True
+
     async def _handle_receipt_file(self, event: dict[str, Any]) -> None:
         channel = str(event.get("channel", ""))
-        pending = self.pending_uploads.get(channel)
-        if pending is None:
-            return  # file not related to a receipt-desk flow
         user = str(event.get("user", ""))
         subject = self._resolve_subject(user)
         resolved = await self._access_context(subject) if subject else None
         if resolved is None:
             return
         context, display_name = resolved
+        pending = self.pending_uploads.get(channel)
+        if pending is None:
+            # No armed supplier — try the file's caption ("Synnex FPT" typed
+            # alongside the drop records it in one step, no keyword needed).
+            caption = str(event.get("text", "") or "")
+            match = await self._match_receipt_supplier(caption, context, require_keyword=False)
+            if match is None:
+                return  # unrelated file share
+            pending = {
+                "case_id": str(match[0]),
+                "supplier": match[1],
+                "card_ts": "",
+            }
         files = event.get("files") or []
         if not files:
             return
