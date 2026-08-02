@@ -163,10 +163,13 @@ class SlackFrontOfficeService:
             workspace_id=context.workspace_id,
             channel_key=channel_key,
         )
-        if active_conv is None and await self._arm_receipt_from_text(
-            channel, self._strip_mention(text), context
-        ):
-            return
+        if active_conv is None:
+            stripped = self._strip_mention(text)
+            if await self._arm_receipt_from_text(channel, stripped, context):
+                return
+            # "duyệt cp1" / "từ chối cp2" / "xác minh đi" — decisions as text.
+            if await self._try_text_decision(channel, stripped, context, display_name):
+                return
 
         # Thinking-first UX: post a placeholder immediately (the reasoner can
         # take a while), then replace it with the model's visible reasoning
@@ -615,6 +618,129 @@ class SlackFrontOfficeService:
                     return request.id
         return None
 
+    # ----------------------------------------------------- text decisions ---
+    async def _pending_decisions(self, context: AccessContext) -> list[dict[str, str]]:
+        """Everything currently waiting for a human decision, workspace-wide.
+
+        Deterministic source of truth (case states + pending approvals) — no
+        model guesses what is decidable.
+        """
+        preparation = self.container.preparation
+        if preparation is None:
+            return []
+        out: list[dict[str, str]] = []
+        cases = await preparation.list_cases.handle(context)
+        for case in cases:
+            if case.state == "draft":
+                out.append(
+                    {
+                        "kind": "intake",
+                        "cp": "",
+                        "case_id": str(case.id),
+                        "label": "Xác minh hồ sơ đầu vào",
+                        "title": case.title,
+                    }
+                )
+            elif case.state == "cp3_pending":
+                out.append(
+                    {
+                        "kind": "cp",
+                        "cp": "cp3",
+                        "case_id": str(case.id),
+                        "label": "CP3 — duyệt sửa đổi",
+                        "title": case.title,
+                    }
+                )
+            elif case.state == "cp4_ready":
+                out.append(
+                    {
+                        "kind": "cp4",
+                        "cp": "cp4",
+                        "case_id": str(case.id),
+                        "label": "CP4 — xác nhận mở thầu",
+                        "title": case.title,
+                    }
+                )
+        uow_factory = self.container.uow_factory
+        if uow_factory is not None:
+            titles = {str(case.id): case.title for case in cases}
+            async with uow_factory(context) as uow:
+                for request in await uow.approvals.list_pending():
+                    if not request.approval_type.startswith("preparation.cp"):
+                        continue
+                    cp = request.approval_type.rsplit(".", 1)[-1]
+                    case_id = str(request.payload.get("case_id", ""))
+                    out.append(
+                        {
+                            "kind": "cp",
+                            "cp": cp,
+                            "case_id": case_id,
+                            "label": f"{cp.upper()} — duyệt",
+                            "title": titles.get(
+                                case_id, str(request.payload.get("case_title", ""))
+                            ),
+                        }
+                    )
+        return out
+
+    async def _try_text_decision(
+        self, channel: str, text: str, context: AccessContext, display_name: str
+    ) -> bool:
+        """'duyệt cp1 đi' / 'từ chối cp2' / 'xác minh đi' — buttons as words.
+
+        Keywords are finite and the pending list comes from the DB, so this
+        stays deterministic; only genuinely ambiguous cases ask back.
+        """
+        lowered = text.casefold()
+        reject = any(w in lowered for w in ("từ chối", "không duyệt", "reject"))
+        approve = not reject and any(
+            w in lowered for w in ("duyệt", "đồng ý", "approve", "xác minh", "xác nhận")
+        )
+        if not (approve or reject):
+            return False
+        candidates = await self._pending_decisions(context)
+        cp_match = re.search(r"cp\s*([1-4])", lowered)
+        if cp_match:
+            wanted = f"cp{cp_match.group(1)}"
+            candidates = [c for c in candidates if c["cp"] == wanted]
+        elif "xác minh" in lowered:
+            candidates = [c for c in candidates if c["kind"] == "intake"]
+        if not candidates:
+            await self.chat.chat_client.post_message(
+                channel=channel,
+                text="Hiện không có mục nào đang chờ bạn quyết định.",
+            )
+            return True
+        if len(candidates) > 1:
+            listing = "; ".join(f"{c['label']} ({c['title']})" for c in candidates)
+            await self.chat.chat_client.post_message(
+                channel=channel,
+                text=f"Đang chờ nhiều mục: {listing}. Bạn ghi rõ giúp mình (vd: duyệt CP1).",
+            )
+            return True
+        target = candidates[0]
+        if target["kind"] == "intake":
+            action = _INTAKE_APPROVE if approve else _INTAKE_REJECT
+            value = target["case_id"]
+        elif target["kind"] == "cp4":
+            if not approve:
+                await self.chat.chat_client.post_message(
+                    channel=channel,
+                    text="CP4 chỉ có bước xác nhận mở thầu — không có luồng từ chối.",
+                )
+                return True
+            action, value = _CP4_CONFIRM, target["case_id"]
+        else:
+            action = _CP_APPROVE if approve else _CP_REJECT
+            value = f"{target['cp']}:{target['case_id']}"
+        try:
+            reply = await self._execute_decision(action, value, context, display_name)
+        except Exception as exc:
+            logger.warning("text decision failed: %s", exc)
+            reply = f"⚠️ Không thực hiện được: {str(exc)[:200]}"
+        await self.chat.chat_client.post_message(channel=channel, text=reply)
+        return True
+
     # ------------------------------------------------------- receipt desk ---
     async def _receipt_state(
         self, case_id: UUID, context: AccessContext
@@ -828,10 +954,29 @@ class SlackFrontOfficeService:
         if pending is None:
             # No armed supplier — try the file's caption ("Synnex FPT" typed
             # alongside the drop records it in one step, no keyword needed).
-            caption = str(event.get("text", "") or "")
+            caption = str(event.get("text", "") or "").strip()
             match = await self._match_receipt_supplier(caption, context, require_keyword=False)
             if match is None:
-                return  # unrelated file share
+                # Never fail silently on a captioned drop — say WHY.
+                if caption:
+                    preparation = self.container.preparation
+                    active = 0
+                    if preparation is not None:
+                        cases = await preparation.list_cases.handle(context)
+                        active = sum(1 for c in cases if c.state in ("published", "receiving_bids"))
+                    await self.chat.chat_client.post_message(
+                        channel=channel,
+                        text=(
+                            "Hiện không có gói thầu nào đang nhận hồ sơ dự thầu — "
+                            "luồng gần nhất đã kết thúc rồi."
+                            if active == 0
+                            else (
+                                "Mình chưa nhận ra nhà cung cấp nào trong tin — ghi "
+                                "kèm đúng tên được mời hoặc bấm nút trên thẻ tiếp nhận."
+                            )
+                        ),
+                    )
+                return
             pending = {
                 "case_id": str(match[0]),
                 "supplier": match[1],
