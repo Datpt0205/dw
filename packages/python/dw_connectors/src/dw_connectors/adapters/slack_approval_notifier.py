@@ -75,7 +75,7 @@ def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
     if event == "run.progress":
         heading = message.heading or "Cập nhật tiến trình"
         body = f"*{message.case_title}*\n" + "\n".join(f"• {line}" for line in message.lines)
-        context = "Tiến trình tự động của Digital Worker DW01 — bấm nút để xem chi tiết."
+        context = "Ngọc cập nhật tiến độ — bấm nút để xem chi tiết trên web."
         text = f"{heading}: {message.case_title}"
         blocks: list[dict[str, Any]] = [
             {"type": "section", "text": {"type": "mrkdwn", "text": f"*{heading}*"}},
@@ -157,7 +157,7 @@ def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
             f"Người tạo: {message.owner_name or '—'}\n"
             f"PR: `{message.source_pr_ref or '—'}` · Giá trị: {_money(message)}"
         )
-        context = "Bấm nút để quyết định ngay tại đây — hoặc mở DW01 xem chi tiết trước."
+        context = "Bấm nút để quyết định ngay tại đây — hoặc mở hồ sơ xem chi tiết trước."
     elif event == "intake.approval_escalated":
         heading = "Nhắc việc phê duyệt quá hạn"
         body = (
@@ -168,7 +168,7 @@ def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
     elif event == "intake.approved":
         heading = "Hồ sơ đã được phê duyệt"
         body = f"*{message.case_title}* đã qua bước kiểm tra intake."
-        context = "Bạn có thể mở hồ sơ và chạy Digital Worker DW01."
+        context = "Mình sẽ bắt đầu xử lý và báo tiến độ tại đây."
     elif event == "intake.rejected":
         heading = "Hồ sơ không được phê duyệt"
         body = (

@@ -159,7 +159,7 @@ class ConversationIntakeService:
     run_case: RunPreparationHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.2.0"
+    prompt_version: str = "1.3.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 
@@ -304,7 +304,7 @@ class ConversationIntakeService:
                     ChatReply(
                         text=(
                             "OK, bạn nhắn phần muốn sửa (vd: «ngân sách 1,5 tỷ» hoặc "
-                            "«thêm NCC FPT») — tôi sẽ cập nhật rồi xác nhận lại."
+                            "«thêm NCC FPT») — mình cập nhật rồi xác nhận lại nhé."
                         )
                     ),
                 )
@@ -338,9 +338,9 @@ class ConversationIntakeService:
             replies=(
                 self._case_link(
                     case_id,
-                    "✅ Đã tạo hồ sơ mua sắm từ trao đổi này. "
-                    "Quản lý sẽ nhận thông báo Slack để xác minh; sau khi xác minh, "
-                    "Digital Worker tự chạy và tôi sẽ báo bạn tiến độ.",
+                    "✅ Mình đã tạo hồ sơ và gửi quản lý xác minh. "
+                    "Duyệt xong là mình chạy luôn — có tiến độ mới mình nhắn bạn "
+                    "ngay tại đây nhé.",
                 ),
             )
         )
@@ -430,9 +430,7 @@ class ConversationIntakeService:
             supplier = (turn.submission.supplier_name if turn.submission else "").strip()
             if not supplier:
                 return TurnOutcome(
-                    replies=(
-                        ChatReply(text="Bạn cho tôi biết tên nhà cung cấp đã nộp hồ sơ nhé?"),
-                    )
+                    replies=(ChatReply(text="Bạn cho tôi biết tên nhà cung cấp đã nộp hồ sơ nhé?"),)
                 )
             reference = (turn.submission.external_reference if turn.submission else "").strip()
             now = self.clock.now().astimezone(UTC)
@@ -516,9 +514,7 @@ class ConversationIntakeService:
         """Multi-case DM: say which case was targeted + offer a focus switch."""
         if not siblings:
             return outcome
-        target_title = (
-            await self._case_title(target.case_id, context) if target.case_id else "?"
-        )
+        target_title = await self._case_title(target.case_id, context) if target.case_id else "?"
         options: list[tuple[str, str]] = []
         for sib in siblings[:3]:
             if sib.case_id is None:
@@ -575,11 +571,7 @@ class ConversationIntakeService:
         pending = [item for item in items if item.get("blocking")]
         if not pending:
             return TurnOutcome(
-                replies=(
-                    ChatReply(
-                        text="Không còn câu hỏi làm rõ nào — Digital Worker sẽ tự chạy tiếp."
-                    ),
-                )
+                replies=(ChatReply(text="Không còn câu hỏi làm rõ nào — mình chạy tiếp đây."),)
             )
         questions_text = "\n".join(
             f"- {item.get('id')} | {item.get('question')} | gợi ý: "
@@ -636,14 +628,14 @@ class ConversationIntakeService:
             + (
                 f"• Còn {remaining} câu chưa trả lời → sẽ hỏi tiếp."
                 if remaining > 0
-                else "• Đã đủ — khởi động lại Digital Worker để chạy tiếp tới CP1."
+                else "• Đã đủ — khởi động lại workflow để chạy tiếp tới CP1."
             )
         )
         if remaining <= 0 and self.run_case is not None:
             await self.run_case.handle(case_id, context)
             reply_text = (
-                "✅ Đã ghi nhận đủ các câu trả lời làm rõ — Digital Worker đang chạy "
-                "tiếp, bạn sẽ nhận tiến độ tại đây."
+                "✅ Đã ghi nhận đủ câu trả lời — mình chạy tiếp đây, "
+                "có tiến độ mới mình nhắn bạn ngay."
             )
         else:
             reply_text = turn.reply_vi
@@ -686,9 +678,7 @@ class ConversationIntakeService:
             },
             model_profile=self.model_profile,
         )
-        run_context = self._agent_run_context(
-            context, trace=f"chat-{str(conversation.id)[:12]}"
-        )
+        run_context = self._agent_run_context(context, trace=f"chat-{str(conversation.id)[:12]}")
         # reasoning_summary/reasoning_content stay available for logging, but
         # the DISPLAYED thinking is system-built (see _build_thinking).
         return await self.gateway.generate_structured(
@@ -779,9 +769,7 @@ class ConversationIntakeService:
             if value in (None, "")
         ]
         if optional_missing:
-            lines.append(
-                "• Chưa nêu (DW sẽ hỏi làm rõ sau): " + ", ".join(optional_missing)
-            )
+            lines.append("• Chưa nêu (DW sẽ hỏi làm rõ sau): " + ", ".join(optional_missing))
         return ChatReply(
             text="Tôi hiểu yêu cầu như sau — bạn xác nhận để tạo hồ sơ nhé?",
             kind="confirm_card",

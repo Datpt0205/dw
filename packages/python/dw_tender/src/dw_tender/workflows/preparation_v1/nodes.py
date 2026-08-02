@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from typing import Any
 
@@ -76,6 +77,29 @@ def _fmt_vnd(minor: int) -> str:
 def _solicitation_window_days(method_key: str) -> int:
     """Minimum bid-preparation window per method (đấu thầu > chào giá)."""
     return {"open_tender": 22, "rfq": 14}.get(method_key, 7)
+
+
+def _clarification_question_lines(state: PreparationState) -> list[str]:
+    """The open blocking questions, ready to paste into a Slack card.
+
+    Without these the gate-fail card only says "còn N câu hỏi" and the
+    requester has no idea WHAT to answer. Suggestions are trimmed of the
+    model's "cần owner xác nhận" caveat tail.
+    """
+    lines: list[str] = []
+    for i, item in enumerate(
+        (c for c in state.get("clarifications", []) if c.get("blocking")), start=1
+    ):
+        question = str(item.get("question", "")).strip()
+        if not question:
+            continue
+        suggestion = re.sub(
+            r"\s*[;,]\s*cần[^;,]*$", "", str(item.get("suggested_answer", "")).strip()
+        )
+        if len(suggestion) > 90:
+            suggestion = suggestion[:87] + "…"
+        lines.append(f"{i}) {question}" + (f" — gợi ý: {suggestion}" if suggestion else ""))
+    return lines
 
 
 def _regulation_lines(rules: ProcurementRules, value_minor: int) -> list[str]:
@@ -400,19 +424,18 @@ class PreparationNodes:
             case = await uow.cases.get(case_id)
             assert case is not None
             snapshot = await self._add_artifact(uow, case, ArtifactType.DEMAND_SNAPSHOT, content)
-            source_label = "AI (LLM)" if source == "ai" else "phân tích dòng (deterministic)"
             await self._notify_progress(
                 uow,
                 case,
                 stage="extract",
                 dedupe=f"v{snapshot.artifact_version}",
-                heading="📋 Đã bóc tách yêu cầu từ PR",
+                heading="📋 Đã đọc xong phiếu đề nghị",
                 lines=[
-                    f"{len(requirements)} yêu cầu được nhận diện (nguồn: {source_label}).",
+                    f"Mình nhận diện được {len(requirements)} yêu cầu.",
                     (
-                        f"{len(unknowns)} điểm thương mại cần làm rõ."
+                        f"Có {len(unknowns)} điểm thương mại cần hỏi thêm."
                         if unknowns
-                        else "Không có điểm nào cần làm rõ — PR đầy đủ."
+                        else "Không có điểm nào cần hỏi thêm — phiếu đề nghị đầy đủ."
                     ),
                 ],
             )
@@ -792,8 +815,8 @@ class PreparationNodes:
                     heading="⚠️ Gate CP1 CHƯA ĐẠT — cần bổ sung",
                     lines=[
                         *result.reasons,
-                        "Trả lời làm rõ NGAY TẠI ĐÂY bằng cách nhắn cho tôi — "
-                        "tôi sẽ ghi nhận và chạy tiếp.",
+                        *_clarification_question_lines(state),
+                        "Nhắn trả lời ngay tại đây — mình ghi nhận rồi chạy tiếp nhé.",
                     ],
                 )
             await uow.cases.save(case)

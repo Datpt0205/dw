@@ -1247,11 +1247,11 @@ class RunPreparationHandler:
                     ),
                     payload={
                         "title": case.title,
-                        "heading": "🚀 Digital Worker bắt đầu xử lý hồ sơ",
+                        "heading": "🚀 Mình bắt đầu xử lý hồ sơ nhé",
                         "lines": [
-                            "Các bước: bóc yêu cầu từ PR → đối chiếu quy định → "
-                            "lập phương án → trình duyệt CP1 → dựng HSMT → CP2.",
-                            "Bạn sẽ nhận cập nhật từng bước tại đây.",
+                            "Trình tự: đọc yêu cầu → đối chiếu quy định → "
+                            "lập phương án → trình duyệt CP1 → soạn HSMT → CP2.",
+                            "Xong bước nào mình nhắn bước đó tại đây.",
                         ],
                     },
                 )
