@@ -112,18 +112,18 @@ def _regulation_lines(rules: ProcurementRules, value_minor: int) -> list[str]:
     lines: list[str] = []
     if rules.needs_tco(value_minor):
         lines.append(
-            f"Trên {_fmt_vnd(rules.tco_required_above)} → bắt buộc tính "
-            "Tổng chi phí sở hữu — TCO (01.6-BM, Phụ lục G4)."
+            f"Gói trên {_fmt_vnd(rules.tco_required_above)}: phải tính "
+            "Tổng chi phí sở hữu TCO theo biểu mẫu 01.6-BM."
         )
     if rules.needs_legal_review(value_minor):
         lines.append(
-            f"Hợp đồng trên {_fmt_vnd(rules.legal_review_required_above)} → "
-            "pháp chế xem xét trước phát hành (G3)."
+            f"Hợp đồng trên {_fmt_vnd(rules.legal_review_required_above)}: "
+            "cần pháp chế xem xét trước khi phát hành."
         )
     if rules.needs_specialist_review(value_minor):
         lines.append(
-            f"Hàng chuyên môn trên {_fmt_vnd(rules.specialist_review_above)} → "
-            "Trưởng BP mua sắm cho ý kiến phương án (G3)."
+            f"Hàng chuyên môn trên {_fmt_vnd(rules.specialist_review_above)}: "
+            "cần Trưởng bộ phận mua sắm cho ý kiến."
         )
     return lines
 
@@ -739,12 +739,13 @@ class PreparationNodes:
                     ),
                     lines=[
                         (
-                            f"Giá trị {_fmt_vnd(state.get('estimated_value_minor', 0))} → "
-                            f"hình thức «{method.label}» (rule pack v{rules.version})."
+                            f"Gói {_fmt_vnd(state.get('estimated_value_minor', 0))}: "
+                            f"áp dụng hình thức {method.label} theo quy định."
                         ),
                         (
-                            f"NCC dự kiến: {state.get('supplier_count_planned', 0)} "
-                            f"(tối thiểu {method.min_suppliers})."
+                            f"Nhà cung cấp dự kiến: "
+                            f"{state.get('supplier_count_planned', 0)} — đủ mức "
+                            f"tối thiểu {method.min_suppliers}."
                         ),
                         *_regulation_lines(rules, state.get("estimated_value_minor", 0)),
                         (
@@ -757,15 +758,16 @@ class PreparationNodes:
                 )
                 cp1_lines = [
                     (
-                        f"Giá trị {_fmt_vnd(state.get('estimated_value_minor', 0))} → "
-                        f"hình thức «{method.label}» (rule pack v{rules.version})."
+                        f"Gói {_fmt_vnd(state.get('estimated_value_minor', 0))}: "
+                        f"áp dụng hình thức {method.label} theo quy định."
                     ),
                     (
-                        f"NCC dự kiến: {state.get('supplier_count_planned', 0)} "
-                        f"(tối thiểu {method.min_suppliers})."
+                        f"Nhà cung cấp dự kiến: "
+                        f"{state.get('supplier_count_planned', 0)} — đủ mức "
+                        f"tối thiểu {method.min_suppliers}."
                     ),
                     *_regulation_lines(rules, state.get("estimated_value_minor", 0)),
-                    f"Gate CP1 tự động: ĐẠT. PR tham chiếu: {state.get('source_pr_ref', '—')}.",
+                    (f"Kiểm tra tự động: ĐẠT. Phiếu đề nghị: {state.get('source_pr_ref', '—')}."),
                 ]
                 if review is not None:
                     await self._add_artifact(
@@ -1281,19 +1283,12 @@ class PreparationNodes:
                 case,
                 stage="official",
                 dedupe=rc.run_id.hex[:12],
-                heading="🏁 Bộ hồ sơ mời thầu CHÍNH THỨC đã sẵn sàng",
+                heading="🏁 Bộ hồ sơ mời thầu CHÍNH THỨC đã niêm phong",
                 lines=[
                     f"Hình thức: {state.get('method_label', '')}.",
-                    f"{len(artifacts)} artifact được niêm phong trong manifest.",
-                    "Bấm nút bên dưới để phát hành gói thầu (gửi RFQ qua email).",
-                ],
-                buttons=[
-                    {
-                        "action_id": "dw01_publish",
-                        "label": "📧 Phát hành RFQ",
-                        "value": str(case.id.value),
-                        "style": "primary",
-                    }
+                    f"{len(artifacts)} tài liệu được niêm phong trong bộ chính thức.",
+                    "CP2 đã cho phép phát hành — mình gửi RFQ qua email cho "
+                    "các nhà cung cấp ngay bây giờ.",
                 ],
             )
             await uow.cases.save(case)

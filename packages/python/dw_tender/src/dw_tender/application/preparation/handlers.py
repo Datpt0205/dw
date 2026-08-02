@@ -580,9 +580,7 @@ class AutoPublishPreparationHandler:
             artifact_content: dict[str, Any] = {
                 "source_mode": "auto_email",
                 "channel": "Email công vụ (tự động)",
-                "recipient_summary": (
-                    ", ".join(suppliers) if suppliers else self.recipient_email
-                ),
+                "recipient_summary": (", ".join(suppliers) if suppliers else self.recipient_email),
                 "published_at": recorded_at.isoformat(),
                 "external_reference": message_id,
                 "sent_to": self.recipient_email,
@@ -601,6 +599,37 @@ class AutoPublishPreparationHandler:
                 status=ArtifactStatus.OFFICIAL,
             )
             case.record_publication()
+            # P3 trace + next-step guidance: after publication the flow is
+            # chat-driven (submissions/CP3/CP4) — without this card the owner
+            # has no idea what unlocks the next checkpoint.
+            await uow.notifications.enqueue(
+                IntakeNotificationJob(
+                    id=self.id_generator.new_uuid(),
+                    tenant_id=case.tenant_id,
+                    workspace_id=case.workspace_id,
+                    case_id=case.id,
+                    event_type=IntakeNotificationType.RUN_PROGRESS,
+                    recipient_user_id=case.created_by,
+                    due_at=recorded_at,
+                    idempotency_key=f"dw01:{case.id.value}:progress:published",
+                    payload={
+                        "title": case.title,
+                        "heading": "📧 Đã phát hành hồ sơ mời thầu qua email",
+                        "lines": [
+                            (
+                                "Đã gửi tới: "
+                                + (", ".join(suppliers) if suppliers else self.recipient_email)
+                                + "."
+                            ),
+                            "Từ giờ bạn chỉ cần nhắn cho mình:",
+                            "• Có nhà cung cấp nộp hồ sơ → «Synnex FPT vừa nộp hồ sơ».",
+                            "• Cần sửa đổi/gia hạn → nhắn nội dung, mình lập bản "
+                            "sửa đổi trình duyệt.",
+                            "• Nhận đủ hồ sơ → «chốt và mở thầu», mình trình xác nhận mở thầu.",
+                        ],
+                    },
+                )
+            )
             await uow.cases.save(case)
             await uow.commit()
         return {"message_id": message_id, "sent_to": self.recipient_email}
@@ -944,9 +973,7 @@ class RequestCp4Handler:
                     "case is not receiving bids", details={"state": case.state.value}
                 )
             documents = await uow.documents.list_for_case(case.id)
-            submissions = [
-                d for d in documents if d.kind is DocumentKind.SUPPLIER_SUBMISSION
-            ]
+            submissions = [d for d in documents if d.kind is DocumentKind.SUPPLIER_SUBMISSION]
             if not submissions:
                 raise DomainError("chưa có hồ sơ dự thầu nào — không thể mở thầu")
             approver = await uow.notifications.find_recipient_for_role("approver")
@@ -960,9 +987,7 @@ class RequestCp4Handler:
                         event_type=IntakeNotificationType.CP_APPROVAL_REQUESTED,
                         recipient_user_id=approver,
                         due_at=self.clock.now(),
-                        idempotency_key=(
-                            f"dw01:{case.id.value}:cpcard:CP4:n{len(submissions)}"
-                        ),
+                        idempotency_key=(f"dw01:{case.id.value}:cpcard:CP4:n{len(submissions)}"),
                         payload={
                             "title": case.title,
                             "checkpoint": "CP4",
@@ -1160,9 +1185,7 @@ class GetPreparationCaseHandler:
             case, artifacts, documents, notifications, document_texts=document_texts
         )
 
-    async def _inline_texts(
-        self, documents: list[PreparationDocument]
-    ) -> dict[uuid.UUID, str]:
+    async def _inline_texts(self, documents: list[PreparationDocument]) -> dict[uuid.UUID, str]:
         if self.storage is None:
             return {}
         texts: dict[uuid.UUID, str] = {}
@@ -1228,9 +1251,7 @@ class RunPreparationHandler:
             case = await uow.cases.get(PreparationCaseId(case_id))
             if case is None:
                 raise NotFoundError("preparation case not found", details={"case_id": str(case_id)})
-            actor_id = (
-                str(case.created_by.value) if on_behalf_of_owner else context.principal_id
-            )
+            actor_id = str(case.created_by.value) if on_behalf_of_owner else context.principal_id
             case.start_run(run_id)
             # P3 activity trace: first progress card for the owner's Slack DM.
             await uow.notifications.enqueue(

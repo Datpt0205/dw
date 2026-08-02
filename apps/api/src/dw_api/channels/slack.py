@@ -332,9 +332,7 @@ class SlackFrontOfficeService:
         ]
         await self.chat.chat_client.publish_home_view(user_id=slack_user_id, blocks=blocks)
 
-    async def _post_pr_preview(
-        self, value: str, channel: str, context: AccessContext
-    ) -> None:
+    async def _post_pr_preview(self, value: str, channel: str, context: AccessContext) -> None:
         """[📄 Xem PR]: post the source PR inline so the approver never leaves
         Slack. Authorized via the clicker's real context (tender.read + RLS)."""
         preparation = self.container.preparation
@@ -348,11 +346,7 @@ class SlackFrontOfficeService:
             )
             return
         pr_doc = next(
-            (
-                doc
-                for doc in view.documents
-                if doc.kind == "approved_pr" and doc.text_content
-            ),
+            (doc for doc in view.documents if doc.kind == "approved_pr" and doc.text_content),
             None,
         )
         if pr_doc is None:
@@ -404,13 +398,14 @@ class SlackFrontOfficeService:
         except Exception as exc:
             logger.warning("slack decision failed action=%s: %s", action_id, exc)
             reply = f"⚠️ Không thực hiện được: {str(exc)[:300]}"
+        # Replace the card with the outcome in-place (one message, no
+        # "đã ghi nhận thao tác" clutter); fall back to a new message.
         if message.get("ts"):
             await self.chat.chat_client.update_message(
-                channel=channel,
-                ts=str(message["ts"]),
-                text="🕘 Đã ghi nhận thao tác — kết quả ở tin nhắn tiếp theo.",
+                channel=channel, ts=str(message["ts"]), text=reply
             )
-        await self.chat.chat_client.post_message(channel=channel, text=reply)
+        else:
+            await self.chat.chat_client.post_message(channel=channel, text=reply)
 
     async def _execute_decision(
         self, action_id: str, value: str, context: AccessContext, display_name: str
@@ -469,9 +464,29 @@ class SlackFrontOfficeService:
                 authorization=self.container.authorization,
             )
             label = cp.upper()
-            if approve:
-                return f"✅ Đã duyệt {label} — quy trình tiếp tục chạy tự động."
-            return f"⛔ Đã từ chối {label} — quy trình dừng, người tạo sẽ được thông báo."
+            if not approve:
+                return f"⛔ Đã từ chối {label} — quy trình dừng, người tạo sẽ được thông báo."
+            if cp == "cp2":
+                # CP2 per B5.4 IS the publication authorization ("cho phép
+                # phát hành") — publish immediately, no extra human click.
+                # decide() resumed the graph synchronously, so the official
+                # package is already sealed at this point.
+                try:
+                    result = await preparation.auto_publish.handle(case_id, context)
+                    sent_to = str(result.get("sent_to", "")) if isinstance(result, dict) else ""
+                    suffix = f" tới {sent_to}" if sent_to else ""
+                    return (
+                        "✅ Đã duyệt CP2 — bộ hồ sơ niêm phong bản chính thức "
+                        f"và RFQ đã phát hành qua email{suffix}."
+                    )
+                except Exception as exc:
+                    logger.warning("auto publish after CP2 failed: %s", exc)
+                    return (
+                        "✅ Đã duyệt CP2 — hồ sơ đã niêm phong, nhưng phát hành "
+                        f"tự động chưa chạy được ({str(exc)[:160]}). "
+                        "Người tạo có thể yêu cầu phát hành lại qua chat."
+                    )
+            return f"✅ Đã duyệt {label} — quy trình tiếp tục chạy tự động."
 
         if action_id == _CP4_CONFIRM:
             from dw_tender.application.preparation.handlers import CompleteCp4Command
