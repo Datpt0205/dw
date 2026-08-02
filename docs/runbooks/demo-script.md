@@ -30,6 +30,16 @@ mời Synnex FPT, Digiworld với Petrosetco nhé
 
 **Bình**: nhận DM → bấm **[📄 Xem PR]** → **[✅ Xác minh & chạy DW01]**.
 
+Run chạy vài bước rồi **dừng ở ⚠️ Gate CP1 CHƯA ĐẠT** — card liệt kê 3 câu
+hỏi thương mại kèm gợi ý (bảo hành / bản quyền / thanh toán). An trả lời gộp:
+
+```
+bảo hành 36 tháng, kèm bản quyền Windows 11 Pro và Office, thanh toán sau nghiệm thu 30 ngày
+```
+
+(hoặc lười: `cứ lấy theo gợi ý nhé`) → Ngọc ghi nhận 3/3 → **tự chạy tiếp**.
+*Đây là điểm đau P4 được giải ngay trên sân khấu — không form, không upload.*
+
 ### 🔎 RAG xuất hiện ở đây
 Run chạy: card **⚖️ Gate CP1** kèm dòng quy định (TCO >5 tỷ, pháp chế >100tr)
 + 🤖 Review Agent. Trên web mở hồ sơ → khối **«Vết thực thi»**:
