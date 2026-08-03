@@ -1,5 +1,12 @@
 # Claude Code Instructions — Digital Worker Platform
 
+## Session context
+
+Before making changes, read `docs/handover/SESSION-CONTEXT.md` — it records
+the repo owner's standing preferences and demo-critical decisions that are
+not derivable from code (commit conventions, Slack-first UX rules, reset
+scripts, what must stay deterministic).
+
 ## Mission
 
 Generate a production-shaped source base for a multi-tenant Digital Worker platform with two bounded contexts:
