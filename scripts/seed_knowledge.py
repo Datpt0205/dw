@@ -21,8 +21,17 @@ Then rebuild the vector collection so vectors of purged docs disappear:
 from __future__ import annotations
 
 import asyncio
+import uuid
 
 import sqlalchemy as sa
+
+# Same deterministic identity scheme as scripts/seed_demo.py — the platform
+# tables are RLS-guarded for the app role, so we derive ids instead of reading.
+SEED_NAMESPACE = uuid.UUID("6f0f6f1e-9f6a-4f65-9a1c-000000000d10")
+
+
+def sid(kind: str, key: str) -> uuid.UUID:
+    return uuid.uuid5(SEED_NAMESPACE, f"{kind}:{key}")
 
 LUAT_DAU_THAU = """\
 # Luật Đấu thầu — trích lục phục vụ mua sắm (bản trích lược demo, \
@@ -107,23 +116,10 @@ async def main() -> None:
     gateway = container.knowledge_gateway
     assert gateway is not None, "knowledge gateway is not wired"
 
-    # Resolve the demo tenant/workspace/principal from the seeded directory.
-    async with gateway.session_factory() as session:
-        row = (
-            await session.execute(
-                sa.text(
-                    "select t.id as tenant_id, w.id as workspace_id, u.id as user_id "
-                    "from platform.tenants t "
-                    "join platform.workspaces w on w.tenant_id = t.id and w.slug = 'main' "
-                    "join platform.users u on u.email = 'chi.le@alpha.local' "
-                    "where t.slug = 'tenant-alpha'"
-                )
-            )
-        ).one()
     context = AccessContext(
-        tenant_id=row.tenant_id,
-        workspace_id=row.workspace_id,
-        principal_id=row.user_id,
+        tenant_id=sid("tenant", "tenant-alpha"),
+        workspace_id=sid("workspace", "tenant-alpha:main"),
+        principal_id=sid("user", "dev|chi.le"),
         roles=frozenset({"admin"}),
         scopes=frozenset({"knowledge.read", "knowledge.write"}),
         clearance="internal",
@@ -132,6 +128,12 @@ async def main() -> None:
 
     # 1) Purge stub documents left behind by old test runs (per-tenant RLS GUC).
     async with gateway.session_factory() as session, session.begin():
+        # RLS hides tenant-scoped rows without the GUC — scope to the demo
+        # tenant first (global-scope rows are visible regardless).
+        await session.execute(
+            sa.text("select set_config('app.tenant_id', :t, true)"),
+            {"t": str(context.tenant_id)},
+        )
         junk = (
             await session.execute(
                 sa.text(

@@ -40,12 +40,19 @@ bảo hành 36 tháng, kèm bản quyền Windows 11 Pro và Office, thanh toán
 (hoặc lười: `cứ lấy theo gợi ý nhé`) → Ngọc ghi nhận 3/3 → **tự chạy tiếp**.
 *Đây là điểm đau P4 được giải ngay trên sân khấu — không form, không upload.*
 
-### RAG xuất hiện ở đây
-Ngay trên Slack: card **«Đã đối chiếu quy định và truy xuất căn cứ»** —
-số đoạn căn cứ pháp lý/quy chế + trích đoạn (vd *«Điều 22. Đấu thầu rộng
-rãi…» — độ liên quan 91%*). Card **Gate CP1: ĐẠT** kèm dòng quy định
-(TCO >5 tỷ, pháp chế >100tr) và **Review Agent đang thẩm định…** trước khi
-thẻ duyệt tới Bình.
+### RAG xuất hiện ở đây — và có RĂNG
+Card **«Đã đối chiếu quy định và truy xuất căn cứ»** (bên An): trích đoạn
+ĐẦY ĐỦ các điều luật/quy chế truy được (blockquote, kèm % liên quan) +
+dòng **«Ràng buộc bóc từ căn cứ: thời gian chuẩn bị hồ sơ dự thầu tối
+thiểu 18 ngày (Điều 45)»** — con số này do LLM bóc từ đúng đoạn luật vừa
+truy, code xác minh nguyên văn rồi mới áp vào tiến độ (hạn nộp ≥ 22 ngày).
+Không truy được thì dùng mặc định rule pack — không bịa.
+
+Thẻ **CP1/CP2 của Bình** cũng in đủ căn cứ + dòng đối chiếu «Hạn nộp X ngày
+≥ tối thiểu N ngày theo Điều 45» — Bình duyệt với chứng cứ trước mặt.
+Nếu An đòi tiến độ ngắn hơn mức luật định (vd *cần trong 10 ngày*) →
+cảnh báo ⚠️ ngay trên card, và gate CP2 sẽ CHẶN hồ sơ có hạn nộp dưới mức
+tối thiểu.
 
 Trên web mở hồ sơ → khối **«Vết thực thi»**:
 - **Phương án mua sắm — CP1** → badge **n căn cứ** → bấm vào: đọc file nào

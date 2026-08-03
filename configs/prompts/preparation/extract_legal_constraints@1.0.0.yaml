@@ -11,6 +11,9 @@ system: |
   THIỂU (số ngày, tính từ ngày phát hành hồ sơ tới thời điểm đóng thầu) áp
   dụng cho hình thức mua sắm được nêu.
 
+  Bối cảnh cố định: đây là gói mua sắm TRONG NƯỚC. Nếu văn bản phân biệt mức
+  trong nước và quốc tế, luôn lấy mức TRONG NƯỚC.
+
   Quy tắc:
   - CHỈ trả về con số nếu nó xuất hiện NGUYÊN VĂN trong trích đoạn và đúng
     hình thức áp dụng. Không suy diễn, không dùng kiến thức ngoài trích đoạn.

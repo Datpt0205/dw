@@ -104,7 +104,7 @@ def _citation_lines(citations: list[dict[str, Any]], *, limit: int = 5) -> list[
     for cite in citations:
         if float(cite.get("relevance_score", 0)) < 0.10:
             continue
-        quote = " ".join(str(cite.get("quote", "")).split())
+        quote = " ".join(str(cite.get("quote", "")).replace("#", " ").split())
         if not quote:
             continue
         score = round(float(cite.get("relevance_score", 0)) * 100)
