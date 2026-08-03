@@ -57,6 +57,23 @@ roles = sa.Table(
     sa.Column("scopes", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
 )
 
+# Maps a verified (issuer, subject) — e.g. a Keycloak sub or a dev token subject —
+# to a platform user. Identity plane (like users): not tenant-scoped, no RLS.
+# One platform user may have several external identities (dev + Keycloak).
+external_identities = sa.Table(
+    "external_identities",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=False),
+    sa.Column("issuer", sa.Text, nullable=False),
+    sa.Column("subject", sa.Text, nullable=False),
+    sa.Column("provider", sa.Text, nullable=False, server_default="oidc"),
+    sa.Column(
+        "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
+    sa.UniqueConstraint("issuer", "subject", name="uq_external_identities_issuer_subject"),
+)
+
 plans = sa.Table(
     "plans",
     metadata,

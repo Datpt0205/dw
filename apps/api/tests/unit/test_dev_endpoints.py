@@ -61,6 +61,16 @@ async def test_unknown_subject_is_rejected() -> None:
     assert response.status_code == 404
 
 
-async def test_dev_routes_absent_outside_dev_auth_mode() -> None:
-    response = await _get(make_app(auth_mode="oidc"), "/api/v1/dev/demo-users")
+async def test_session_issuer_absent_outside_dev_auth_mode() -> None:
+    # The dev-token issuer must never be a Keycloak bypass: gated to dev mode.
+    app = make_app(auth_mode="oidc")
+    response = await _post(app, "/api/v1/dev/session", {"subject": "dev|an.nguyen"})
     assert response.status_code == 404
+
+
+async def test_sample_data_endpoints_available_under_oidc() -> None:
+    # Sample-data endpoints use the normal auth context, so they stay mounted
+    # (they just require a valid token) — only /session is dev-only.
+    app = make_app(auth_mode="oidc")
+    response = await _get(app, "/api/v1/dev/demo-users")
+    assert response.status_code == 200

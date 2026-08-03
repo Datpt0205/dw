@@ -31,7 +31,9 @@ IMPORT_TO_DIST = {
     "qdrant_client": "qdrant-client",
     "redis": "redis",
     "httpx": "httpx",
+    "websockets": "websockets",
     "minio": "minio",
+    "docling": "docling",
     "boto3": "boto3",
     "opentelemetry": "opentelemetry-api",
     "langfuse": "langfuse",
@@ -56,7 +58,11 @@ IMPORT_TO_DIST = {
 def declared_dependencies(pyproject: Path) -> set[str]:
     data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     deps: set[str] = set()
-    for spec in data.get("project", {}).get("dependencies", []):
+    project = data.get("project", {})
+    specs = list(project.get("dependencies", []))
+    for group in project.get("optional-dependencies", {}).values():
+        specs.extend(group)
+    for spec in specs:
         name = (
             spec.split("[")[0]
             .split(">")[0]

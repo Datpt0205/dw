@@ -19,19 +19,23 @@ from dw_platform.application.identity import VerifiedClaims
 class KeycloakTokenVerifier:
     """Implements ``TokenVerifierPort`` against a Keycloak realm."""
 
-    def __init__(self, issuer_url: str, audience: str = "dw-api") -> None:
+    def __init__(
+        self,
+        issuer_url: str,
+        audience: str = "dw-api",
+        jwks_url: str | None = None,
+    ) -> None:
         if not issuer_url.startswith(("http://", "https://")):
             raise ValueError("issuer_url must be an http(s) URL")
         self._issuer_url = issuer_url.rstrip("/")
         self._audience = audience
+        # In Docker the API reaches Keycloak at a different host than the
+        # browser-facing issuer, so the JWKS URL can be supplied separately.
+        self._jwks_url = jwks_url or f"{self._issuer_url}/protocol/openid-connect/certs"
 
     @cached_property
     def _jwks_client(self) -> PyJWKClient:
-        return PyJWKClient(
-            f"{self._issuer_url}/protocol/openid-connect/certs",
-            cache_keys=True,
-            lifespan=300,
-        )
+        return PyJWKClient(self._jwks_url, cache_keys=True, lifespan=300)
 
     def _verify_sync(self, token: str) -> VerifiedClaims:
         try:
@@ -52,6 +56,7 @@ class KeycloakTokenVerifier:
             subject=str(claims["sub"]),
             email=claims.get("email"),
             issuer=str(claims["iss"]),
+            name=claims.get("name") or claims.get("preferred_username"),
         )
 
     async def verify(self, token: str) -> VerifiedClaims:

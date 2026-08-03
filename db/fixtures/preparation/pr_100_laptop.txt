@@ -1,0 +1,40 @@
+PHIẾU YÊU CẦU MUA SẮM (PR) — ĐÃ PHÊ DUYỆT
+==========================================
+
+Mã PR: PR-2026-0042
+Trạng thái phê duyệt: ĐÃ DUYỆT (Trưởng khối Vận hành, ngày 20/07/2026)
+Người yêu cầu: Phòng CNTT — Khối Vận hành
+Chủ sở hữu (owner): Nguyễn Văn An
+
+1. NHU CẦU
+----------
+Mua 100 máy tính xách tay (laptop) trang bị cho nhân sự khối vận hành mở rộng
+trong quý 3/2026.
+
+2. NGÂN SÁCH / DỰ TOÁN
+----------------------
+Ngân sách được duyệt: 2.500.000.000 VND (hai tỷ năm trăm triệu đồng)
+Nguồn vốn: Ngân sách đầu tư CNTT 2026
+
+3. THỜI HẠN
+-----------
+Yêu cầu giao hàng trong vòng 45 ngày kể từ ngày ký hợp đồng.
+Hạn hoàn tất lựa chọn nhà cung cấp: 31/08/2026.
+
+4. YÊU CẦU KỸ THUẬT (SƠ BỘ)
+---------------------------
+- CPU: tối thiểu tương đương Intel Core i5 thế hệ mới.
+- RAM: tối thiểu 16 GB.
+- Ổ cứng: SSD tối thiểu 512 GB.
+- Màn hình: 14 inch trở lên, độ phân giải Full HD.
+- Bảo hành: (CHƯA RÕ — cần làm rõ số năm bảo hành tối thiểu).
+- Hệ điều hành: (CHƯA RÕ — Windows bản quyền hay không kèm OS).
+
+5. YÊU CẦU THƯƠNG MẠI
+---------------------
+- Giao hàng tại trụ sở chính (Hà Nội). Địa điểm giao cụ thể: (CHƯA RÕ).
+- Điều khoản thanh toán: (CHƯA RÕ).
+
+6. GHI CHÚ
+----------
+Ưu tiên nhà cung cấp có năng lực bảo hành tại chỗ và giao đúng tiến độ.

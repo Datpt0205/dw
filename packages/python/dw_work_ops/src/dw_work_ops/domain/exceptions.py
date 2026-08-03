@@ -11,7 +11,3 @@ class WorkOpsDomainError(DomainError):
 
 class UnresolvedAssigneeError(WorkOpsDomainError):
     """An action item cannot be dispatched without a resolved assignee."""
-
-
-class InvalidDueDateError(WorkOpsDomainError):
-    """A due date is in the past or violates validation rules."""

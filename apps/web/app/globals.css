@@ -2,34 +2,34 @@
 
 @source "../../../packages/typescript/ui/src";
 
-/* shadcn/ui design tokens (zinc palette, Tailwind v4) */
+/* Enterprise navy palette */
 :root {
   color-scheme: light;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
+  --background: #f5f7fa;
+  --foreground: #10243e;
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
+  --card-foreground: #10243e;
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.21 0.006 285.885);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
+  --popover-foreground: #10243e;
+  --primary: #0b3155;
+  --primary-foreground: #ffffff;
+  --secondary: #eaf0f6;
+  --secondary-foreground: #153957;
+  --muted: #eef2f6;
+  --muted-foreground: #64748b;
+  --accent: #e4edf5;
+  --accent-foreground: #0b3155;
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
   --success: oklch(0.548 0.144 152.48);
   --warning: oklch(0.681 0.148 76.343);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
+  --border: #dce4ec;
+  --input: #cbd7e3;
+  --ring: #2673a6;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-accent: oklch(0.94 0.002 286.375);
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: #10243e;
+  --sidebar-accent: #edf3f8;
 }
 
 @theme inline {
@@ -66,8 +66,22 @@
 body {
   background-color: var(--background);
   color: var(--foreground);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
 * {
   border-color: var(--border);
+}
+
+::selection {
+  background: #c8dfef;
+  color: #0b3155;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
 }

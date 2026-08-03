@@ -19,6 +19,7 @@ from dw_kernel.errors import (
     TenantContextMissingError,
 )
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.ports import VerifiedIdentity
 
 TENANT_HEADER = "X-Tenant-Id"
 WORKSPACE_HEADER = "X-Workspace-Id"
@@ -27,6 +28,34 @@ WORKSPACE_HEADER = "X-Workspace-Id"
 def get_container(request: Request) -> ApiContainer:
     container: ApiContainer = request.app.state.container
     return container
+
+
+def _bearer_token(request: Request) -> str:
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise PermissionDeniedError("missing bearer token")
+    return token.strip()
+
+
+async def get_verified_identity(
+    request: Request,
+    container: Annotated[ApiContainer, Depends(get_container)],
+) -> VerifiedIdentity:
+    """Verify the bearer token only — no tenant/workspace membership required.
+
+    Used by /auth/bootstrap, which answers "who am I and which workspaces can I
+    enter?" before a workspace has been selected.
+    """
+    if container.token_verifier is None:
+        raise InfrastructureError(
+            "authentication is not configured",
+            details={"hint": "set DW_API_DATABASE_URL and DW_API_DEV_SECRET (or OIDC)"},
+        )
+    return await container.token_verifier.verify(_bearer_token(request))
+
+
+RequireVerifiedIdentity = Annotated[VerifiedIdentity, Depends(get_verified_identity)]
 
 
 def _parse_uuid_header(request: Request, name: str) -> uuid.UUID | None:
@@ -49,12 +78,7 @@ async def get_access_context(
             details={"hint": "set DW_API_DATABASE_URL and DW_API_DEV_SECRET (or OIDC)"},
         )
 
-    authorization = request.headers.get("Authorization", "")
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token.strip():
-        raise PermissionDeniedError("missing bearer token")
-
-    identity = await container.token_verifier.verify(token.strip())
+    identity = await container.token_verifier.verify(_bearer_token(request))
     return await container.access_context_factory.build(
         identity,
         _parse_uuid_header(request, TENANT_HEADER),

@@ -46,8 +46,12 @@ class OpenAICompatibleAdapter:
         route: ModelRoute,
         *,
         max_output_tokens: int | None,
-    ) -> tuple[dict[str, object], ModelUsage]:
-        if self.structured_mode == "json_object":
+    ) -> tuple[dict[str, object], ModelUsage, str | None]:
+        # Reasoning models (deepseek-reasoner, *-r1) emit visible thinking in
+        # ``reasoning_content`` and do not support response_format — the schema
+        # goes into the prompt and the JSON is extracted robustly instead.
+        is_reasoner = "reasoner" in route.model or route.model.endswith("-r1")
+        if self.structured_mode == "json_object" or is_reasoner:
             schema_hint = (
                 "\n\nTrả về DUY NHẤT một JSON object hợp lệ đúng schema sau, "
                 "không kèm giải thích:\n" + json.dumps(json_schema, ensure_ascii=False)
@@ -56,7 +60,9 @@ class OpenAICompatibleAdapter:
                 {"role": "system", "content": prompt.system + schema_hint},
                 {"role": "user", "content": prompt.user},
             ]
-            response_format: dict[str, object] = {"type": "json_object"}
+            response_format: dict[str, object] | None = (
+                None if is_reasoner else {"type": "json_object"}
+            )
         else:
             messages = [
                 {"role": "system", "content": prompt.system},
@@ -66,11 +72,9 @@ class OpenAICompatibleAdapter:
                 "type": "json_schema",
                 "json_schema": {"name": "structured_output", "schema": json_schema},
             }
-        body: dict[str, object] = {
-            "model": route.model,
-            "messages": messages,
-            "response_format": response_format,
-        }
+        body: dict[str, object] = {"model": route.model, "messages": messages}
+        if response_format is not None:
+            body["response_format"] = response_format
         if max_output_tokens:
             body["max_tokens"] = max_output_tokens
 
@@ -103,10 +107,8 @@ class OpenAICompatibleAdapter:
             self.breaker.record_success()
 
         try:
-            content = data["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
-            if not isinstance(parsed, dict):
-                raise ValueError("model returned non-object JSON")
+            message = data["choices"][0]["message"]
+            parsed = _extract_json_object(str(message.get("content") or ""))
             usage_data = data.get("usage", {})
         except (KeyError, IndexError, ValueError, json.JSONDecodeError) as exc:
             raise InfrastructureError(
@@ -114,10 +116,30 @@ class OpenAICompatibleAdapter:
                 details={"provider": self.provider},
             ) from exc
 
+        reasoning = message.get("reasoning_content")
         usage = ModelUsage(
             provider=self.provider,
             model=route.model,
             input_tokens=int(usage_data.get("prompt_tokens", 0)),
             output_tokens=int(usage_data.get("completion_tokens", 0)),
         )
-        return parsed, usage
+        return parsed, usage, str(reasoning) if reasoning else None
+
+
+def _extract_json_object(content: str) -> dict[str, object]:
+    """Parse a JSON object from model text, tolerating code fences/preambles.
+
+    Strict path first; reasoning models sometimes wrap the object in ```json
+    fences or prepend prose, so fall back to the outermost {...} slice.
+    """
+    text = content.strip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end <= start:
+            raise ValueError("model returned no JSON object") from None
+        parsed = json.loads(text[start : end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("model returned non-object JSON")
+    return parsed

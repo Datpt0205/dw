@@ -22,6 +22,7 @@ def make_container(db_state: CheckState) -> ApiContainer:
         health_service=HealthService(probes={"database": fake_db_probe}),
         token_verifier=None,
         access_context_factory=None,
+        identity_bootstrap=None,
         uow_factory=None,
         authorization=ScopeAuthorizationService(),
         entitlement=PlanEntitlementService(DEFAULT_PLANS),

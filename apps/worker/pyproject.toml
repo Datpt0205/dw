@@ -1,12 +1,32 @@
 [project]
 name = "dw-worker"
 version = "0.1.0"
-description = "Async worker process: outbox processing, workflow consumers, schedulers"
+description = "Async worker process: outbox processing, workflow consumers, schedulers, knowledge ingestion"
 requires-python = ">=3.12"
 dependencies = [
     "dw-kernel",
+    "dw-platform",
+    "dw-knowledge",
+    "dw-connectors",
+    "dw-tender",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.7,<3",
+    "sqlalchemy[asyncio]>=2.0.36,<2.1",
+    "asyncpg>=0.30,<1",
+    "qdrant-client>=1.12,<1.15",
+    "minio>=7.2,<8",
+]
+
+[project.optional-dependencies]
+# Heavy multi-format parsing + OCR (torch, layout + OCR models). Installed in the
+# worker image only; the ingest consumer degrades to plaintext when absent.
+parsers = [
+    "docling>=2.15,<3",
+    # Declared explicitly so the CPU-only index override in the root
+    # [tool.uv.sources] applies (docling pulls torch transitively otherwise,
+    # which would resolve the multi-GB CUDA wheels from PyPI).
+    "torch>=2.2,<3",
+    "torchvision>=0.17,<1",
 ]
 
 [build-system]

@@ -29,8 +29,32 @@ class ApiSettings(BaseSettings):
     # --- authentication (ADR-013) ---
     auth_mode: AuthMode = "dev"
     dev_secret: str | None = None
-    oidc_issuer_url: str | None = None
+    oidc_issuer_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_OIDC_ISSUER_URL", "OIDC_ISSUER_URL")
+    )
     oidc_audience: str = "dw-api"
+    # JWKS endpoint used to fetch signing keys. Decoupled from the issuer so the
+    # API (inside Docker) can reach Keycloak at http://keycloak:8080 while the
+    # token issuer stays the browser-facing http://localhost:8080. Defaults to
+    # ``{issuer}/protocol/openid-connect/certs`` when unset.
+    oidc_jwks_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_OIDC_JWKS_URL", "OIDC_JWKS_URL")
+    )
+
+    # --- first-login provisioning (ADR-021) ---
+    # New verified identities are added to this seeded demo tenant as a member.
+    # Defaults match scripts/seed_demo.py (uuid5 of tenant-alpha / main).
+    default_tenant_id: str = Field(
+        default="d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d",
+        validation_alias=AliasChoices("DW_API_DEFAULT_TENANT_ID"),
+    )
+    default_workspace_id: str = Field(
+        default="64764894-718d-5558-ba17-9a2949214063",
+        validation_alias=AliasChoices("DW_API_DEFAULT_WORKSPACE_ID"),
+    )
+    default_role: str = Field(
+        default="member", validation_alias=AliasChoices("DW_API_DEFAULT_ROLE")
+    )
 
     # --- artifact storage (MinIO/S3) ---
     s3_endpoint_url: str | None = Field(
@@ -51,6 +75,20 @@ class ApiSettings(BaseSettings):
     # --- vector store ---
     qdrant_url: str | None = Field(
         default=None, validation_alias=AliasChoices("DW_API_QDRANT_URL", "QDRANT_URL")
+    )
+
+    # --- RAG embeddings / rerank (self-hosted TEI; hash is the offline default) ---
+    embedding_provider: str = Field(
+        default="hash", validation_alias=AliasChoices("DW_API_EMBEDDING_PROVIDER")
+    )
+    embed_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_EMBED_URL", "TEI_EMBED_URL")
+    )
+    rerank_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_RERANK_URL", "TEI_RERANK_URL")
+    )
+    embed_dimension: int = Field(
+        default=1024, validation_alias=AliasChoices("DW_API_EMBED_DIMENSION")
     )
 
     # --- model provider (ADR-012) ---
@@ -102,6 +140,65 @@ class ApiSettings(BaseSettings):
     telegram_bot_token: str | None = Field(
         default=None,
         validation_alias=AliasChoices("DW_API_TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN"),
+    )
+
+    # P6 delegated autonomy: governed_production | autonomous_demo
+    autonomy_profile: str = Field(
+        default="governed_production",
+        validation_alias=AliasChoices("DW_API_AUTONOMY_PROFILE", "DW_AUTONOMY_PROFILE"),
+    )
+
+    # --- Slack chat front office (conversation-first plan P1) ---
+    chat_front_office_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "DW_API_CHAT_FRONT_OFFICE_ENABLED", "DW_CHAT_FRONT_OFFICE_ENABLED"
+        ),
+    )
+    slack_app_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DW_API_SLACK_APP_TOKEN", "SLACK_APP_TOKEN"),
+    )
+    # P8: enables the signature-verified HTTPS ingress (production path).
+    slack_signing_secret: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DW_API_SLACK_SIGNING_SECRET", "SLACK_SIGNING_SECRET"),
+    )
+    public_web_url: str = Field(
+        default="http://localhost:3000",
+        validation_alias=AliasChoices("DW_API_PUBLIC_WEB_URL", "DW_PUBLIC_WEB_URL"),
+    )
+    # Slack member IDs are deliberately configuration (never guessed from
+    # display names). Same env names the worker's outbound notifier uses.
+    slack_user_an_id: str = Field(default="", validation_alias=AliasChoices("SLACK_USER_AN_ID"))
+    slack_user_binh_id: str = Field(default="", validation_alias=AliasChoices("SLACK_USER_BINH_ID"))
+    slack_user_chi_id: str = Field(default="", validation_alias=AliasChoices("SLACK_USER_CHI_ID"))
+    slack_user_map_json: str = Field(
+        default="", validation_alias=AliasChoices("SLACK_USER_MAP_JSON")
+    )
+
+    def slack_user_reverse_map(self) -> dict[str, str]:
+        """slack_member_id -> dev subject, from the same env map as outbound."""
+        forward = {
+            "dev|an.nguyen": self.slack_user_an_id.strip(),
+            "dev|binh.tran": self.slack_user_binh_id.strip(),
+            "dev|chi.le": self.slack_user_chi_id.strip(),
+        }
+        if self.slack_user_map_json.strip():
+            import json
+
+            raw = json.loads(self.slack_user_map_json)
+            if isinstance(raw, dict):
+                forward.update({str(k): str(v).strip() for k, v in raw.items()})
+        return {slack_id: subject for subject, slack_id in forward.items() if slack_id}
+
+    approval_reminder_seconds: int = Field(
+        default=5,
+        ge=1,
+        le=604800,
+        validation_alias=AliasChoices(
+            "DW_API_APPROVAL_REMINDER_SECONDS", "DW_APPROVAL_REMINDER_SECONDS"
+        ),
     )
 
     # --- observability (§21; Langfuse optional behind configuration) ---

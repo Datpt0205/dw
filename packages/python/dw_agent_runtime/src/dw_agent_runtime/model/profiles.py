@@ -35,6 +35,10 @@ class ModelProfile(BaseModel):
     routing_policy_version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
     structured_extraction: ModelRoute
     reasoning: ModelRoute
+    # Optional visible-thinking route (e.g. deepseek-reasoner): slower models
+    # that emit reasoning_content alongside the answer. Callers opt in with
+    # ModelRequest.route_kind="deep_reasoning"; falls back to ``reasoning``.
+    deep_reasoning: ModelRoute | None = None
     fallback: ModelRoute | None = None
     budgets: ModelBudgets = ModelBudgets()
 

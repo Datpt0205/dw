@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { BadgeCheck, CircleX, Hourglass } from "lucide-react";
+import Link from "next/link";
+import {
+  BadgeCheck,
+  CircleX,
+  ClipboardCheck,
+  History,
+  Hourglass,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { Approval } from "@dw/contracts";
 import {
@@ -14,8 +21,15 @@ import {
   CardTitle,
   Input,
   Separator,
+  Skeleton,
 } from "@dw/ui";
-import { apiClient, loadSession } from "../lib/session";
+import { EmptyState } from "./empty-state";
+import { PageHeading } from "./page-heading";
+import { PendingIntakeVerification } from "./pending-intake";
+import { PendingCp3Decision } from "./pending-cp3";
+import { useAuth } from "../lib/auth/auth-context";
+import { DW01_READONLY } from "../lib/readonly";
+import { apiClient } from "../lib/session";
 
 interface ApprovalActionRow {
   action_id?: string;
@@ -40,11 +54,34 @@ const STATUS_BADGE: Record<
 };
 
 const MODULE_LABEL = (approvalType: string) =>
-  approvalType.startsWith("tender.")
-    ? { label: "Đấu thầu", className: "bg-blue-50 text-blue-700" }
-    : approvalType.startsWith("work_ops.")
-      ? { label: "Cuộc họp", className: "bg-emerald-50 text-emerald-700" }
-      : null;
+  approvalType.startsWith("preparation.")
+    ? { label: "Chuẩn bị hồ sơ thầu", className: "bg-[#e7f0f7] text-primary" }
+    : approvalType.startsWith("tender.")
+      ? { label: "Đánh giá đấu thầu", className: "bg-[#e7f0f7] text-primary" }
+      : approvalType.startsWith("work_ops.")
+        ? { label: "Cuộc họp", className: "bg-emerald-50 text-emerald-700" }
+        : null;
+
+function approvalTitle(approvalType: string) {
+  const titles: Record<string, string> = {
+    "preparation.cp1": "Phê duyệt phương án lựa chọn nhà thầu",
+    "preparation.cp2": "Phê duyệt hồ sơ mời thầu",
+    "tender.approve_recommendation": "Phê duyệt đề xuất lựa chọn",
+  };
+  return titles[approvalType] ?? "Yêu cầu phê duyệt";
+}
+
+function approvalStep(value: unknown) {
+  const steps: Record<string, string> = {
+    CP1: "CP1 — Duyệt phương án mua sắm",
+    CP2: "CP2 — Duyệt hồ sơ trước phát hành",
+    CP3: "CP3 — Duyệt làm rõ/sửa đổi sau phát hành",
+    CP4: "CP4 — Xác nhận mở thầu & bàn giao đánh giá",
+    DW01: "Chuẩn bị hồ sơ thầu",
+  };
+  const key = String(value ?? "DW01");
+  return steps[key] ?? key;
+}
 
 /** Approval inbox; optionally scoped by approval_type prefix. */
 export function ApprovalsView({
@@ -57,8 +94,10 @@ export function ApprovalsView({
   const [approvals, setApprovals] = useState<Approval[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [comment, setComment] = useState("");
-  const canDecide = loadSession()?.roles?.includes("approver") ?? true;
+  const [comments, setComments] = useState<Record<string, string>>({});
+  const { hasScope } = useAuth();
+  // Read-only back office: decisions happen on Slack cards.
+  const canDecide = hasScope("approvals.decide") && !DW01_READONLY;
 
   const refresh = useCallback(() => {
     apiClient()
@@ -79,15 +118,32 @@ export function ApprovalsView({
     refresh();
   }, [refresh]);
 
+  // Poll every 5s (visible only) + refresh on focus/reveal so the queue reflects
+  // checkpoints raised in another tab without a manual reload.
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const id = setInterval(tick, 5000);
+    document.addEventListener("visibilitychange", tick);
+    window.addEventListener("focus", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("focus", tick);
+    };
+  }, [refresh]);
+
   async function decide(approval: Approval, approve: boolean) {
+    const comment = comments[approval.id] ?? "";
     setBusyId(approval.id);
     setError(null);
     try {
       await apiClient().decideApproval(approval.id, { approve, comment });
-      setComment("");
+      setComments((current) => ({ ...current, [approval.id]: "" }));
       toast.success(
         approve
-          ? "Đã phê duyệt — worker tiếp tục chạy và hoàn tất."
+          ? "Đã phê duyệt — hồ sơ sẽ chuyển sang bước tiếp theo."
           : "Đã từ chối — không có hành động nào được thực hiện.",
       );
       refresh();
@@ -104,33 +160,45 @@ export function ApprovalsView({
   const decided = approvals?.filter((a) => a.status !== "pending") ?? [];
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Phê duyệt</h1>
-        <p className="text-sm text-muted-foreground">
-          Worker luôn dừng tại đây trước khi thực hiện hành động thật.
-        </p>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6">
+      <PageHeading
+        eyebrow="Kiểm soát phê duyệt"
+        icon={ClipboardCheck}
+        title="Hàng chờ phê duyệt"
+        description="Các hồ sơ đang chờ quyết định được ưu tiên ở trên. Hãy xem tài liệu liên quan và ghi rõ nhận xét trước khi phê duyệt."
+      />
+
+      <PendingIntakeVerification />
+      <PendingCp3Decision />
+
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {approvals === null && !error && (
+        <Skeleton className="h-64 rounded-2xl" />
+      )}
 
       {approvals !== null && pending.length === 0 && (
-        <Card>
-          <CardContent className="flex items-center gap-3 pt-5 text-sm text-muted-foreground">
-            <Hourglass className="size-4" />
-            {emptyHint}
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Hourglass}
+          title="Không có yêu cầu đang chờ"
+          description={emptyHint}
+        />
       )}
 
       {pending.map((approval) => {
         const actions = (approval.payload["actions"] ??
           []) as ApprovalActionRow[];
         const badge = STATUS_BADGE[approval.status];
+        const isPreparation = approval.approval_type.startsWith("preparation.");
+        const gate = approval.payload["gate"] as
+          { passed?: boolean; reasons?: string[] } | undefined;
+        const preparationCaseId = approval.payload["case_id"];
+        const caseTitle = String(approval.payload["case_title"] ?? "").trim();
+        const prRef = String(approval.payload["source_pr_ref"] ?? "").trim();
         return (
-          <Card key={approval.id} className="border-warning/50">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between text-base">
-                <span className="flex items-center gap-2">
+          <Card key={approval.id} className="overflow-hidden border-amber-200">
+            <CardHeader className="border-b bg-amber-50/60">
+              <CardTitle className="flex flex-col items-start gap-3 text-base sm:flex-row sm:items-center sm:justify-between">
+                <span className="flex min-w-0 flex-wrap items-center gap-2">
                   {(() => {
                     const moduleTag = MODULE_LABEL(approval.approval_type);
                     return moduleTag ? (
@@ -141,13 +209,79 @@ export function ApprovalsView({
                       </span>
                     ) : null;
                   })()}
-                  {approval.approval_type}
+                  <span>
+                    {caseTitle || approvalTitle(approval.approval_type)}
+                  </span>
                 </span>
                 <Badge variant={badge.variant}>{badge.label}</Badge>
               </CardTitle>
-              <CardDescription>{approval.reason}</CardDescription>
+              <CardDescription>
+                {caseTitle && (
+                  <span className="font-medium text-foreground">
+                    {approvalTitle(approval.approval_type)}
+                    {prRef ? ` · ${prRef}` : ""} —{" "}
+                  </span>
+                )}
+                {approval.reason}
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 text-sm">
+            <CardContent className="space-y-4 pt-5 text-sm">
+              {isPreparation && (
+                <div className="grid gap-3 rounded-lg border bg-[#edf5fa] p-4 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Bước phê duyệt
+                    </p>
+                    <p className="font-semibold">
+                      {approvalStep(approval.payload["checkpoint"])}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Giá trị gói
+                    </p>
+                    <p className="font-semibold">
+                      {String(approval.payload["estimated_value"] ?? "—")}
+                    </p>
+                  </div>
+                  {approval.payload["method"] != null && (
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Hình thức
+                      </p>
+                      <p className="font-medium">
+                        {String(
+                          (approval.payload["method"] as { label?: unknown })
+                            .label ?? "—",
+                        )}
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Kết quả kiểm tra điều kiện
+                    </p>
+                    <Badge variant={gate?.passed ? "success" : "destructive"}>
+                      {gate?.passed ? "Đạt" : "Không đạt"}
+                    </Badge>
+                  </div>
+                  {gate?.reasons && gate.reasons.length > 0 && (
+                    <ul className="list-disc pl-5 text-xs text-destructive md:col-span-2">
+                      {gate.reasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {typeof preparationCaseId === "string" && (
+                    <Link
+                      className="text-xs font-medium text-primary underline md:col-span-2"
+                      href={`/procurement/dw01/cases/${preparationCaseId}`}
+                    >
+                      Mở hồ sơ và toàn bộ bằng chứng trước khi quyết định
+                    </Link>
+                  )}
+                </div>
+              )}
               {actions.length > 0 && (
                 <div className="space-y-2 rounded-lg bg-muted/50 p-3">
                   {actions.map((action, index) => (
@@ -173,32 +307,58 @@ export function ApprovalsView({
                 </div>
               )}
               {!canDecide && (
-                <p className="text-xs text-warning">
-                  Vai hiện tại không có quyền duyệt — đăng nhập lại bằng{" "}
-                  <strong>Trần Thanh Bình</strong> (Người phê duyệt).
+                <p className="rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">
+                  Vai hiện tại không có quyền phê duyệt. Cần vai{" "}
+                  <strong>Người phê duyệt</strong>.
                 </p>
               )}
-              <Input
-                placeholder="Ghi chú quyết định (tuỳ chọn)"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-              />
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => void decide(approval, true)}
-                  disabled={busyId === approval.id}
-                >
-                  <BadgeCheck />
-                  {busyId === approval.id ? "Đang xử lý…" : "Phê duyệt"}
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => void decide(approval, false)}
-                  disabled={busyId === approval.id}
-                >
-                  <CircleX /> Từ chối
-                </Button>
-              </div>
+              {canDecide && (
+                <>
+                  <div className="rounded-xl border bg-slate-50 p-4">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                      Quyết định của bạn
+                    </p>
+                    <Input
+                      placeholder={
+                        isPreparation
+                          ? "Nhận xét kiểm tra (bắt buộc với DW01)"
+                          : "Ghi chú quyết định (tuỳ chọn)"
+                      }
+                      value={comments[approval.id] ?? ""}
+                      onChange={(e) =>
+                        setComments((current) => ({
+                          ...current,
+                          [approval.id]: e.target.value,
+                        }))
+                      }
+                    />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        onClick={() => void decide(approval, true)}
+                        disabled={
+                          busyId === approval.id ||
+                          (isPreparation &&
+                            !(comments[approval.id] ?? "").trim())
+                        }
+                      >
+                        <BadgeCheck />
+                        {busyId === approval.id ? "Đang xử lý…" : "Phê duyệt"}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={() => void decide(approval, false)}
+                        disabled={
+                          busyId === approval.id ||
+                          (isPreparation &&
+                            !(comments[approval.id] ?? "").trim())
+                        }
+                      >
+                        <CircleX /> Từ chối
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         );
@@ -207,26 +367,28 @@ export function ApprovalsView({
       {decided.length > 0 && (
         <>
           <Separator />
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Đã quyết định gần đây
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <History className="size-4 text-muted-foreground" />
+            Lịch sử quyết định gần đây
           </h2>
           <div className="space-y-2">
             {decided.slice(0, 8).map((approval) => {
               const badge = STATUS_BADGE[approval.status];
               return (
-                <Card key={approval.id}>
-                  <CardContent className="flex items-center justify-between pt-4 text-sm">
-                    <div>
-                      <span className="font-medium">
-                        {approval.approval_type}
-                      </span>
-                      <p className="text-xs text-muted-foreground">
-                        {approval.reason}
-                      </p>
-                    </div>
-                    <Badge variant={badge.variant}>{badge.label}</Badge>
-                  </CardContent>
-                </Card>
+                <div
+                  key={approval.id}
+                  className="flex items-center justify-between gap-4 rounded-xl border bg-card px-4 py-3 text-sm"
+                >
+                  <div>
+                    <span className="font-medium">
+                      {approval.approval_type}
+                    </span>
+                    <p className="text-xs text-muted-foreground">
+                      {approval.reason}
+                    </p>
+                  </div>
+                  <Badge variant={badge.variant}>{badge.label}</Badge>
+                </div>
               );
             })}
           </div>

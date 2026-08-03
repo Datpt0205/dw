@@ -37,14 +37,21 @@ ROLES = [
     },
     {
         "key": "approver",
-        "name": "Approver",
+        # Manager tier: a superset of "member" plus approval authority. Sits
+        # between Nhân viên and Quản trị in the hierarchy.
+        "name": "Quản lý",
         "scopes": [
-            "approvals.read",
-            "approvals.decide",
+            # everything a member can do …
             "work_ops.read",
+            "work_ops.write",
             "tender.read",
+            "tender.write",
+            "approvals.read",
             "knowledge.read",
+            "knowledge.write",
             "memory.read",
+            # … plus deciding approvals.
+            "approvals.decide",
         ],
     },
     {
@@ -57,6 +64,7 @@ ROLES = [
             "tender.write",
             "approvals.read",
             "knowledge.read",
+            "knowledge.write",
             "memory.read",
         ],
     },
@@ -108,7 +116,9 @@ USERS = [
         "binh.tran@alpha.local",
         "Trần Thị Bình",
         "tenant-alpha",
-        ["approver", "member"],
+        # Approver ONLY — separation of duties: the person who prepares/runs a
+        # case (member) must not also be the one who approves it.
+        ["approver"],
         "mua-hang",
     ),
     (
@@ -135,6 +145,18 @@ USERS = [
         ["approver"],
         "dieu-hanh",
     ),
+]
+
+# Keycloak seeds the same Alpha users with fixed ids (infra/keycloak/dw-realm.json).
+# The token 'sub' is that id and the 'iss' is the browser-facing issuer, so we map
+# (issuer, keycloak_id) -> the existing platform user. Without this, an OIDC login
+# would be treated as a brand-new identity and lose the seeded role.
+KEYCLOAK_ISSUER = os.environ.get("DW_KEYCLOAK_ISSUER", "http://localhost:8686/realms/dw")
+KEYCLOAK_IDENTITIES = [
+    # (keycloak_user_id, platform_subject)
+    ("a0000000-0000-4000-8000-0000000000a1", "dev|an.nguyen"),
+    ("b0000000-0000-4000-8000-0000000000b2", "dev|binh.tran"),
+    ("c0000000-0000-4000-8000-0000000000c3", "dev|chi.le"),
 ]
 
 
@@ -232,6 +254,21 @@ async def seed(database_url: str) -> dict[str, int]:
                     )
                 )
 
+            for kc_id, subject in KEYCLOAK_IDENTITIES:
+                ext_stmt = pg_insert(tables.external_identities).values(
+                    id=sid("extid", f"{KEYCLOAK_ISSUER}:{kc_id}"),
+                    user_id=sid("user", subject),
+                    issuer=KEYCLOAK_ISSUER,
+                    subject=kc_id,
+                    provider="keycloak",
+                )
+                await conn.execute(
+                    ext_stmt.on_conflict_do_update(
+                        constraint="uq_external_identities_issuer_subject",
+                        set_={"user_id": ext_stmt.excluded.user_id},
+                    )
+                )
+
         async with engine.connect() as conn:
             counts: dict[str, int] = {}
             for name, table in {
@@ -242,6 +279,7 @@ async def seed(database_url: str) -> dict[str, int]:
                 "plans": tables.plans,
                 "memberships": tables.memberships,
                 "entitlements": tables.entitlements,
+                "external_identities": tables.external_identities,
             }.items():
                 counts[name] = (
                     await conn.execute(sa.select(sa.func.count()).select_from(table))

@@ -65,7 +65,7 @@ def _load_roster(repo_root: Path) -> list[DemoUser]:
     return [DemoUser.model_validate(entry) for entry in raw["users"]]
 
 
-def build_dev_router(repo_root: Path, dev_secret: str) -> APIRouter:
+def build_dev_router(repo_root: Path, dev_secret: str, include_session: bool = True) -> APIRouter:
     router = APIRouter(prefix="/dev", tags=["dev"])
     fixtures = repo_root / "db" / "fixtures"
 
@@ -73,24 +73,26 @@ def build_dev_router(repo_root: Path, dev_secret: str) -> APIRouter:
     async def demo_users() -> list[DemoUser]:
         return _load_roster(repo_root)
 
-    @router.post("/session", response_model=DevSessionResponse)
-    async def create_session(request: DevSessionRequest) -> DevSessionResponse:
-        roster = {user.subject: user for user in _load_roster(repo_root)}
-        user = roster.get(request.subject)
-        if user is None:
-            raise NotFoundError("unknown demo subject", details={"subject": request.subject})
-        ttl = timedelta(hours=8)
-        token = DevTokenVerifier(dev_secret).issue(user.subject, ttl=ttl)
-        return DevSessionResponse(
-            token=token,
-            subject=user.subject,
-            display_name=user.display_name,
-            roles=user.roles,
-            tenant_id=user.tenant_id,
-            tenant_name=user.tenant_name,
-            workspace_id=user.workspace_id,
-            expires_at=datetime.now(tz=UTC) + ttl,
-        )
+    if include_session:
+
+        @router.post("/session", response_model=DevSessionResponse)
+        async def create_session(request: DevSessionRequest) -> DevSessionResponse:
+            roster = {user.subject: user for user in _load_roster(repo_root)}
+            user = roster.get(request.subject)
+            if user is None:
+                raise NotFoundError("unknown demo subject", details={"subject": request.subject})
+            ttl = timedelta(hours=8)
+            token = DevTokenVerifier(dev_secret).issue(user.subject, ttl=ttl)
+            return DevSessionResponse(
+                token=token,
+                subject=user.subject,
+                display_name=user.display_name,
+                roles=user.roles,
+                tenant_id=user.tenant_id,
+                tenant_name=user.tenant_name,
+                workspace_id=user.workspace_id,
+                expires_at=datetime.now(tz=UTC) + ttl,
+            )
 
     @router.post("/demo/tender-case", response_model=DemoCaseResponse, status_code=201)
     async def create_demo_tender_case(

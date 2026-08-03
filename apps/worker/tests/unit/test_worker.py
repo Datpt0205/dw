@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
+from dw_kernel.errors import InfrastructureError
 from dw_worker.consumers import ConsumerRegistry
+from dw_worker.consumers.slack_approvals import _slack_failure
 from dw_worker.health import beat, is_alive
 from dw_worker.main import run_worker
 from dw_worker.settings import WorkerSettings
@@ -28,6 +30,45 @@ def test_registry_rejects_duplicates_and_blank_names() -> None:
         registry.register("outbox", consumer)
     with pytest.raises(ValueError, match="blank"):
         registry.register("  ", consumer)
+
+
+def test_slack_settings_require_all_demo_member_mappings() -> None:
+    settings = WorkerSettings(
+        database_url="postgresql+asyncpg://dw:dw@localhost/dw",
+        slack_approvals_enabled=True,
+        slack_bot_token="xoxb-test",
+        slack_user_an_id="UAN",
+        slack_user_binh_id="UBINH",
+    )
+    with pytest.raises(RuntimeError, match=r"dev\|chi.le"):
+        settings.validate_slack()
+
+
+def test_slack_settings_build_subject_to_member_map() -> None:
+    settings = WorkerSettings(
+        slack_user_an_id="UAN",
+        slack_user_binh_id="UBINH",
+        slack_user_chi_id="UCHI",
+        slack_user_map_json='{"oidc|other":"UOTHER"}',
+    )
+    assert settings.slack_user_map() == {
+        "dev|an.nguyen": "UAN",
+        "dev|binh.tran": "UBINH",
+        "dev|chi.le": "UCHI",
+        "oidc|other": "UOTHER",
+    }
+
+
+def test_slack_user_not_found_is_friendly_and_not_retried() -> None:
+    error = InfrastructureError(
+        "Slack rejected the request",
+        details={"slack_error": "user_not_found"},
+    )
+    message, permanent, code = _slack_failure(error)
+
+    assert permanent is True
+    assert code == "user_not_found"
+    assert "không tìm thấy thành viên" in message
 
 
 async def test_worker_runs_consumers_and_shuts_down(tmp_path: Path) -> None:

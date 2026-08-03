@@ -24,12 +24,22 @@ dw-observability = { workspace = true }
 dw-evals = { workspace = true }
 dw-api = { workspace = true }
 dw-worker = { workspace = true }
+# Docling pulls torch; default wheels bundle multi-GB CUDA runtime. This box has
+# a weak GPU and tight RAM, so pin the CPU-only build — far smaller/faster to
+# install and enough for Docling OCR (runs fine on CPU).
+torch = [{ index = "pytorch-cpu" }]
+torchvision = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [dependency-groups]
 dev = [
     "ruff>=0.9,<1",
     "mypy>=1.14,<2",
-    "pytest>=8.3,<9",
+    "pytest>=9.0.3,<10",
     "pytest-asyncio>=0.25,<2",
     "httpx>=0.28,<1",
     "import-linter>=2.1,<3",
@@ -67,6 +77,11 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["B011"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI dependency-injection markers are immutable sentinels used in defaults
+# (Query/Depends are allow-listed by default; File/Form for multipart uploads).
+extend-immutable-calls = ["fastapi.File", "fastapi.Form"]
 
 [tool.ruff.lint.isort]
 known-first-party = [

@@ -1,0 +1,33 @@
+BIÊN BẢN MỞ THẦU
+================
+
+Gói thầu: Mua sắm 100 laptop khối vận hành — PR-2026-0043
+Hình thức: Đấu thầu rộng rãi
+Thời điểm mở thầu: 06/08/2026, 09:00 (GMT+7)
+Địa điểm: Phòng họp tầng 5, trụ sở chính Hà Nội
+
+1. THÀNH PHẦN THAM DỰ / CHỨNG KIẾN
+----------------------------------
+- Trần Thị Bình — Quản lý mua sắm (chủ trì)
+- Lê Thị Chi — Đại diện phòng Điều hành
+- Đại diện các nhà cung cấp có mặt (nếu có)
+
+2. DANH SÁCH HỒ SƠ DỰ THẦU ĐÃ TIẾP NHẬN
+---------------------------------------
+| STT | Nhà cung cấp        | Thời điểm nộp     | Tình trạng |
+|-----|---------------------|-------------------|------------|
+| 1   | Công ty Thiết bị Việt | 05/08/2026 16:30 | Đúng hạn   |
+| 2   | Công ty Minh Long     | 05/08/2026 17:10 | Đúng hạn   |
+| 3   | FPT Shop              | 05/08/2026 17:45 | Đúng hạn   |
+
+3. NIÊM PHONG & TÍNH HỢP LỆ
+---------------------------
+- Cả 3 hồ sơ còn nguyên niêm phong khi mở.
+- Có đủ bảo đảm dự thầu và hồ sơ năng lực theo yêu cầu.
+
+4. KẾT LUẬN
+-----------
+Mở thầu hợp lệ. Chuyển 3 hồ sơ dự thầu sang bước đánh giá (DW02) theo đúng
+tiêu chí đã phê duyệt tại CP2.
+
+Biên bản lập xong lúc 09:30 ngày 06/08/2026, các bên chứng kiến ký xác nhận.

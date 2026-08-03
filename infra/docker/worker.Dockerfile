@@ -6,7 +6,7 @@ FROM python:3.12-slim-bookworm AS builder
 # uv binary from the pinned distroless release image
 COPY --from=ghcr.io/astral-sh/uv:0.11.31 /uv /uvx /usr/local/bin/
 
-ENV UV_COMPILE_BYTECODE=1 \
+ENV UV_COMPILE_BYTECODE=0 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
 
@@ -28,18 +28,24 @@ COPY packages/python/dw_work_ops/pyproject.toml packages/python/dw_work_ops/pypr
 COPY packages/python/dw_observability/pyproject.toml packages/python/dw_observability/pyproject.toml
 COPY packages/python/dw_evals/pyproject.toml packages/python/dw_evals/pyproject.toml
 
+# --extra parsers pulls the heavy Docling+OCR stack (multi-format ingestion).
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-workspace --no-dev --package dw-worker
+    uv sync --frozen --no-install-workspace --no-dev --package dw-worker --extra parsers
 
 COPY packages/python packages/python
 COPY apps/worker apps/worker
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable --package dw-worker
+    uv sync --frozen --no-dev --no-editable --package dw-worker --extra parsers
 
 # ---------------------------------------------------------------------------
 # Stage 2 — runtime
 # ---------------------------------------------------------------------------
 FROM python:3.12-slim-bookworm AS runtime
+
+# Shared libs Docling/OCR (opencv, image codecs) load at runtime.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 1001 dw && useradd --uid 1001 --gid dw --create-home dw
 
@@ -49,7 +55,9 @@ COPY --from=builder --chown=dw:dw /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    DW_WORKER_HEARTBEAT_FILE=/home/dw/heartbeat
+    DW_WORKER_HEARTBEAT_FILE=/home/dw/heartbeat \
+    HF_HOME=/home/dw/.cache/huggingface \
+    EASYOCR_MODULE_PATH=/home/dw/.EasyOCR
 
 USER dw
 

@@ -12,7 +12,7 @@ vertical slice; Phase 5 gom evaluation/observability/audit/release.
 
 ## Decision
 
-Dùng phase plan trong `docs/implementation/IMPLEMENTATION_PLAN.md`:
+Dùng phase plan sau (kế hoạch chi tiết Phase 0–6 là tài liệu lịch sử, xem git history):
 
 | Plan phase                               | Blueprint §28 tương ứng |
 | ---------------------------------------- | ----------------------- |

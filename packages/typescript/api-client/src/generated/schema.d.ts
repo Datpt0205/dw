@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bootstrap */
+        get: operations["bootstrap_api_v1_auth_bootstrap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dev/demo-users": {
         parameters: {
             query?: never;
@@ -190,8 +207,43 @@ export interface paths {
         /** List Documents */
         get: operations["list_documents_api_v1_knowledge_documents_get"];
         put?: never;
+        /** Upload Document */
+        post: operations["upload_document_api_v1_knowledge_documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/documents/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ingest Job */
+        get: operations["get_ingest_job_api_v1_knowledge_documents_jobs__job_id__get"];
+        put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Document */
+        delete: operations["delete_document_api_v1_knowledge_documents__document_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -277,6 +329,228 @@ export interface paths {
         put?: never;
         /** Analyze */
         post: operations["analyze_api_v1_procurement_cases__case_id__analyze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List All */
+        get: operations["list_all_api_v1_procurement_preparation_cases_get"];
+        put?: never;
+        /** Create */
+        post: operations["create_api_v1_procurement_preparation_cases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload */
+        post: operations["upload_api_v1_procurement_preparation_cases_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get */
+        get: operations["get_api_v1_procurement_preparation_cases__case_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases/{case_id}/addendum": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Addendum */
+        post: operations["addendum_api_v1_procurement_preparation_cases__case_id__addendum_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases/{case_id}/clarifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer */
+        post: operations["answer_api_v1_procurement_preparation_cases__case_id__clarifications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases/{case_id}/cp3": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cp3 */
+        post: operations["cp3_api_v1_procurement_preparation_cases__case_id__cp3_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases/{case_id}/cp4": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cp4 */
+        post: operations["cp4_api_v1_procurement_preparation_cases__case_id__cp4_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases/{case_id}/publication": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish */
+        post: operations["publish_api_v1_procurement_preparation_cases__case_id__publication_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases/{case_id}/publish-auto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish Auto */
+        post: operations["publish_auto_api_v1_procurement_preparation_cases__case_id__publish_auto_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases/{case_id}/reject-intake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject */
+        post: operations["reject_api_v1_procurement_preparation_cases__case_id__reject_intake_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases/{case_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run */
+        post: operations["run_api_v1_procurement_preparation_cases__case_id__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases/{case_id}/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submission */
+        post: operations["submission_api_v1_procurement_preparation_cases__case_id__submissions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/cases/{case_id}/verify-intake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify */
+        post: operations["verify_api_v1_procurement_preparation_cases__case_id__verify_intake_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -422,6 +696,14 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** ActionResponse */
+        ActionResponse: {
+            /**
+             * Status
+             * @default ok
+             */
+            status: string;
+        };
         /** AnalyzeResponse */
         AnalyzeResponse: {
             /**
@@ -429,6 +711,11 @@ export interface components {
              * Format: uuid
              */
             run_id: string;
+        };
+        /** AnswerClarificationsRequest */
+        AnswerClarificationsRequest: {
+            /** Answers */
+            answers: components["schemas"]["ClarificationAnswerRequest"][];
         };
         /** ApprovalView */
         ApprovalView: {
@@ -454,6 +741,26 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** ArtifactView */
+        ArtifactView: {
+            /** Artifact Type */
+            artifact_type: string;
+            /** Artifact Version */
+            artifact_version: number;
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            };
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Status */
+            status: string;
+        };
         /** AuditEventView */
         AuditEventView: {
             /** Action */
@@ -475,6 +782,166 @@ export interface components {
             resource_type: string;
             /** Trace Id */
             trace_id: string | null;
+        };
+        /** Body_addendum_api_v1_procurement_preparation_cases__case_id__addendum_post */
+        Body_addendum_api_v1_procurement_preparation_cases__case_id__addendum_post: {
+            /** Change Summary */
+            change_summary: string;
+            /** File */
+            file: string;
+            /** Impact Summary */
+            impact_summary: string;
+        };
+        /** Body_cp4_api_v1_procurement_preparation_cases__case_id__cp4_post */
+        Body_cp4_api_v1_procurement_preparation_cases__case_id__cp4_post: {
+            /** Approval Reference */
+            approval_reference: string;
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
+            /** File */
+            file: string;
+            /** Opening At */
+            opening_at: string;
+            /** Witnesses */
+            witnesses: string;
+        };
+        /** Body_publish_api_v1_procurement_preparation_cases__case_id__publication_post */
+        Body_publish_api_v1_procurement_preparation_cases__case_id__publication_post: {
+            /** Channel */
+            channel: string;
+            /** External Reference */
+            external_reference: string;
+            /** File */
+            file: string;
+            /** Published At */
+            published_at: string;
+            /** Recipient Summary */
+            recipient_summary: string;
+        };
+        /** Body_submission_api_v1_procurement_preparation_cases__case_id__submissions_post */
+        Body_submission_api_v1_procurement_preparation_cases__case_id__submissions_post: {
+            /**
+             * External Reference
+             * @default
+             */
+            external_reference: string;
+            /** File */
+            file: string;
+            /** Receipt Status */
+            receipt_status: string;
+            /** Received At */
+            received_at: string;
+            /** Supplier Name */
+            supplier_name: string;
+        };
+        /** Body_upload_api_v1_procurement_preparation_cases_upload_post */
+        Body_upload_api_v1_procurement_preparation_cases_upload_post: {
+            /** @default general */
+            business_domain: components["schemas"]["BusinessDomain"];
+            /**
+             * Currency
+             * @default VND
+             */
+            currency: string;
+            /** Deadline */
+            deadline: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Estimated Value Minor */
+            estimated_value_minor: number;
+            /** File */
+            file: string;
+            /** Owner Name */
+            owner_name: string;
+            /** @default goods */
+            procurement_type: components["schemas"]["ProcurementType"];
+            /** Source Pr Ref */
+            source_pr_ref: string;
+            /** Supplier Names */
+            supplier_names: string;
+            /** Title */
+            title: string;
+        };
+        /** Body_upload_document_api_v1_knowledge_documents_post */
+        Body_upload_document_api_v1_knowledge_documents_post: {
+            /**
+             * Classification
+             * @default internal
+             */
+            classification: string;
+            /**
+             * Domain
+             * @default shared
+             */
+            domain: string;
+            /** File */
+            file: string;
+            /**
+             * Scope
+             * @default tenant
+             */
+            scope: string;
+            /**
+             * Source Version
+             * @default 1
+             */
+            source_version: string;
+            /** Title */
+            title: string;
+        };
+        /** BootstrapResponse */
+        BootstrapResponse: {
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string | null;
+            /** Memberships */
+            memberships: components["schemas"]["WorkspaceMembershipModel"][];
+            /**
+             * Principal Id
+             * Format: uuid
+             */
+            principal_id: string;
+            /** Subject */
+            subject: string;
+        };
+        /**
+         * BusinessDomain
+         * @description Business sector used for routing, reporting and knowledge retrieval.
+         * @enum {string}
+         */
+        BusinessDomain: "general" | "information_technology" | "real_estate" | "healthcare" | "infrastructure" | "operations" | "energy" | "education" | "other";
+        /** ClarificationAnswerRequest */
+        ClarificationAnswerRequest: {
+            /** Answer */
+            answer: string;
+            /** Clarification Id */
+            clarification_id: string;
+            /** Question */
+            question: string;
+            /**
+             * Source Note
+             * @default
+             */
+            source_note: string;
+        };
+        /** Cp3DecisionRequest */
+        Cp3DecisionRequest: {
+            /** Approval Reference */
+            approval_reference: string;
+            /** Approve */
+            approve: boolean;
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
         };
         /** CreateCaseRequest */
         CreateCaseRequest: {
@@ -520,6 +987,54 @@ export interface components {
              * Format: uuid
              */
             meeting_id: string;
+        };
+        /** CreatePreparationCaseRequest */
+        CreatePreparationCaseRequest: {
+            /** @default general */
+            business_domain: components["schemas"]["BusinessDomain"];
+            /**
+             * Currency
+             * @default VND
+             */
+            currency: string;
+            /** Deadline */
+            deadline?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Estimated Value Minor
+             * @default 0
+             */
+            estimated_value_minor: number;
+            /**
+             * Owner Name
+             * @default
+             */
+            owner_name: string;
+            /** Pr Text */
+            pr_text: string;
+            /** @default other */
+            procurement_type: components["schemas"]["ProcurementType"];
+            /**
+             * Source Pr Ref
+             * @default
+             */
+            source_pr_ref: string;
+            /** Supplier Names */
+            supplier_names: string[];
+            /** Title */
+            title: string;
+        };
+        /** CreatePreparationCaseResponse */
+        CreatePreparationCaseResponse: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
         };
         /** DecisionRequest */
         DecisionRequest: {
@@ -634,6 +1149,28 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** DocumentView */
+        DocumentView: {
+            /** Content Hash */
+            content_hash: string;
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Text Content */
+            text_content?: string | null;
+            /** Title */
+            title: string;
+        };
         /** FindingView */
         FindingView: {
             /** Evidence Count */
@@ -672,6 +1209,40 @@ export interface components {
             status: string;
             /** Version */
             version: string;
+        };
+        /** IngestJobView */
+        IngestJobView: {
+            /** Attempts */
+            attempts: number;
+            /** Chunk Count */
+            chunk_count: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Document Id */
+            document_id: string | null;
+            /** Error */
+            error: string | null;
+            /** Filename */
+            filename: string;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            /** Scope */
+            scope: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** IntegrationView */
         IntegrationView: {
@@ -714,6 +1285,8 @@ export interface components {
             domain: string;
             /** Index Version */
             index_version: string | null;
+            /** Scope */
+            scope: string;
             /** Source Version */
             source_version: string;
             /** Title */
@@ -808,6 +1381,91 @@ export interface components {
             /** Worker Id */
             worker_id: string;
         };
+        /** NotificationView */
+        NotificationView: {
+            /** Attempts */
+            attempts: number;
+            /** Due At */
+            due_at: string;
+            /** Event Type */
+            event_type: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Sent At */
+            sent_at: string | null;
+            /** Status */
+            status: string;
+        };
+        /** PreparationCaseView */
+        PreparationCaseView: {
+            /**
+             * Artifacts
+             * @default []
+             */
+            artifacts: components["schemas"]["ArtifactView"][];
+            /** Business Domain */
+            business_domain: string;
+            /** Currency */
+            currency: string;
+            /** Current Official Artifact Id */
+            current_official_artifact_id: string | null;
+            /** Current Step */
+            current_step: string;
+            /** Deadline */
+            deadline: string | null;
+            /** Description */
+            description: string;
+            /**
+             * Documents
+             * @default []
+             */
+            documents: components["schemas"]["DocumentView"][];
+            /** Estimated Value Minor */
+            estimated_value_minor: number;
+            /** Export Ref */
+            export_ref: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Intake Verified At */
+            intake_verified_at: string | null;
+            /** Intake Verified By */
+            intake_verified_by: string | null;
+            /** Last Run Id */
+            last_run_id: string | null;
+            /** Method Key */
+            method_key: string | null;
+            /**
+             * Notifications
+             * @default []
+             */
+            notifications: components["schemas"]["NotificationView"][];
+            /** Owner Name */
+            owner_name: string;
+            /** Procurement Type */
+            procurement_type: string;
+            /** Source Pr Ref */
+            source_pr_ref: string;
+            /** State */
+            state: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /**
+         * ProcurementType
+         * @description Legal/operating shape of the procurement package.
+         * @enum {string}
+         */
+        ProcurementType: "goods" | "construction" | "consulting" | "non_consulting" | "mixed" | "investor_selection" | "other";
         /** ReadinessResponse */
         ReadinessResponse: {
             /** Checks */
@@ -840,6 +1498,11 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /** RejectIntakeRequest */
+        RejectIntakeRequest: {
+            /** Comment */
+            comment: string;
+        };
         /** RequirementView */
         RequirementView: {
             /** Code */
@@ -855,6 +1518,14 @@ export interface components {
             statement: string;
             /** Weight */
             weight: string;
+        };
+        /** RunResponse */
+        RunResponse: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
         };
         /** RunView */
         RunView: {
@@ -939,6 +1610,41 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VerifyIntakeRequest */
+        VerifyIntakeRequest: {
+            /** Approval Reference */
+            approval_reference: string;
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
+        };
+        /** WorkspaceMembershipModel */
+        WorkspaceMembershipModel: {
+            /** Roles */
+            roles: string[];
+            /** Scopes */
+            scopes: string[];
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Tenant Name */
+            tenant_name: string;
+            /** Tenant Slug */
+            tenant_slug: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+            /** Workspace Name */
+            workspace_name: string;
+            /** Workspace Slug */
+            workspace_slug: string;
         };
     };
     responses: never;
@@ -1062,6 +1768,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bootstrap_api_v1_auth_bootstrap_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BootstrapResponse"];
                 };
             };
         };
@@ -1230,6 +1956,99 @@ export interface operations {
             };
         };
     };
+    upload_document_api_v1_knowledge_documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_document_api_v1_knowledge_documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestJobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ingest_job_api_v1_knowledge_documents_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestJobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_api_v1_knowledge_documents__document_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     me_api_v1_me_get: {
         parameters: {
             query?: never;
@@ -1383,6 +2202,465 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyzeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_all_api_v1_procurement_preparation_cases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparationCaseView"][];
+                };
+            };
+        };
+    };
+    create_api_v1_procurement_preparation_cases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePreparationCaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatePreparationCaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_api_v1_procurement_preparation_cases_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_api_v1_procurement_preparation_cases_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatePreparationCaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_api_v1_procurement_preparation_cases__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreparationCaseView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    addendum_api_v1_procurement_preparation_cases__case_id__addendum_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_addendum_api_v1_procurement_preparation_cases__case_id__addendum_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_api_v1_procurement_preparation_cases__case_id__clarifications_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerClarificationsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cp3_api_v1_procurement_preparation_cases__case_id__cp3_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Cp3DecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cp4_api_v1_procurement_preparation_cases__case_id__cp4_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_cp4_api_v1_procurement_preparation_cases__case_id__cp4_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_api_v1_procurement_preparation_cases__case_id__publication_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_publish_api_v1_procurement_preparation_cases__case_id__publication_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_auto_api_v1_procurement_preparation_cases__case_id__publish_auto_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_api_v1_procurement_preparation_cases__case_id__reject_intake_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectIntakeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_api_v1_procurement_preparation_cases__case_id__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submission_api_v1_procurement_preparation_cases__case_id__submissions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_submission_api_v1_procurement_preparation_cases__case_id__submissions_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_api_v1_procurement_preparation_cases__case_id__verify_intake_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyIntakeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
                 };
             };
             /** @description Validation Error */

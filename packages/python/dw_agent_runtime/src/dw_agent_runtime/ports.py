@@ -6,7 +6,7 @@ and application handlers depend only on the protocols.
 
 from __future__ import annotations
 
-from typing import Protocol, TypeVar
+from typing import Literal, Protocol, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -14,6 +14,8 @@ from pydantic import BaseModel, ConfigDict
 from dw_agent_runtime.contracts import RunContext
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
+
+RouteKind = Literal["auto", "structured_extraction", "reasoning", "deep_reasoning"]
 
 
 class ModelRequest(BaseModel):
@@ -27,6 +29,8 @@ class ModelRequest(BaseModel):
     variables: dict[str, str] = {}
     model_profile: str = "balanced"
     max_output_tokens: int | None = None
+    # "auto" preserves legacy routing (task=="reasoning" -> reasoning route).
+    route_kind: RouteKind = "auto"
 
 
 class ModelGateway(Protocol):
@@ -39,6 +43,22 @@ class ModelGateway(Protocol):
         *,
         run_context: RunContext,
     ) -> OutputT: ...
+
+
+class TracedModelGateway(ModelGateway, Protocol):
+    """Gateway that can also surface the model's visible reasoning text.
+
+    ``generate_structured_traced`` returns ``(output, reasoning)`` where
+    reasoning is "" when the routed model does not emit reasoning_content.
+    """
+
+    async def generate_structured_traced(
+        self,
+        request: ModelRequest,
+        output_type: type[OutputT],
+        *,
+        run_context: RunContext,
+    ) -> tuple[OutputT, str]: ...
 
 
 class WorkflowRunnerPort(Protocol):

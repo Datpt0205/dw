@@ -25,6 +25,7 @@ volumes:
   minio-data:
   keycloak-data:
   clickhouse-data:
+  tei-models:
 
 services:
   # ------------------------------------------------------------------ data --
@@ -151,12 +152,14 @@ services:
       KC_DB_USERNAME: ${POSTGRES_USER:?}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?}
       KC_HTTP_ENABLED: "true"
-      KC_HOSTNAME: http://localhost:8080
+      # Host 8686 -> container 8080 (avoids a clash with other local apps on 8080).
+      # The frontend URL must match the mapped host port so token `iss` = :8686.
+      KC_HOSTNAME: http://localhost:8686
     volumes:
       - keycloak-data:/opt/keycloak/data/export
       - ../keycloak:/opt/keycloak/data/import:ro
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8686:8080"
     networks: [dw-internal, dw-edge]
     depends_on:
       postgres:
@@ -172,6 +175,54 @@ services:
       timeout: 10s
       retries: 10
       start_period: 60s
+    restart: unless-stopped
+
+  # ------------------------------------------------- model inference (RAG) --
+  # BGE-M3 dense embeddings on GPU (GTX 1650 4GB → float16). Turing image.
+  tei-embed:
+    image: ghcr.io/huggingface/text-embeddings-inference:turing-1.6
+    profiles: ["full", "models"]
+    command: ["--model-id", "BAAI/bge-m3", "--dtype", "float16", "--port", "80"]
+    environment:
+      HF_HOME: /data
+    volumes:
+      - tei-models:/data
+    ports:
+      - "127.0.0.1:8085:80"
+    networks: [dw-internal, dw-edge]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "exec 3<>/dev/tcp/127.0.0.1/80"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 180s
+    restart: unless-stopped
+
+  # BGE-reranker-v2-m3 cross-encoder on CPU (leaves the 4GB GPU for embeddings).
+  tei-rerank:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.6
+    profiles: ["full", "models"]
+    command: ["--model-id", "BAAI/bge-reranker-v2-m3", "--port", "80"]
+    environment:
+      HF_HOME: /data
+    volumes:
+      - tei-models:/data
+    ports:
+      - "127.0.0.1:8086:80"
+    networks: [dw-internal, dw-edge]
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "exec 3<>/dev/tcp/127.0.0.1/80"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 180s
     restart: unless-stopped
 
   # ------------------------------------------------------------ migrations --
@@ -190,6 +241,18 @@ services:
         condition: service_healthy
     restart: "no"
 
+  seed:
+    image: dw-api:local
+    profiles: ["full"]
+    command: ["python", "/app/scripts/seed_demo.py"]
+    environment:
+      DW_DATABASE_URL: postgresql+asyncpg://dw_migrator:${DW_DB_MIGRATOR_PASSWORD:?}@postgres:5432/dw
+    networks: [dw-internal]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   # ------------------------------------------------------------------ apps --
   api:
     build:
@@ -202,21 +265,51 @@ services:
       DW_API_DATABASE_URL: postgresql+asyncpg://dw_app:${DW_DB_APP_PASSWORD:?}@postgres:5432/dw
       DW_API_DEV_SECRET: ${DW_API_DEV_SECRET:-}
       DW_MODEL_PROVIDER: ${DW_MODEL_PROVIDER:-mock}
+      DW_API_MODEL_PROFILE: ${DW_API_MODEL_PROFILE:-balanced}
+      DW_API_OPENAI_STRUCTURED_MODE: ${DW_API_OPENAI_STRUCTURED_MODE:-json_schema}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       DW_TASK_CONNECTOR: ${DW_TASK_CONNECTOR:-mock}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       SLACK_DEFAULT_CHANNEL: ${SLACK_DEFAULT_CHANNEL:-}
+      # Chat front office (Slack Socket Mode — conversation-first P1)
+      DW_CHAT_FRONT_OFFICE_ENABLED: ${DW_CHAT_FRONT_OFFICE_ENABLED:-false}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      SLACK_USER_AN_ID: ${SLACK_USER_AN_ID:-}
+      SLACK_USER_BINH_ID: ${SLACK_USER_BINH_ID:-}
+      SLACK_USER_CHI_ID: ${SLACK_USER_CHI_ID:-}
+      SLACK_USER_MAP_JSON: ${SLACK_USER_MAP_JSON:-}
+      DW_PUBLIC_WEB_URL: ${DW_PUBLIC_WEB_URL:-http://localhost:3000}
+      DW_AUTONOMY_PROFILE: ${DW_AUTONOMY_PROFILE:-governed_production}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      DW_PUBLICATION_EMAIL: ${DW_PUBLICATION_EMAIL:-}
       QDRANT_URL: http://qdrant:6333
       REDIS_URL: redis://valkey:6379/0
       S3_ENDPOINT_URL: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
-      OIDC_ISSUER_URL: http://keycloak:8080/realms/dw
+      # OIDC: the token issuer is the browser-facing Keycloak URL, but the API
+      # (inside the network) fetches JWKS via the internal service name.
+      DW_API_AUTH_MODE: ${DW_API_AUTH_MODE:-oidc}
+      DW_API_OIDC_ISSUER_URL: ${DW_API_OIDC_ISSUER_URL:-http://localhost:8686/realms/dw}
+      DW_API_OIDC_JWKS_URL: ${DW_API_OIDC_JWKS_URL:-http://keycloak:8080/realms/dw/protocol/openid-connect/certs}
+      # RAG embeddings/rerank via self-hosted TEI (BGE-M3 + BGE-reranker).
+      DW_API_EMBEDDING_PROVIDER: ${DW_API_EMBEDDING_PROVIDER:-tei}
+      DW_API_EMBED_URL: ${DW_API_EMBED_URL:-http://tei-embed:80}
+      DW_API_RERANK_URL: ${DW_API_RERANK_URL:-http://tei-rerank:80}
+      DW_API_EMBED_DIMENSION: ${DW_API_EMBED_DIMENSION:-1024}
+      DW_APPROVAL_REMINDER_SECONDS: ${DW_APPROVAL_REMINDER_SECONDS:-5}
     ports:
       - "127.0.0.1:8000:8000"
     networks: [dw-internal, dw-edge]
     depends_on:
-      migrate:
+      seed:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
@@ -227,6 +320,8 @@ services:
       minio:
         condition: service_healthy
       keycloak:
+        condition: service_started
+      tei-embed:
         condition: service_started
     restart: unless-stopped
 
@@ -241,6 +336,20 @@ services:
       QDRANT_URL: http://qdrant:6333
       REDIS_URL: redis://valkey:6379/0
       S3_ENDPOINT_URL: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      # Knowledge ingest consumer: embed with the same self-hosted BGE-M3 as the
+      # API so uploaded docs land in the same 1024-dim Qdrant collection.
+      DW_WORKER_EMBEDDING_PROVIDER: ${DW_API_EMBEDDING_PROVIDER:-tei}
+      DW_WORKER_EMBED_URL: ${DW_API_EMBED_URL:-http://tei-embed:80}
+      DW_WORKER_EMBED_DIMENSION: ${DW_API_EMBED_DIMENSION:-1024}
+      DW_SLACK_APPROVALS_ENABLED: ${DW_SLACK_APPROVALS_ENABLED:-false}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_USER_AN_ID: ${SLACK_USER_AN_ID:-}
+      SLACK_USER_BINH_ID: ${SLACK_USER_BINH_ID:-}
+      SLACK_USER_CHI_ID: ${SLACK_USER_CHI_ID:-}
+      SLACK_USER_MAP_JSON: ${SLACK_USER_MAP_JSON:-}
+      DW_PUBLIC_WEB_URL: ${DW_PUBLIC_WEB_URL:-http://localhost:3000}
     networks: [dw-internal, dw-edge]
     depends_on:
       migrate:
@@ -249,12 +358,24 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      tei-embed:
+        condition: service_started
     restart: unless-stopped
 
   web:
     build:
       context: ../..
       dockerfile: infra/docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_AUTH_MODE: ${NEXT_PUBLIC_AUTH_MODE:-oidc}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8686}
+        NEXT_PUBLIC_KEYCLOAK_REALM: ${NEXT_PUBLIC_KEYCLOAK_REALM:-dw}
+        NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ${NEXT_PUBLIC_KEYCLOAK_CLIENT_ID:-dw-web}
     image: dw-web:local
     profiles: ["full"]
     environment:

@@ -57,6 +57,53 @@ class IndexableChunk:
     provenance_hash: str
     acl_principals: tuple[str, ...]
     vector: tuple[float, ...]
+    # Enterprise-RAG metadata (Phase A): outline breadcrumb + global order so a
+    # split passage can be reassembled and cited (see chunking.structure_aware_chunks).
+    section_path: str = ""
+    seq: int = 0
+    scope: str = "tenant"  # "tenant" | "global" (legal docs shared across tenants — Phase B)
+
+
+@dataclass(frozen=True)
+class ParsedDocument:
+    """Output of a DocumentParser: extracted text + detected metadata.
+
+    Phase A ships a plaintext/markdown parser; Phase B adds a Docling adapter for
+    PDF/DOCX/XLSX/scanned (OCR) with table-aware extraction behind this same port.
+    """
+
+    text: str
+    detected_title: str | None = None
+    page_count: int | None = None
+    warnings: tuple[str, ...] = ()
+
+
+class DocumentParserPort(Protocol):
+    """Turns an uploaded file (bytes) into clean UTF-8 text + metadata."""
+
+    def supports(self, content_type: str, filename: str) -> bool: ...
+
+    async def parse(self, data: bytes, content_type: str, filename: str) -> ParsedDocument: ...
+
+
+@dataclass(frozen=True)
+class RerankCandidate:
+    id: str
+    text: str
+
+
+@dataclass(frozen=True)
+class RerankResult:
+    id: str
+    score: float
+
+
+class RerankPort(Protocol):
+    """Cross-encoder reranker seam (Phase B: BGE-reranker via TEI). No-op default."""
+
+    async def rerank(
+        self, query: str, candidates: Sequence[RerankCandidate], top_k: int
+    ) -> list[RerankResult]: ...
 
 
 @dataclass(frozen=True)
@@ -76,6 +123,15 @@ class VectorIndexPort(Protocol):
     async def ensure_ready(self, vector_dimension: int) -> None: ...
 
     async def upsert(self, chunks: Sequence[IndexableChunk]) -> None: ...
+
+    async def delete_document(self, document_id: UUID) -> None:
+        """HARD-remove all points of a document (same-version reindex / purge)."""
+        ...
+
+    async def tombstone_document(self, document_id: UUID) -> None:
+        """SOFT-delete: mark a document's points is_deleted=true so search skips
+        them, but keep them for traceability until a retention purge."""
+        ...
 
     async def search(
         self,

@@ -5,7 +5,7 @@ Multi-tenant Digital Worker platform với hai bounded context độc lập:
 - **`tender`** — Procurement Tender Digital Worker: phân tích RFQ/hồ sơ mời thầu, ma trận tuân thủ, chấm điểm deterministic, đề xuất kèm bằng chứng.
 - **`work_ops`** — Meeting & Work Operations Digital Worker: transcript → tóm tắt → quyết định → action item → phê duyệt → giao việc.
 
-Kiến trúc: modular monolith (API + async worker + web) trong một monorepo, Clean/Hexagonal, DDD, human-in-command (autonomy A2). Specification gốc: [docs/architecture/Digital_Worker_Source_Base_Blueprint_v2.md](docs/architecture/Digital_Worker_Source_Base_Blueprint_v2.md). Tiến độ triển khai: [docs/implementation/IMPLEMENTATION_PLAN.md](docs/implementation/IMPLEMENTATION_PLAN.md).
+Kiến trúc: modular monolith (API + async worker + web) trong một monorepo, Clean/Hexagonal, DDD, human-in-command (autonomy A2). Specification gốc: [docs/architecture/Digital_Worker_Source_Base_Blueprint_v2.md](docs/architecture/Digital_Worker_Source_Base_Blueprint_v2.md).
 
 ## Yêu cầu môi trường
 
@@ -53,7 +53,7 @@ docker compose --env-file .env -f infra/compose/docker-compose.yml \
 
 - API: http://localhost:8000 (docs: `/api/docs`, health: `/api/v1/health`, ready: `/api/v1/ready`)
 - Web: http://localhost:3000
-- Keycloak: http://localhost:8080 — MinIO console: http://localhost:9001 — Langfuse: http://localhost:3001
+- Keycloak: http://localhost:8686 — MinIO console: http://localhost:9001 — Langfuse: http://localhost:3001
 
 ## Lệnh developer
 
@@ -100,32 +100,39 @@ docs/            architecture · adr · runbooks · threat-model · implementati
 
 Chạy `make test-architecture` để kiểm tra. Chi tiết quyết định: [docs/adr/](docs/adr/).
 
-## Demo credentials
+## Đăng nhập & phân quyền (OIDC — mặc định)
 
-Sau `make db-migrate && make db-seed` có 2 tenant demo:
+Mặc định hệ thống chạy **Keycloak OIDC** (`DW_API_AUTH_MODE=oidc`,
+`NEXT_PUBLIC_AUTH_MODE=oidc`). Web `http://localhost:3000` là **back office
+chỉ đọc**: màn hình đăng nhập có nút một-chạm **«Vào với vai Chi — Quản trị»**
+(`chi` / `demo`). An và Bình làm việc hoàn toàn qua **Slack** (chat với Ngọc,
+duyệt trên thẻ) — web-login của họ bị **disable** trong Keycloak.
 
-| Tenant                         | Plan         | User (subject)   | Roles                  |
-| ------------------------------ | ------------ | ---------------- | ---------------------- |
-| `tenant-alpha` (Công ty Alpha) | professional | `dev\|an.nguyen` | member                 |
-|                                |              | `dev\|binh.tran` | approver               |
-|                                |              | `dev\|chi.le`    | platform_admin, member |
-| `tenant-beta` (Công ty Beta)   | basic        | `dev\|bao.pham`  | member                 |
-|                                |              | `dev\|dung.vo`   | approver               |
+Danh tính demo (realm import từ [infra/keycloak/dw-realm.json](infra/keycloak/dw-realm.json)):
 
-Seed in ra tenant/workspace UUID. Gọi API bằng dev token (ADR-013):
+| Danh tính      | Kênh làm việc         | Vai trò                                              |
+| -------------- | --------------------- | ---------------------------------------------------- |
+| An (Nguyễn)    | Slack (chat với Ngọc) | member — tạo yêu cầu, trả lời làm rõ                 |
+| Bình (Trần)    | Slack (thẻ phê duyệt) | approver — xác minh intake, duyệt CP1–CP4            |
+| `chi` / `demo` | Web back office       | platform_admin — theo dõi, kiểm toán, nhận leo thang |
 
-```bash
-TOKEN=$(uv run python scripts/issue_dev_token.py "dev|an.nguyen")
-curl -H "Authorization: Bearer $TOKEN" \
-     -H "X-Tenant-Id: <tenant-uuid>" -H "X-Workspace-Id: <workspace-uuid>" \
-     http://localhost:8000/api/v1/me
-```
+**Đăng ký:** bấm «Đăng ký tài khoản mới» → tạo tài khoản trong Keycloak → lần
+đăng nhập đầu, tài khoản được **lưu thật vào Postgres** (`platform.users` +
+`external_identities` + `memberships`) và tự vào workspace demo **Công ty Alpha**
+với vai **member**. Nâng/hạ vai trò do quản trị viên thao tác (bước sau).
 
-Keycloak (OIDC mode): realm `dw` được import từ [infra/keycloak/dw-realm.json](infra/keycloak/dw-realm.json); user demo `an.nguyen` / `demo-password`; bật bằng `DW_API_AUTH_MODE=oidc`.
+UI ẩn/khoá theo `scope` cho gọn, nhưng **backend là nơi enforce duy nhất** —
+mọi request đều được xác minh token + membership trong DB (cross-tenant/không đủ
+quyền → 403).
+
+Sau `make db-seed` cũng có 2 tenant + 5 user dùng cho **dev mode** và API test
+qua dev token (`scripts/issue_dev_token.py`, ADR-013). Bật dev mode bằng
+`DW_API_AUTH_MODE=dev` + `NEXT_PUBLIC_AUTH_MODE=dev` (trang `/dev-login`).
 
 ## Luồng demo end-to-end
 
-Mở web → **Trang chủ** → bấm «Vào với vai An» (đăng nhập 1-click).
+Mở web → **«Vào với vai Chi — Quản trị»** (`chi` / `demo`). Luồng DW01
+conversation-first xem [docs/runbooks/demo-script.md](docs/runbooks/demo-script.md).
 
 1. **Đấu thầu** (`/tender`): «Tạo hồ sơ mẫu» → «Phân tích hồ sơ» → ma trận
    tuân thủ + điểm deterministic (Thiết bị Việt 87.00 thắng; Vật tư Miền Nam
@@ -135,10 +142,9 @@ Mở web → **Trang chủ** → bấm «Vào với vai An» (đăng nhập 1-cl
    tóm tắt + **phân tích chất lượng họp** (điểm /10, tốt/chưa tốt kèm trích
    dẫn) + action items → Phê duyệt → dispatch qua connector (mock hoặc
    Slack thật qua `DW_TASK_CONNECTOR=slack`).
-3. **Trợ lý chat** (nút 🤖 góc phải mọi trang): dán transcript → nhận phân
-   tích ngay trong khung chat. Cùng luồng với **bot Telegram** — điền
-   `TELEGRAM_BOT_TOKEN` vào `.env`, nhắn `/start` cho bot để lấy ID rồi map
-   trong `configs/demo/channel_identities.yaml`.
+3. **Bot Telegram**: điền `TELEGRAM_BOT_TOKEN` vào `.env`, nhắn `/start` cho
+   bot để lấy ID rồi map trong `configs/demo/channel_identities.yaml`; gửi
+   transcript cho bot → nhận phân tích qua chat.
 4. Trang hệ thống (link cuối sidebar/Trang chủ): `/audit`, `/knowledge`,
    `/memory`, `/integrations`; run detail có `release_manifest_ref`.
 
@@ -160,7 +166,7 @@ count) — không bao giờ chứa prompt content; mọi attribute qua redaction
 
 ## Tài liệu vận hành & bảo mật
 
+- [Kịch bản demo DW01](docs/runbooks/demo-script.md) · [LLM & RAG trong DW01](docs/runbooks/dw01-ai-rag-explainer.md)
 - [Threat model (STRIDE)](docs/threat-model/THREAT_MODEL.md)
-- [Runbooks](docs/runbooks/): local dev · approval kẹt · sự cố cách ly tenant · xoay secret
-- [ADRs](docs/adr/) — ADR-015 evals, ADR-016 observability, ADR-017 hardening
-- [Báo cáo nghiệm thu](docs/implementation/ACCEPTANCE_REPORT.md)
+- [Runbooks](docs/runbooks/): local dev · Slack phê duyệt DW01 · approval kẹt · sự cố cách ly tenant · xoay secret
+- [ADRs](docs/adr/) — ADR-015 evals, ADR-016 observability, ADR-017 hardening, ADR-019 OIDC

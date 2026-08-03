@@ -15,6 +15,12 @@ reasoning:
   provider: openai_compatible
   model: deepseek-chat
   timeout_seconds: 120
+# Visible thinking (chat front office): deepseek-reasoner returns
+# reasoning_content; slower — only used with route_kind=deep_reasoning.
+deep_reasoning:
+  provider: openai_compatible
+  model: deepseek-reasoner
+  timeout_seconds: 240
 budgets:
   max_input_tokens_per_run: 100000
   max_cost_usd_per_run: 1.00

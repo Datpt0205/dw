@@ -24,7 +24,7 @@ class FakeMembershipLookup:
         self.known_subject = known_subject
 
     async def find_access(
-        self, subject: str, tenant_id: uuid.UUID, workspace_id: uuid.UUID
+        self, subject: str, issuer: str, tenant_id: uuid.UUID, workspace_id: uuid.UUID
     ) -> MembershipAccess | None:
         if subject == self.known_subject and tenant_id == TENANT and workspace_id == WORKSPACE:
             return MembershipAccess(

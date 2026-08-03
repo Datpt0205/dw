@@ -10,6 +10,14 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.36,<2.1",
     "qdrant-client>=1.12,<1.15",
     "minio>=7.2,<8",
+    "httpx>=0.27,<0.29",
+]
+
+[project.optional-dependencies]
+# Heavy multi-format parsing + OCR stack (torch, layout + OCR models). Installed
+# ONLY in the worker image where ingestion runs — never in the API image.
+parsers = [
+    "docling>=2.15,<3",
 ]
 
 [build-system]

@@ -16,7 +16,7 @@ _SEMVER_PATTERN = r"^\d+\.\d+\.\d+$"
 AutonomyLevel = Literal["A0", "A1", "A2", "A3", "A4"]
 SideEffectLevel = Literal["none", "internal", "external", "critical"]
 ApprovalPolicy = Literal["never", "conditional", "always"]
-WorkerDomain = Literal["tender", "work_ops"]
+WorkerDomain = Literal["tender", "work_ops", "preparation"]
 
 
 class WorkerDefinition(BaseModel):

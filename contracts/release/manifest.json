@@ -12,8 +12,8 @@
       "version": "1.0.0"
     }
   ],
-  "git_sha": "28999fa18507dc7a8516fb9d4687f4b7047925fb",
-  "knowledge_index_version": "2026-07-23.1",
+  "git_sha": "9a1fd9857920da6f0f41e7482099c839d9e18701",
+  "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "1.0.0",
   "platform_version": "0.1.0",
   "policies": [
@@ -24,6 +24,41 @@
     }
   ],
   "prompt_bundles": [
+    {
+      "checksum": "970fa582933db9e317c4b3088841a1086983a53b3797869f5011a14943614d30",
+      "prompt_id": "conversation.clarify_answers",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "d8466806364f826025366d539b18fcb62736803d394f3b358e8dcc02f6793a85",
+      "prompt_id": "conversation.intake_chat",
+      "version": "1.3.0"
+    },
+    {
+      "checksum": "b254e2926adbcdef3cac6f49d413b5b7aa06c348f4355bd06f37a0e0a75b563e",
+      "prompt_id": "preparation.draft_criteria",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "2750dcbe3cf628d67c0bb2340c9980c2746686bea91adefe2216c2939195336d",
+      "prompt_id": "preparation.draft_solicitation",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "b4ea943be8f107b8528e6f73d7df4ca84ffe223947c145968fe17c0cc16cd043",
+      "prompt_id": "preparation.extract_legal_constraints",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "2c05e0f269e5eb4120a63c1d66adb6dfb937b0df3a49f334dddd0463059a6151",
+      "prompt_id": "preparation.extract_requirements",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "9e1afc2d4279e224ac1262a77a6e006efcd87627d9b573345d1c9c539a8d81a3",
+      "prompt_id": "preparation.review_checkpoint",
+      "version": "1.0.0"
+    },
     {
       "checksum": "b98dc93275d09ed1808edc27ce4bbb52ce8bfc690143b0e09a679f327c8d3455",
       "prompt_id": "tender.assess_compliance",
@@ -70,6 +105,16 @@
     }
   ],
   "workers": [
+    {
+      "autonomy_level": "A2",
+      "graph_version": "1.0.0",
+      "memory_policy_version": "1.0.0",
+      "policy_version": "1.0.0",
+      "prompt_bundle_version": "1.0.0",
+      "toolset_version": "1.0.0",
+      "worker_id": "preparation",
+      "worker_version": "1.0.0"
+    },
     {
       "autonomy_level": "A2",
       "graph_version": "1.0.0",

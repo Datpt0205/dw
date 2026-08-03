@@ -6,7 +6,10 @@ FROM python:3.12-slim-bookworm AS builder
 # uv binary from the pinned distroless release image
 COPY --from=ghcr.io/astral-sh/uv:0.11.31 /uv /uvx /usr/local/bin/
 
-ENV UV_COMPILE_BYTECODE=1 \
+# Bytecode precompilation can time out on constrained/busy hosts (uv 60s/file
+# limit on large files like protobuf). Disabled for build reliability; Python
+# compiles .pyc lazily at runtime with negligible impact.
+ENV UV_COMPILE_BYTECODE=0 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
 
@@ -56,6 +59,7 @@ COPY --chown=dw:dw evals/fixtures /app/evals/fixtures
 COPY --chown=dw:dw contracts/release /app/contracts/release
 # Demo fixtures for the dev-only sample-data endpoints
 COPY --chown=dw:dw db/fixtures /app/db/fixtures
+COPY --chown=dw:dw scripts/seed_demo.py /app/scripts/seed_demo.py
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

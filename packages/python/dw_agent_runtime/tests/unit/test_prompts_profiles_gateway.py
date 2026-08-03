@@ -151,3 +151,15 @@ async def test_gateway_unknown_provider_fails_fast() -> None:
     )
     with pytest.raises(NotFoundError, match="provider"):
         await gateway.generate_structured(request, SummaryOutput, run_context=make_run_context())
+
+
+def test_extract_json_object_tolerates_fences_and_preamble() -> None:
+    from dw_agent_runtime.adapters.openai_compatible import _extract_json_object
+
+    assert _extract_json_object('{"a": 1}') == {"a": 1}
+    assert _extract_json_object('```json\n{"a": 1}\n```') == {"a": 1}
+    assert _extract_json_object('Kết quả:\n{"a": {"b": 2}} xong') == {"a": {"b": 2}}
+    with pytest.raises(ValueError):
+        _extract_json_object("no json here")
+    with pytest.raises(ValueError):
+        _extract_json_object("[1, 2]")

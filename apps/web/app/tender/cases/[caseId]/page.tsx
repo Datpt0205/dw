@@ -253,8 +253,8 @@ export default function TenderCaseDetailPage() {
             <p className="text-xs text-muted-foreground">
               Chính sách chấm điểm v{rec.scoring_policy_version} ·{" "}
               {rec.evidence_count} bằng chứng · độ tin cậy{" "}
-              {(rec.confidence * 100).toFixed(0)}% — điểm số do engine
-              deterministic quyết định, không phải model.
+              {(rec.confidence * 100).toFixed(0)}% — điểm số được tính theo quy
+              tắc đã cấu hình, không do hệ thống tự suy đoán.
             </p>
           </CardContent>
         </Card>

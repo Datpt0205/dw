@@ -13,8 +13,8 @@ users:
     workspace_id: 64764894-718d-5558-ba17-9a2949214063
   - subject: dev|binh.tran
     display_name: Trần Thanh Bình
-    description: Trưởng phòng — phê duyệt đề xuất và action item
-    roles: [approver]
+    description: Trưởng phòng mua sắm — xác minh intake và phê duyệt CP1–CP4
+    roles: [approver, member]
     tenant_id: d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d
     tenant_name: Công ty Alpha
     workspace_id: 64764894-718d-5558-ba17-9a2949214063

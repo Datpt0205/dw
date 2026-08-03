@@ -14,6 +14,7 @@
     "@dw/api-client": "workspace:*",
     "@dw/contracts": "workspace:*",
     "@dw/ui": "workspace:*",
+    "keycloak-js": "^26.2.4",
     "lucide-react": "^1.25.0",
     "next": "^15.3.0",
     "react": "^19.0.0",

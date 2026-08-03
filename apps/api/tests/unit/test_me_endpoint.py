@@ -23,7 +23,7 @@ PRINCIPAL = uuid.uuid4()
 
 class FakeMembershipLookup:
     async def find_access(
-        self, subject: str, tenant_id: uuid.UUID, workspace_id: uuid.UUID
+        self, subject: str, issuer: str, tenant_id: uuid.UUID, workspace_id: uuid.UUID
     ) -> MembershipAccess | None:
         if subject == "dev|an.nguyen" and tenant_id == TENANT and workspace_id == WORKSPACE:
             return MembershipAccess(
@@ -50,6 +50,7 @@ def make_container() -> ApiContainer:
         health_service=HealthService(probes={"database": ok_probe}),
         token_verifier=DevTokenVerifier(SECRET),
         access_context_factory=DbAccessContextFactory(FakeMembershipLookup()),
+        identity_bootstrap=None,
         uow_factory=None,
         authorization=ScopeAuthorizationService(),
         entitlement=PlanEntitlementService(DEFAULT_PLANS),

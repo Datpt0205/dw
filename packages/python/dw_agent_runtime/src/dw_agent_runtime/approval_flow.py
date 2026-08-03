@@ -15,7 +15,7 @@ from typing import Any
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.ports import WorkflowRunnerPort
-from dw_kernel.errors import NotFoundError
+from dw_kernel.errors import ConflictError, NotFoundError
 from dw_kernel.ids import UserId
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
@@ -55,6 +55,22 @@ class ApproveAndResumeService:
                 raise NotFoundError(
                     "approval request not found", details={"approval_id": str(approval_id)}
                 )
+            if (
+                request.approval_type.startswith("preparation.")
+                and request.requested_by.value == context.principal_id
+            ):
+                raise ConflictError(
+                    "separation of duties: requester cannot approve their own DW01 checkpoint",
+                    details={
+                        "approval_id": str(approval_id),
+                        "approval_type": request.approval_type,
+                    },
+                )
+            if request.approval_type.startswith("preparation.") and not comment.strip():
+                raise ConflictError(
+                    "DW01 checkpoint decisions require a review comment",
+                    details={"approval_type": request.approval_type},
+                )
             decision = request.decide(
                 decision_id=self.id_generator.new_uuid(),
                 decided_by=UserId(context.principal_id),
@@ -78,7 +94,11 @@ class ApproveAndResumeService:
                     run_id=request.run_id,
                     tenant_id=context.tenant_id,
                     workspace_id=context.workspace_id,
-                    actor_id=context.principal_id,
+                    # Continue on behalf of the original run requester. The
+                    # approver identity is already persisted immutably on the
+                    # ApprovalDecision; using it here would incorrectly make
+                    # that approver the requester of the next checkpoint.
+                    actor_id=record.requested_by,
                     worker_id=record.worker_id,
                     worker_version=record.worker_version,
                     channel="web",

@@ -19,10 +19,15 @@ class RequirementId(EntityId):
 
 
 @dataclass(frozen=True, slots=True)
-class SupplierId(EntityId):
-    """Identifies a supplier."""
+class PreparationCaseId(EntityId):
+    """Identifies a DW01 procurement preparation case aggregate."""
 
 
 @dataclass(frozen=True, slots=True)
-class SubmissionId(EntityId):
-    """Identifies a supplier submission."""
+class ArtifactId(EntityId):
+    """Identifies a versioned preparation artifact."""
+
+
+@dataclass(frozen=True, slots=True)
+class PreparationDocumentId(EntityId):
+    """Identifies an uploaded source document of a preparation case."""

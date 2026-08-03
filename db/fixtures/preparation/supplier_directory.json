@@ -1,0 +1,32 @@
+{
+  "suppliers": [
+    {
+      "name": "Công ty TNHH Máy tính Phương Nam",
+      "categories": ["laptop", "thiết bị CNTT"],
+      "eligible": true,
+      "on_site_warranty": true,
+      "note": "Đối tác quen, giao đúng hạn nhiều lần."
+    },
+    {
+      "name": "Công ty CP Công nghệ Đại Việt",
+      "categories": ["laptop", "máy chủ"],
+      "eligible": true,
+      "on_site_warranty": true,
+      "note": "Bảo hành tại chỗ toàn quốc."
+    },
+    {
+      "name": "Công ty TNHH Thiết bị Việt",
+      "categories": ["laptop", "thiết bị văn phòng"],
+      "eligible": true,
+      "on_site_warranty": false,
+      "note": "Giá cạnh tranh, bảo hành mang tới trung tâm."
+    },
+    {
+      "name": "Công ty CP Vật tư Miền Nam",
+      "categories": ["vật tư", "thiết bị"],
+      "eligible": false,
+      "on_site_warranty": false,
+      "note": "Không đủ điều kiện: chưa cung cấp laptop số lượng lớn."
+    }
+  ]
+}

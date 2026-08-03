@@ -5,7 +5,7 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
-        "rounded-xl border bg-card text-card-foreground shadow-sm",
+        "rounded-2xl border border-border/80 bg-card text-card-foreground shadow-[0_1px_2px_rgba(15,23,42,0.03),0_8px_24px_rgba(15,23,42,0.035)]",
         className,
       )}
       {...props}
@@ -19,7 +19,7 @@ export function CardHeader({
 }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("flex flex-col space-y-1.5 p-5", className)}
+      className={cn("flex flex-col space-y-1.5 p-5 sm:p-6", className)}
       {...props}
     />
   );
@@ -50,7 +50,12 @@ export function CardContent({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("p-5 pt-0", className)} {...props} />;
+  // No top padding by default (a CardHeader above supplies it); crucially we
+  // omit the `sm:pt-0` that previously defeated every `pt-*` override at desktop
+  // widths, leaving header-less cards flush against the top border.
+  return (
+    <div className={cn("px-5 pb-5 sm:px-6 sm:pb-6", className)} {...props} />
+  );
 }
 
 export function CardFooter({
@@ -58,6 +63,9 @@ export function CardFooter({
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("flex items-center p-5 pt-0", className)} {...props} />
+    <div
+      className={cn("flex items-center p-5 pt-0 sm:p-6 sm:pt-0", className)}
+      {...props}
+    />
   );
 }
