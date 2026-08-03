@@ -189,6 +189,22 @@ def test_merge_keeps_existing_and_overrides_with_new() -> None:
     assert merged.estimated_value_vnd == 2_000_000_000
 
 
+def test_deadline_today_is_clamped_not_rejected() -> None:
+    # "ngày 3/8" khi hôm nay là 3/8 → model trả 0 ngày; phải thành 1, không crash.
+    assert IntakeSlots.model_validate({"deadline_days": 0}).deadline_days == 1
+    assert IntakeSlots.model_validate({"deadline_days": -3}).deadline_days is None
+    assert IntakeSlots.model_validate({"deadline_days": 60}).deadline_days == 60
+
+
+def test_nonpositive_numeric_slots_are_dropped_not_rejected() -> None:
+    slots = IntakeSlots.model_validate(
+        {"quantity": 0, "estimated_value_vnd": 0, "warranty_months": 0}
+    )
+    assert slots.quantity is None
+    assert slots.estimated_value_vnd is None
+    assert slots.warranty_months is None
+
+
 def test_missing_required_uses_rule_pack_supplier_minimum() -> None:
     slots = FULL_SLOTS.model_copy(update={"supplier_names": ["FPT"]})
     missing = missing_required(slots, RULES)

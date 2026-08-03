@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dw_tender.application.preparation.rules import ProcurementRules
 
@@ -43,6 +43,25 @@ class IntakeSlots(BaseModel):
         default=None, description="Hệ điều hành / bản quyền phần mềm kèm theo"
     )
     payment_terms: str | None = Field(default=None, description="Điều khoản thanh toán")
+
+    @field_validator("deadline_days", mode="before")
+    @classmethod
+    def _normalize_deadline(cls, value: object) -> object:
+        # "hôm nay / ngày <hôm nay>" — the model counts today as 0 days.
+        if isinstance(value, int) and value == 0:
+            return 1
+        if isinstance(value, int) and (value < 0 or value > 3650):
+            return None
+        return value
+
+    @field_validator("quantity", "estimated_value_vnd", "warranty_months", mode="before")
+    @classmethod
+    def _drop_nonpositive(cls, value: object) -> object:
+        # A busted extraction must never crash the whole turn — drop the slot
+        # so the deterministic missing-field check simply asks again.
+        if isinstance(value, int) and value < 1:
+            return None
+        return value
 
     def merged_with(self, update: IntakeSlots) -> IntakeSlots:
         """New non-empty values win; everything else is kept."""

@@ -44,7 +44,8 @@ system: |
 
   Quy đổi: "2 tỷ" = 2000000000 (VND). "500 triệu" = 500000000. Thời hạn luôn đổi
   về SỐ NGÀY (deadline_days), ví dụ "6 tuần" = 42, "trước 30/9" thì tính số ngày
-  từ hôm nay đến ngày đó.
+  từ hôm nay đến ngày đó. "hôm nay" / "ngay hôm nay" / ngày trùng hôm nay = 1
+  (tối thiểu là 1, không bao giờ trả 0).
 
   PHẠM VI & ĐIỀU KIỆN DỪNG:
   - Chỉ hỗ trợ chủ đề mua sắm nội bộ. Chủ đề khác: từ chối lịch sự trong
