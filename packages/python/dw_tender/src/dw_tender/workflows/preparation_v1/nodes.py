@@ -223,7 +223,7 @@ class PreparationNodes:
         *,
         status: ArtifactStatus = ArtifactStatus.DRAFT,
     ) -> PreparationArtifact:
-        latest = await uow.artifacts.latest(case.id, artifact_type)
+        latest: PreparationArtifact | None = await uow.artifacts.latest(case.id, artifact_type)
         content_hash = _hash(content)
         if latest is not None and latest.content_hash == content_hash:
             # Idempotent re-run (e.g. continue after clarification): identical
@@ -503,7 +503,7 @@ class PreparationNodes:
 
         requirements, unknowns, source = await self._extract_requirements(rc, pr_text)
 
-        content = {
+        content: dict[str, Any] = {
             "estimated_value": _fmt_vnd(state.get("estimated_value_minor", 0)),
             "deadline": state.get("deadline"),
             "owner": state.get("owner_name"),
@@ -675,7 +675,7 @@ class PreparationNodes:
         method = rules.select_method(value)
         candidates = state.get("supplier_candidates", [])
         planned = len(candidates)
-        content = {
+        content: dict[str, Any] = {
             "method": {"key": method.key, "label": method.label},
             "estimated_value": _fmt_vnd(value),
             "min_suppliers": method.min_suppliers,
@@ -702,7 +702,7 @@ class PreparationNodes:
         }
         # RAG grounding: legal basis for the chosen method + internal policy on
         # approval limits. Global legal docs + this tenant's policies only.
-        content["legal_basis"] = await self._cite(
+        legal_basis = await self._cite(
             rc,
             f"hình thức lựa chọn nhà thầu {method.label} điều kiện áp dụng",
             domain="legal",
@@ -714,26 +714,31 @@ class PreparationNodes:
             "thời gian chuẩn bị hồ sơ dự thầu tối thiểu kể từ ngày phát hành hồ sơ",
             domain="legal",
         )
-        seen_quotes = {(c["source_document_id"], c["quote"]) for c in content["legal_basis"]}
+        seen_quotes = {(c["source_document_id"], c["quote"]) for c in legal_basis}
         for cite in window_basis:
             if (cite["source_document_id"], cite["quote"]) not in seen_quotes:
-                content["legal_basis"].append(cite)
-        content["policy_basis"] = await self._cite(
+                legal_basis.append(cite)
+        policy_basis = await self._cite(
             rc,
             f"hạn mức phê duyệt phương án mua sắm giá trị {_fmt_vnd(value)}",
             domain="policy",
         )
+        content["legal_basis"] = legal_basis
+        content["policy_basis"] = policy_basis
         # LLM copies the minimum window out of the passages; verified_constraint
         # rejects anything not literally in them; code applies the number.
-        constraint = await self._extract_legal_constraints(
-            rc, method.label, list(content["legal_basis"])
-        )
+        constraint = await self._extract_legal_constraints(rc, method.label, legal_basis)
         default_window = _solicitation_window_days(method.key)
         legal_min = constraint["min_bid_preparation_days"] if constraint else None
         window = max(default_window, legal_min or 0)
         an_days = _deadline_days(state.get("deadline"))
         deadline_conflict: str | None = None
-        if legal_min is not None and an_days is not None and an_days < window:
+        if (
+            constraint is not None
+            and legal_min is not None
+            and an_days is not None
+            and an_days < window
+        ):
             deadline_conflict = (
                 f"Thời hạn cần hàng ({an_days} ngày) ngắn hơn thời gian tối thiểu "
                 f"cho nhà thầu chuẩn bị hồ sơ — {legal_min} ngày theo "
@@ -761,8 +766,8 @@ class PreparationNodes:
             )
         # Activity-feed card for the RAG step: the status line stays in the
         # DM, the retrieved passages collapse into the thread.
-        legal_cites = list(content["legal_basis"])
-        policy_cites = list(content["policy_basis"])
+        legal_cites = list(legal_basis)
+        policy_cites = list(policy_basis)
         rag_lines = [f"Phương án đề xuất: {method.label} — gói {_fmt_vnd(value)}."]
         if legal_cites or policy_cites:
             rag_lines.append(
@@ -934,8 +939,8 @@ class PreparationNodes:
                 if approach is not None:
                     evidence_lines = _citation_lines(
                         [
-                            *(approach.content.get("legal_basis") or []),
-                            *(approach.content.get("policy_basis") or []),
+                            *_dict_items(approach.content.get("legal_basis")),
+                            *_dict_items(approach.content.get("policy_basis")),
                         ],
                         limit=4,
                     )
@@ -1107,7 +1112,7 @@ class PreparationNodes:
             if draft and draft.technical_requirements
             else requirements
         )
-        content = {
+        content: dict[str, Any] = {
             "title": f"Hồ sơ mời thầu/RFQ — {state.get('method_label', '')}",
             "drafted_by": "ai" if draft else "template",
             "scope": scope,
@@ -1183,7 +1188,7 @@ class PreparationNodes:
             "method": "Chấm điểm có trọng số; điểm tiên quyết pass/fail.",
             "source": "ai" if llm_weighted else f"rule_pack:{self.services.rules.version}",
         }
-        content = {
+        content: dict[str, Any] = {
             **criteria,
             "weighted_total": sum(int(c["weight"]) for c in criteria["weighted"]),
             "has_mandatory": bool(criteria["mandatory"]),
@@ -1219,7 +1224,7 @@ class PreparationNodes:
             for s in candidates
             if isinstance(s, dict) and str(s.get("name", "")).strip()
         ]
-        content = {
+        content: dict[str, Any] = {
             "shortlist": shortlist,
             "excluded": [],
             "count": len(shortlist),
@@ -1375,7 +1380,7 @@ class PreparationNodes:
                     )
                 cp2_lines.append("Gate CP2 tự động: ĐẠT — hồ sơ mời thầu sẵn sàng để duyệt.")
                 package_refs = _citation_lines(
-                    list((package.content.get("references") if package else None) or []),
+                    _dict_items(package.content.get("references") if package else None),
                     limit=3,
                 )
                 if package_refs:

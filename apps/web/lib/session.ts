@@ -48,10 +48,9 @@ const TOKEN_URL = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-conn
 function readQuickAccounts(): Record<string, QuickAccount> {
   if (typeof window === "undefined") return {};
   try {
-    return JSON.parse(window.localStorage.getItem(KEYS.quickAccounts) || "{}") as Record<
-      string,
-      QuickAccount
-    >;
+    return JSON.parse(
+      window.localStorage.getItem(KEYS.quickAccounts) || "{}",
+    ) as Record<string, QuickAccount>;
   } catch {
     return {};
   }
@@ -61,7 +60,11 @@ function writeQuickAccounts(map: Record<string, QuickAccount>): void {
   window.localStorage.setItem(KEYS.quickAccounts, JSON.stringify(map));
 }
 
-function decodeToken(token: string): { name?: string; preferred_username?: string; realm_access?: { roles?: string[] } } {
+function decodeToken(token: string): {
+  name?: string;
+  preferred_username?: string;
+  realm_access?: { roles?: string[] };
+} {
   try {
     const part = token.split(".")[1] ?? "";
     return JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/")));
@@ -70,12 +73,21 @@ function decodeToken(token: string): { name?: string; preferred_username?: strin
   }
 }
 
-function toAccount(username: string, data: { access_token: string; refresh_token: string; expires_in: number }): QuickAccount {
+function toAccount(
+  username: string,
+  data: { access_token: string; refresh_token: string; expires_in: number },
+): QuickAccount {
   const claims = decodeToken(data.access_token);
   return {
     username,
     displayName: claims.name || claims.preferred_username || username,
-    roles: claims.realm_access?.roles?.filter((r) => !r.startsWith("default-") && r !== "offline_access" && r !== "uma_authorization") ?? [],
+    roles:
+      claims.realm_access?.roles?.filter(
+        (r) =>
+          !r.startsWith("default-") &&
+          r !== "offline_access" &&
+          r !== "uma_authorization",
+      ) ?? [],
     token: data.access_token,
     refreshToken: data.refresh_token,
     expiresAt: Date.now() + (data.expires_in - 30) * 1000,
@@ -89,7 +101,10 @@ export function activeQuickUsername(): string | null {
 }
 
 /** Password-grant login for a demo persona; stores tokens + makes it active. */
-export async function quickLogin(username: string, password: string): Promise<QuickAccount> {
+export async function quickLogin(
+  username: string,
+  password: string,
+): Promise<QuickAccount> {
   const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -111,7 +126,8 @@ export async function quickLogin(username: string, password: string): Promise<Qu
 }
 
 function clearQuickActive(): void {
-  if (typeof window !== "undefined") window.localStorage.removeItem(KEYS.quickActive);
+  if (typeof window !== "undefined")
+    window.localStorage.removeItem(KEYS.quickActive);
 }
 
 /** Public: token for the active quick account (used by the auth bootstrap). */
@@ -269,7 +285,11 @@ export function apiClient(): ApiClient {
       // 401 = the session is no longer authenticated (token died mid-use).
       // Clear local state and bounce to the login screen instead of leaving the
       // user staring at a failed action. (403 = permission, handled per-call.)
-      if (res.status === 401 && typeof window !== "undefined" && !redirectingOn401) {
+      if (
+        res.status === 401 &&
+        typeof window !== "undefined" &&
+        !redirectingOn401
+      ) {
         redirectingOn401 = true;
         clearActiveWorkspace();
         window.location.href = "/";

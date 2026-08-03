@@ -13,6 +13,7 @@ Run INSIDE the api container (it has the wired gateway + TEI access):
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import sqlalchemy as sa
 
@@ -27,7 +28,8 @@ async def main() -> None:
     container = bootstrap.build_container()
     gateway = container.knowledge_gateway
     assert gateway is not None, "knowledge gateway is not wired"
-    index = gateway.vector_index
+    # Concrete Qdrant adapter attrs (client/collection) — not on the port.
+    index: Any = gateway.vector_index
     embeddings = gateway.embeddings
     print("embedding dimension:", embeddings.dimension)
 
@@ -44,8 +46,10 @@ async def main() -> None:
     # 2) Re-embed every current active chunk per tenant (RLS needs the GUC).
     async with gateway.session_factory() as session:
         tenants = (
-            await session.execute(sa.text("select distinct tenant_id from knowledge.documents"))
-        ).scalars().all()
+            (await session.execute(sa.text("select distinct tenant_id from knowledge.documents")))
+            .scalars()
+            .all()
+        )
     total = 0
     for tenant_id in tenants:
         async with gateway.session_factory() as session:
@@ -92,9 +96,7 @@ async def main() -> None:
                     texts.append(f"{section}\n{row.content}" if section else row.content)
                 vectors: list[tuple[float, ...]] = []
                 for i in range(0, len(texts), BATCH):
-                    vectors.extend(
-                        tuple(v) for v in await embeddings.embed(texts[i : i + BATCH])
-                    )
+                    vectors.extend(tuple(v) for v in await embeddings.embed(texts[i : i + BATCH]))
                 await index.upsert(
                     [
                         IndexableChunk(

@@ -33,6 +33,7 @@ SEED_NAMESPACE = uuid.UUID("6f0f6f1e-9f6a-4f65-9a1c-000000000d10")
 def sid(kind: str, key: str) -> uuid.UUID:
     return uuid.uuid5(SEED_NAMESPACE, f"{kind}:{key}")
 
+
 LUAT_DAU_THAU = """\
 # Luật Đấu thầu — trích lục phục vụ mua sắm (bản trích lược demo, \
 cấu trúc theo Luật Đấu thầu số 22/2023/QH15)
@@ -137,8 +138,7 @@ async def main() -> None:
         junk = (
             await session.execute(
                 sa.text(
-                    "select id, tenant_id, title from knowledge.documents "
-                    f"where {JUNK_TITLE_SQL}"
+                    f"select id, tenant_id, title from knowledge.documents where {JUNK_TITLE_SQL}"
                 )
             )
         ).all()

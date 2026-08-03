@@ -12,11 +12,7 @@ import {
 } from "lucide-react";
 import type { PreparationCase } from "@dw/api-client";
 import { Badge, Card, CardContent, cn } from "@dw/ui";
-import {
-  evaluateCompliance,
-  summarize,
-  type CheckStatus,
-} from "./compliance";
+import { evaluateCompliance, summarize, type CheckStatus } from "./compliance";
 
 const ICON: Record<CheckStatus, { Icon: LucideIcon; cls: string }> = {
   pass: { Icon: CheckCircle2, cls: "text-emerald-600" },
@@ -70,39 +66,39 @@ export function ComplianceChecklist({
         </div>
       </button>
       {open && (
-      <CardContent className="border-t pt-4">
-        <ul className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-          {checks.map((check) => {
-            const { Icon, cls } = ICON[check.status];
-            return (
-              <li key={check.code} className="flex items-start gap-2.5">
-                <Icon className={`mt-0.5 size-4 shrink-0 ${cls}`} />
-                <div className="min-w-0">
-                  <p
-                    className={`text-sm font-medium ${
-                      check.status === "na" ? "text-muted-foreground" : ""
-                    }`}
-                  >
-                    {check.label}
-                    {check.legalRef && (
-                      <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                        · {check.legalRef}
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    {check.detail}
-                  </p>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-        <p className="mt-4 border-t pt-3 text-[11px] leading-4 text-muted-foreground">
-          Ngưỡng và mốc thời gian là cấu hình demo (theo rule pack). Bộ phận pháp
-          chế/đấu thầu cần xác nhận trước khi áp dụng nghiệp vụ thật.
-        </p>
-      </CardContent>
+        <CardContent className="border-t pt-4">
+          <ul className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+            {checks.map((check) => {
+              const { Icon, cls } = ICON[check.status];
+              return (
+                <li key={check.code} className="flex items-start gap-2.5">
+                  <Icon className={`mt-0.5 size-4 shrink-0 ${cls}`} />
+                  <div className="min-w-0">
+                    <p
+                      className={`text-sm font-medium ${
+                        check.status === "na" ? "text-muted-foreground" : ""
+                      }`}
+                    >
+                      {check.label}
+                      {check.legalRef && (
+                        <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                          · {check.legalRef}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      {check.detail}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-4 border-t pt-3 text-[11px] leading-4 text-muted-foreground">
+            Ngưỡng và mốc thời gian là cấu hình demo (theo rule pack). Bộ phận
+            pháp chế/đấu thầu cần xác nhận trước khi áp dụng nghiệp vụ thật.
+          </p>
+        </CardContent>
       )}
     </Card>
   );

@@ -191,6 +191,7 @@ class ApiSettings(BaseSettings):
             if isinstance(raw, dict):
                 forward.update({str(k): str(v).strip() for k, v in raw.items()})
         return {slack_id: subject for subject, slack_id in forward.items() if slack_id}
+
     approval_reminder_seconds: int = Field(
         default=5,
         ge=1,

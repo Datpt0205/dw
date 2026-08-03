@@ -1,11 +1,7 @@
 "use client";
 
 import Keycloak from "keycloak-js";
-import {
-  KEYCLOAK_CLIENT_ID,
-  KEYCLOAK_REALM,
-  KEYCLOAK_URL,
-} from "./config";
+import { KEYCLOAK_CLIENT_ID, KEYCLOAK_REALM, KEYCLOAK_URL } from "./config";
 
 /**
  * Single keycloak-js instance for the whole app. keycloak-js may only be

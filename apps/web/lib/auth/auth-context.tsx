@@ -33,11 +33,7 @@ export interface Membership {
 }
 
 export type AuthStatus =
-  | "loading"
-  | "unauthenticated"
-  | "no-workspace"
-  | "error"
-  | "ready";
+  "loading" | "unauthenticated" | "no-workspace" | "error" | "ready";
 
 interface AuthContextValue {
   mode: typeof AUTH_MODE;

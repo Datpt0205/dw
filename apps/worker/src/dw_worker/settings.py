@@ -81,19 +81,11 @@ class WorkerSettings(BaseSettings):
     )
     slack_user_map_json: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "DW_WORKER_SLACK_USER_MAP_JSON", "SLACK_USER_MAP_JSON"
-        ),
+        validation_alias=AliasChoices("DW_WORKER_SLACK_USER_MAP_JSON", "SLACK_USER_MAP_JSON"),
     )
-    slack_user_an_id: str = Field(
-        default="", validation_alias=AliasChoices("SLACK_USER_AN_ID")
-    )
-    slack_user_binh_id: str = Field(
-        default="", validation_alias=AliasChoices("SLACK_USER_BINH_ID")
-    )
-    slack_user_chi_id: str = Field(
-        default="", validation_alias=AliasChoices("SLACK_USER_CHI_ID")
-    )
+    slack_user_an_id: str = Field(default="", validation_alias=AliasChoices("SLACK_USER_AN_ID"))
+    slack_user_binh_id: str = Field(default="", validation_alias=AliasChoices("SLACK_USER_BINH_ID"))
+    slack_user_chi_id: str = Field(default="", validation_alias=AliasChoices("SLACK_USER_CHI_ID"))
 
     def slack_user_map(self) -> dict[str, str]:
         mapping = {

@@ -223,7 +223,7 @@ def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
                 "value": str(message.case_id),
             },
         ]
-    blocks: list[dict[str, Any]] = [
+    blocks = [
         {
             "type": "header",
             "text": {"type": "plain_text", "text": heading, "emoji": True},

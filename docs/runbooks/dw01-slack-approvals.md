@@ -39,8 +39,8 @@ Không tạo Incoming Webhook. Hệ thống dùng Slack Web API và bot token.
 2. Tìm **Scopes** > **Bot Token Scopes**.
 3. Chọn **Add an OAuth Scope**, tìm và thêm `chat:write`.
 4. Chọn **Add an OAuth Scope** lần nữa, tìm và thêm `im:write`.
-   - `chat:write`: bot gửi Block Kit message.
-   - `im:write`: bot mở DM với người nhận bằng `conversations.open`.
+    - `chat:write`: bot gửi Block Kit message.
+    - `im:write`: bot mở DM với người nhận bằng `conversations.open`.
 5. Để trống toàn bộ mục **User Token Scopes**.
 6. Không cần `users:read`, `users:read.email`, `channels:read` hoặc
    `chat:write.public` cho luồng DM hiện tại.
@@ -157,33 +157,33 @@ docker compose --env-file .env -f infra/compose/docker-compose.yml up -d --force
 1. Đăng nhập web bằng `an.nguyen`.
 2. Tạo case DW01 mới.
 3. Trong vài giây:
-   - Bình nhận DM `Yêu cầu mới cần phê duyệt`.
-   - Trang case hiển thị job `intake.approval_requested = sent`.
+    - Bình nhận DM `Yêu cầu mới cần phê duyệt`.
+    - Trang case hiển thị job `intake.approval_requested = sent`.
 4. Không xử lý trong 5 giây:
-   - Chi nhận DM `Nhắc việc phê duyệt quá hạn`.
-   - Job `intake.approval_escalated = sent`.
+    - Chi nhận DM `Nhắc việc phê duyệt quá hạn`.
+    - Job `intake.approval_escalated = sent`.
 5. Bình bấm **Mở hồ sơ DW01**, đăng nhập `binh.tran`.
 6. Thử một trong hai nhánh:
-   - Điền approval reference và chọn **Xác nhận intake**: An nhận DM đã duyệt.
-   - Nhập lý do và chọn **Từ chối và báo An**: An nhận DM kèm lý do.
+    - Điền approval reference và chọn **Xác nhận intake**: An nhận DM đã duyệt.
+    - Nhập lý do và chọn **Từ chối và báo An**: An nhận DM kèm lý do.
 7. Mở nhật ký Slack trên trang case:
-   - `sent`: Slack trả về thành công.
-   - `queued`: đang chờ hoặc chờ retry.
-   - `cancelled`: reminder bị huỷ vì case đã được xử lý.
-   - `failed`: đã hết số lần retry; xem `last_error`.
+    - `sent`: Slack trả về thành công.
+    - `queued`: đang chờ hoặc chờ retry.
+    - `cancelled`: reminder bị huỷ vì case đã được xử lý.
+    - `failed`: đã hết số lần retry; xem `last_error`.
 
 Để kiểm tra nhánh “không gửi nhắc Chi”, tạo case khác và cho Bình duyệt trong vòng
 5 giây. Job escalation phải chuyển thành `cancelled`.
 
 ## 8. Xử lý lỗi thường gặp
 
-| Lỗi trong `last_error` | Nguyên nhân thường gặp | Cách xử lý |
-| --- | --- | --- |
-| `invalid_auth` | Token sai, bị revoke hoặc không phải `xoxb-` | Cài/reinstall app và lấy lại Bot User OAuth Token |
-| `missing_scope` | Thiếu `chat:write` hoặc `im:write` | Thêm scope, **Reinstall to Workspace**, restart worker |
-| `no Slack member mapping` | Thiếu/sai biến Member ID | Kiểm tra ba biến `SLACK_USER_*_ID` |
-| `user_not_found` | Member ID không thuộc workspace đã cài app | Copy lại ID từ đúng workspace |
-| timeout/network | Docker không ra được `slack.com` | Kiểm tra proxy, DNS và firewall; worker tự retry |
+| Lỗi trong `last_error`    | Nguyên nhân thường gặp                       | Cách xử lý                                             |
+| ------------------------- | -------------------------------------------- | ------------------------------------------------------ |
+| `invalid_auth`            | Token sai, bị revoke hoặc không phải `xoxb-` | Cài/reinstall app và lấy lại Bot User OAuth Token      |
+| `missing_scope`           | Thiếu `chat:write` hoặc `im:write`           | Thêm scope, **Reinstall to Workspace**, restart worker |
+| `no Slack member mapping` | Thiếu/sai biến Member ID                     | Kiểm tra ba biến `SLACK_USER_*_ID`                     |
+| `user_not_found`          | Member ID không thuộc workspace đã cài app   | Copy lại ID từ đúng workspace                          |
+| timeout/network           | Docker không ra được `slack.com`             | Kiểm tra proxy, DNS và firewall; worker tự retry       |
 
 Sau khi sửa `.env`, recreate worker. Không cần xoá database; job đang `queued` sẽ
 được xử lý tiếp.

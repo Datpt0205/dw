@@ -64,14 +64,20 @@ const CITE_KEYS: { key: string; label: string }[] = [
   { key: "references", label: "Tài liệu tham chiếu" },
 ];
 
-function citationsOf(content: Record<string, any>): { label: string; items: Citation[] }[] {
+function citationsOf(
+  content: Record<string, any>,
+): { label: string; items: Citation[] }[] {
   return CITE_KEYS.map(({ key, label }) => ({
     label,
     items: Array.isArray(content[key]) ? (content[key] as Citation[]) : [],
   })).filter((group) => group.items.length > 0);
 }
 
-export function ExecutionTrace({ artifacts }: { artifacts: PreparationArtifact[] }) {
+export function ExecutionTrace({
+  artifacts,
+}: {
+  artifacts: PreparationArtifact[];
+}) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [docTitles, setDocTitles] = useState<Map<string, string>>(new Map());
 
@@ -118,8 +124,7 @@ export function ExecutionTrace({ artifacts }: { artifacts: PreparationArtifact[]
             const cites = citationsOf(content);
             const citeCount = cites.reduce((n, g) => n + g.items.length, 0);
             const gate = content.gate as
-              | { passed: boolean; reasons?: string[] }
-              | undefined;
+              { passed: boolean; reasons?: string[] } | undefined;
             const grounded = content.grounding_status as string | undefined;
             const hasDetail = citeCount > 0 || gate !== undefined;
             const open = expanded === type;
@@ -177,7 +182,10 @@ export function ExecutionTrace({ artifacts }: { artifacts: PreparationArtifact[]
                           đạt
                         </p>
                         {(gate.reasons ?? []).map((reason) => (
-                          <p key={reason} className="text-xs text-muted-foreground">
+                          <p
+                            key={reason}
+                            className="text-xs text-muted-foreground"
+                          >
                             • {reason}
                           </p>
                         ))}

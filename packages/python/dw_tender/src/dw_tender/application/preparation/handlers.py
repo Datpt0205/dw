@@ -546,10 +546,11 @@ class AutoPublishPreparationHandler:
                 )
             package = await uow.artifacts.latest(case.id, ArtifactType.SOLICITATION_PACKAGE)
             shortlist_art = await uow.artifacts.latest(case.id, ArtifactType.SUPPLIER_SHORTLIST)
-            raw_shortlist = shortlist_art.content.get("shortlist", []) if shortlist_art else []
+            raw_shortlist = shortlist_art.content.get("shortlist") if shortlist_art else None
+            shortlist_items = raw_shortlist if isinstance(raw_shortlist, list) else []
             suppliers = [
                 str(s.get("name", ""))
-                for s in raw_shortlist
+                for s in shortlist_items
                 if isinstance(s, dict) and str(s.get("name", "")).strip()
             ]
             subject = f"[MỜI CHÀO GIÁ] {case.title} — {case.source_pr_ref or ''}".strip()

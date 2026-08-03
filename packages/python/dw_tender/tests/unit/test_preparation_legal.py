@@ -66,9 +66,7 @@ def test_accepts_leading_zero_day_numbers() -> None:
     )
     extraction = LegalConstraintExtraction(
         min_bid_preparation_days=5,
-        source_quote=(
-            "thời gian chuẩn bị hồ sơ dự thầu tối thiểu là 05 ngày làm việc"
-        ),
+        source_quote=("thời gian chuẩn bị hồ sơ dự thầu tối thiểu là 05 ngày làm việc"),
     )
     verified = verified_constraint(extraction, [passage])
     assert verified is not None and verified["min_bid_preparation_days"] == 5

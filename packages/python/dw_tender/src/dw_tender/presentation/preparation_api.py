@@ -329,11 +329,12 @@ def build_preparation_router(
         case_id: uuid.UUID, context: AccessContext = require_context
     ) -> ActionResponse:
         result = await auto_publish.handle(case_id, context)
+        details: dict[str, object] = dict(result)
         await audit_recorder.record(
             context,
             action="preparation.publication.auto_sent",
             case_id=case_id,
-            details=result,
+            details=details,
         )
         return ActionResponse()
 

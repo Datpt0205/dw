@@ -62,7 +62,9 @@ export function PendingCp3Decision() {
         approval_reference: refs[id] ?? "",
         comment: comments[id] ?? "",
       });
-      toast.success(approve ? "Đã duyệt sửa đổi (CP3)." : "Đã từ chối addendum.");
+      toast.success(
+        approve ? "Đã duyệt sửa đổi (CP3)." : "Đã từ chối addendum.",
+      );
       refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Lỗi không rõ");

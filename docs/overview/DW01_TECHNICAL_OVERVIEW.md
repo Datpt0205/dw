@@ -134,28 +134,28 @@ flowchart LR
 
 ## 4. Bảo mật & kiểm soát
 
-| Lớp | Cơ chế |
-|---|---|
-| Danh tính chat | Slack member ID → subject (env/config map) → membership DB → AccessContext; chat không bao giờ là authorization |
-| Phân quyền | Scope-based ở application handler; UI ẩn nút chỉ là mỹ thuật, server chặn thật (403) |
-| SoD | Người tạo case không thể duyệt checkpoint của chính mình — chặn ở ApprovalFlow |
+| Lớp              | Cơ chế                                                                                                                     |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Danh tính chat   | Slack member ID → subject (env/config map) → membership DB → AccessContext; chat không bao giờ là authorization            |
+| Phân quyền       | Scope-based ở application handler; UI ẩn nút chỉ là mỹ thuật, server chặn thật (403)                                       |
+| SoD              | Người tạo case không thể duyệt checkpoint của chính mình — chặn ở ApprovalFlow                                             |
 | Tenant isolation | Postgres RLS ép theo `app.tenant_id` mỗi transaction; Qdrant filter ép trong gateway; object key MinIO có tenant/workspace |
-| Idempotency | Slack event dedupe (DB), outbox idempotency key, artifact content-hash, double-click an toàn |
-| Audit | Mọi hành động có identity + timestamp; artifact/prompt/rule pack đều có version |
-| Secrets | `.env` (gitignored); realm Keycloak JSON chỉ là seed demo, credential thật nằm trong Postgres/vault |
+| Idempotency      | Slack event dedupe (DB), outbox idempotency key, artifact content-hash, double-click an toàn                               |
+| Audit            | Mọi hành động có identity + timestamp; artifact/prompt/rule pack đều có version                                            |
+| Secrets          | `.env` (gitignored); realm Keycloak JSON chỉ là seed demo, credential thật nằm trong Postgres/vault                        |
 
 ## 5. Bản đồ mã nguồn (rút gọn)
 
-| Đường dẫn | Vai trò |
-|---|---|
-| `apps/api/src/dw_api/channels/slack.py` | Socket adapter: event/interactive, receipt desk, text decisions |
-| `apps/api/src/dw_api/bootstrap.py` | Composition root — nối mọi adapter |
-| `packages/python/dw_tender/.../conversation/` | Chat intake service + schemas (slot, money guard) |
-| `packages/python/dw_tender/.../preparation/` | Handlers, rules (gates), review agent |
-| `packages/python/dw_tender/.../workflows/preparation_v1/` | LangGraph nodes CP1→CP4 |
-| `packages/python/dw_connectors/` | Slack chat/notifier/signature, SMTP, mock connectors |
-| `packages/python/dw_knowledge/` | Gateway RAG, ingest, Qdrant/TEI adapters |
-| `configs/policies/dw01/procurement_rules_v1.yaml` | Rule pack (Phụ lục G) |
-| `configs/prompts/**` | Prompt có version (intake 1.3.0, clarify, review) |
-| `apps/web/app/procurement/dw01/` | Back office chỉ đọc + Vết thực thi |
-| `scripts/demo_reset.sh`, `slack_clear_dm.py`, `knowledge_reindex.py` | Vận hành demo |
+| Đường dẫn                                                            | Vai trò                                                         |
+| -------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `apps/api/src/dw_api/channels/slack.py`                              | Socket adapter: event/interactive, receipt desk, text decisions |
+| `apps/api/src/dw_api/bootstrap.py`                                   | Composition root — nối mọi adapter                              |
+| `packages/python/dw_tender/.../conversation/`                        | Chat intake service + schemas (slot, money guard)               |
+| `packages/python/dw_tender/.../preparation/`                         | Handlers, rules (gates), review agent                           |
+| `packages/python/dw_tender/.../workflows/preparation_v1/`            | LangGraph nodes CP1→CP4                                         |
+| `packages/python/dw_connectors/`                                     | Slack chat/notifier/signature, SMTP, mock connectors            |
+| `packages/python/dw_knowledge/`                                      | Gateway RAG, ingest, Qdrant/TEI adapters                        |
+| `configs/policies/dw01/procurement_rules_v1.yaml`                    | Rule pack (Phụ lục G)                                           |
+| `configs/prompts/**`                                                 | Prompt có version (intake 1.3.0, clarify, review)               |
+| `apps/web/app/procurement/dw01/`                                     | Back office chỉ đọc + Vết thực thi                              |
+| `scripts/demo_reset.sh`, `slack_clear_dm.py`, `knowledge_reindex.py` | Vận hành demo                                                   |

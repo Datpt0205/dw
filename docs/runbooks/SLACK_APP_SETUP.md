@@ -15,24 +15,24 @@ Không cần tạo app mới — dùng đúng app đang gửi DM phê duyệt (�
 
 1. Mở <https://api.slack.com/apps> → chọn app DW → **Settings → Socket Mode**.
 2. Bật **Enable Socket Mode**. Slack yêu cầu tạo **App-Level Token**:
-   - Name: `dw-socket`
-   - Scope: `connections:write`
+    - Name: `dw-socket`
+    - Scope: `connections:write`
 3. Copy token `xapp-1-…` → dán vào `.env`:
 
-   ```env
-   SLACK_APP_TOKEN=xapp-1-...
-   DW_CHAT_FRONT_OFFICE_ENABLED=true
-   ```
+    ```env
+    SLACK_APP_TOKEN=xapp-1-...
+    DW_CHAT_FRONT_OFFICE_ENABLED=true
+    ```
 
 ### 1.2. Event Subscriptions
 
 **Features → Event Subscriptions** → bật **Enable Events** (khi Socket Mode đã
 bật thì KHÔNG cần Request URL). Trong **Subscribe to bot events** thêm:
 
-| Event | Mục đích |
-|---|---|
-| `message.im` | Nhận DM người dùng gửi cho bot |
-| `app_mention` | Nhận `@DW …` trong channel |
+| Event         | Mục đích                       |
+| ------------- | ------------------------------ |
+| `message.im`  | Nhận DM người dùng gửi cho bot |
+| `app_mention` | Nhận `@DW …` trong channel     |
 
 Save Changes.
 
@@ -45,13 +45,13 @@ Mode không cần Request URL. (Nút «Tạo hồ sơ / Sửa thông tin» dùng
 
 **OAuth & Permissions → Bot Token Scopes** — bảo đảm có (thêm nếu thiếu):
 
-| Scope | Vì sao |
-|---|---|
-| `chat:write` | Gửi/cập nhật tin nhắn (đã có từ trước) |
-| `im:history` | Đọc DM gửi cho bot (message.im) |
-| `app_mentions:read` | Đọc tin nhắn @mention |
-| `im:write` | Mở DM (đã dùng cho thông báo phê duyệt) |
-| `files:read` | Tải file HSDT do quản lý thả vào DM (bàn tiếp nhận hồ sơ dự thầu) |
+| Scope               | Vì sao                                                            |
+| ------------------- | ----------------------------------------------------------------- |
+| `chat:write`        | Gửi/cập nhật tin nhắn (đã có từ trước)                            |
+| `im:history`        | Đọc DM gửi cho bot (message.im)                                   |
+| `app_mentions:read` | Đọc tin nhắn @mention                                             |
+| `im:write`          | Mở DM (đã dùng cho thông báo phê duyệt)                           |
+| `files:read`        | Tải file HSDT do quản lý thả vào DM (bàn tiếp nhận hồ sơ dự thầu) |
 
 Nếu vừa thêm scope → **Reinstall to Workspace** (Install App → Reinstall).
 Token `xoxb-` giữ nguyên trừ khi Slack yêu cầu cấp lại — nếu cấp lại thì cập
@@ -93,7 +93,7 @@ docker logs dw-api 2>&1 | Select-String "slack"   # "slack socket-mode connected
 1. **An** (Slack) DM bot: `Tôi muốn mua 100 laptop cho developer`.
 2. Bot hỏi gộp phần thiếu (ngân sách, thời hạn, nơi giao, NCC tối thiểu theo
    rule pack…). An trả lời tự nhiên: `2 tỷ, cần trong 45 ngày, giao Hà Nội,
-   mời FPT, CMC, Viettel`.
+mời FPT, CMC, Viettel`.
 3. Bot hiển thị **thẻ xác nhận** (confirm-before-commit) → An bấm **Tạo hồ sơ**.
 4. Hồ sơ DW01 được tạo bằng đúng command của web UI; **Bình** nhận DM phê duyệt
    như luồng hiện có; web UI thành back-office xem chi tiết.
@@ -101,13 +101,13 @@ docker logs dw-api 2>&1 | Select-String "slack"   # "slack socket-mode connected
 
 ## 5. Sự cố thường gặp
 
-| Triệu chứng | Nguyên nhân / xử lý |
-|---|---|
-| Log `SLACK_APP_TOKEN missing or not an app token` | Token phải bắt đầu `xapp-` (không phải `xoxb-`) |
-| Bot không phản hồi DM | Chưa subscribe `message.im`, hoặc chưa Reinstall sau khi thêm scope |
-| `missing_scope` trong log | Thiếu scope ở §1.4 → thêm + Reinstall |
-| Bot trả lời 2 lần | Không xảy ra: event được dedupe qua `platform.channel_event_dedupe` |
-| Người lạ nhắn bot | Nhận hướng dẫn map ID; không truy cập được dữ liệu case |
+| Triệu chứng                                       | Nguyên nhân / xử lý                                                 |
+| ------------------------------------------------- | ------------------------------------------------------------------- |
+| Log `SLACK_APP_TOKEN missing or not an app token` | Token phải bắt đầu `xapp-` (không phải `xoxb-`)                     |
+| Bot không phản hồi DM                             | Chưa subscribe `message.im`, hoặc chưa Reinstall sau khi thêm scope |
+| `missing_scope` trong log                         | Thiếu scope ở §1.4 → thêm + Reinstall                               |
+| Bot trả lời 2 lần                                 | Không xảy ra: event được dedupe qua `platform.channel_event_dedupe` |
+| Người lạ nhắn bot                                 | Nhận hướng dẫn map ID; không truy cập được dữ liệu case             |
 
 ## 6. Phạm vi đã phủ (P0-P8 hoàn tất)
 
@@ -119,7 +119,7 @@ docker logs dw-api 2>&1 | Select-String "slack"   # "slack socket-mode connected
 - **Autonomy (P6)**: `DW_AUTONOMY_PROFILE=autonomous_demo` → CP1 tự duyệt cho
   gói chỉ định thầu rủi ro thấp; mặc định `governed_production` luôn chờ người.
 - **App Home (P7)**: tab Home = "Việc của tôi" (cần bot event `app_home_opened`
-  + bật Home Tab).
+    - bật Home Tab).
 - **Production ingress (P8)**: đặt `SLACK_SIGNING_SECRET` để bật HTTPS
   endpoints `/api/v1/channels/slack/{events,interactions}` (verify chữ ký,
   chặn replay). Socket Mode vẫn là đường local/demo.

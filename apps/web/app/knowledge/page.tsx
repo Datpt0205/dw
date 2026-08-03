@@ -186,109 +186,107 @@ export default function KnowledgePage() {
       )}
 
       <section className="space-y-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="font-semibold">Danh mục tài liệu</h2>
-              <p className="text-xs text-muted-foreground">
-                Luật, quy chế và biểu mẫu đang được sử dụng
-              </p>
-            </div>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
-              <Input
-                className="pl-9 sm:w-64"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Tìm theo tên hoặc loại…"
-              />
-            </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold">Danh mục tài liệu</h2>
+            <p className="text-xs text-muted-foreground">
+              Luật, quy chế và biểu mẫu đang được sử dụng
+            </p>
           </div>
-
-          {documents === null && !error && (
-            <Skeleton className="h-64 rounded-2xl" />
-          )}
-          {documents !== null && visibleDocuments.length === 0 && (
-            <EmptyState
-              icon={Library}
-              title={
-                documents.length === 0
-                  ? "Kho tri thức đang trống"
-                  : "Không tìm thấy tài liệu"
-              }
-              description={
-                documents.length === 0
-                  ? "Tải tài liệu đầu tiên để hệ thống có nguồn tham chiếu."
-                  : "Thử thay đổi từ khóa tìm kiếm."
-              }
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
+            <Input
+              className="pl-9 sm:w-64"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Tìm theo tên hoặc loại…"
             />
-          )}
-          {visibleDocuments.length > 0 && (
-            <Card className="overflow-hidden">
-              <div className="divide-y">
-                {visibleDocuments.map((document) => (
-                  <div
-                    key={document.document_id}
-                    className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"
-                  >
-                    <div className="flex min-w-0 items-start gap-3">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-                        <BookOpen className="size-4" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold">
-                          {document.title}
-                        </p>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                          <span>
-                            {DOMAIN_LABEL[document.domain] ?? document.domain}
-                          </span>
-                          <span>·</span>
-                          <span>
-                            {document.chunk_count} đoạn nội dung có thể tra cứu
-                          </span>
-                          <span>·</span>
-                          <span>
-                            {new Date(document.created_at).toLocaleDateString(
-                              "vi-VN",
-                            )}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          <Badge
-                            variant={
-                              document.scope === "global"
-                                ? "warning"
-                                : "secondary"
-                            }
-                          >
-                            {document.scope === "global"
-                              ? "Toàn cục"
-                              : "Nội bộ"}
-                          </Badge>
-                          <Badge variant="outline">
-                            Phiên bản {document.source_version}
-                          </Badge>
-                        </div>
+          </div>
+        </div>
+
+        {documents === null && !error && (
+          <Skeleton className="h-64 rounded-2xl" />
+        )}
+        {documents !== null && visibleDocuments.length === 0 && (
+          <EmptyState
+            icon={Library}
+            title={
+              documents.length === 0
+                ? "Kho tri thức đang trống"
+                : "Không tìm thấy tài liệu"
+            }
+            description={
+              documents.length === 0
+                ? "Tải tài liệu đầu tiên để hệ thống có nguồn tham chiếu."
+                : "Thử thay đổi từ khóa tìm kiếm."
+            }
+          />
+        )}
+        {visibleDocuments.length > 0 && (
+          <Card className="overflow-hidden">
+            <div className="divide-y">
+              {visibleDocuments.map((document) => (
+                <div
+                  key={document.document_id}
+                  className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"
+                >
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                      <BookOpen className="size-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">
+                        {document.title}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                        <span>
+                          {DOMAIN_LABEL[document.domain] ?? document.domain}
+                        </span>
+                        <span>·</span>
+                        <span>
+                          {document.chunk_count} đoạn nội dung có thể tra cứu
+                        </span>
+                        <span>·</span>
+                        <span>
+                          {new Date(document.created_at).toLocaleDateString(
+                            "vi-VN",
+                          )}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Badge
+                          variant={
+                            document.scope === "global"
+                              ? "warning"
+                              : "secondary"
+                          }
+                        >
+                          {document.scope === "global" ? "Toàn cục" : "Nội bộ"}
+                        </Badge>
+                        <Badge variant="outline">
+                          Phiên bản {document.source_version}
+                        </Badge>
                       </div>
                     </div>
-                    {canWrite && (document.scope !== "global" || canGlobal) && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Xoá tài liệu"
-                        disabled={busy}
-                        onClick={() => void onDelete(document)}
-                        className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        <Trash2 />
-                      </Button>
-                    )}
                   </div>
-                ))}
-              </div>
-            </Card>
-          )}
-        </section>
+                  {canWrite && (document.scope !== "global" || canGlobal) && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Xoá tài liệu"
+                      disabled={busy}
+                      onClick={() => void onDelete(document)}
+                      className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+      </section>
 
       {canWrite && formOpen && (
         <div

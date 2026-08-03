@@ -31,6 +31,7 @@ IMPORT_TO_DIST = {
     "qdrant_client": "qdrant-client",
     "redis": "redis",
     "httpx": "httpx",
+    "websockets": "websockets",
     "minio": "minio",
     "docling": "docling",
     "boto3": "boto3",

@@ -90,9 +90,7 @@ class SlackApprovalConsumer:
                 "CP2": "cp2_pending",
                 "CP3": "cp3_pending",
                 "CP4": "receiving_bids",
-            }.get(
-                str(job.payload.get("checkpoint", ""))
-            )
+            }.get(str(job.payload.get("checkpoint", "")))
             if expected is not None and delivery.case_state != expected:
                 await self.store.mark_cancelled(
                     delivery,

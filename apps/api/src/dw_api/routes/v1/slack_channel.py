@@ -62,9 +62,7 @@ def build_slack_channel_router(front_office: Any, verifier: Any) -> APIRouter:
         # Interactivity arrives form-encoded with a JSON `payload` field.
         form = parse_qs(body.decode("utf-8"))
         raw = (form.get("payload") or ["{}"])[0]
-        _spawn(
-            front_office.handle_envelope({"type": "interactive", "payload": json.loads(raw)})
-        )
+        _spawn(front_office.handle_envelope({"type": "interactive", "payload": json.loads(raw)}))
         return Response(status_code=200)
 
     return router

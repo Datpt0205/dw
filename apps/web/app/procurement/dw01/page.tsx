@@ -84,8 +84,10 @@ export default function Dw01ListPage() {
   // Minimum suppliers implied by the package value (mirrors the rule pack:
   // ≤100tr = chỉ định (1); trên đó = chào giá/đấu thầu rộng rãi (3)). Validated
   // here so a package that can't clear CP1 is caught at intake, not mid-run.
-  const requiredSuppliers = Number(value) > 0 && Number(value) <= 100_000_000 ? 1 : 3;
-  const suppliersShort = Number(value) > 0 && suppliers.length < requiredSuppliers;
+  const requiredSuppliers =
+    Number(value) > 0 && Number(value) <= 100_000_000 ? 1 : 3;
+  const suppliersShort =
+    Number(value) > 0 && suppliers.length < requiredSuppliers;
 
   const valid = useMemo(
     () =>
@@ -98,7 +100,16 @@ export default function Dw01ListPage() {
         owner.trim() &&
         suppliers.length >= requiredSuppliers,
       ),
-    [deadline, file, owner, reference, suppliers, title, value, requiredSuppliers],
+    [
+      deadline,
+      file,
+      owner,
+      reference,
+      suppliers,
+      title,
+      value,
+      requiredSuppliers,
+    ],
   );
 
   const visibleCases = useMemo(() => {
@@ -220,9 +231,10 @@ export default function Dw01ListPage() {
       {DW01_READONLY && (
         <Alert>
           <p>
-            💬 Hồ sơ mua sắm được tạo bằng cách <strong>nhắn tin cho Digital
-            Worker trên Slack</strong> (vd: «Tôi muốn mua 100 laptop»). Trang
-            web chỉ dùng để theo dõi tiến trình, tài liệu và audit.
+            💬 Hồ sơ mua sắm được tạo bằng cách{" "}
+            <strong>nhắn tin cho Digital Worker trên Slack</strong> (vd: «Tôi
+            muốn mua 100 laptop»). Trang web chỉ dùng để theo dõi tiến trình,
+            tài liệu và audit.
           </p>
         </Alert>
       )}

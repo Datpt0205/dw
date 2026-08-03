@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import text
@@ -20,7 +21,7 @@ _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 _ACTIVE_STATES = ("collecting", "confirming")
 
 
-def _view(row: sa.Row) -> ConversationView:
+def _view(row: sa.Row[Any]) -> ConversationView:
     return ConversationView(
         id=row.id,
         tenant_id=row.tenant_id,
@@ -47,7 +48,7 @@ class SqlConversationStore:
                 .values(event_id=event_id, received_at=self.clock.now())
                 .on_conflict_do_nothing(index_elements=["event_id"])
             )
-            return bool(result.rowcount)
+            return bool(getattr(result, "rowcount", 0))
 
     async def find_active(
         self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, channel_key: str

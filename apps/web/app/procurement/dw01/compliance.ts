@@ -118,7 +118,9 @@ export function evaluateCompliance(c: PreparationCase): ComplianceCheck[] {
     });
   }
 
-  const minDays = c.method_key ? MIN_SOLICITATION_DAYS[c.method_key] : undefined;
+  const minDays = c.method_key
+    ? MIN_SOLICITATION_DAYS[c.method_key]
+    : undefined;
   if (solicitation && minDays !== undefined) {
     const submission = (solicitation["submission"] ?? {}) as Record<
       string,
@@ -147,10 +149,14 @@ export function evaluateCompliance(c: PreparationCase): ComplianceCheck[] {
       code: "MANDATORY",
       label: "Có tiêu chí tiên quyết (đạt/không đạt)",
       status: hasMandatory ? "pass" : "fail",
-      detail: hasMandatory ? "Đã có tiêu chí bắt buộc" : "Thiếu tiêu chí tiên quyết",
+      detail: hasMandatory
+        ? "Đã có tiêu chí bắt buộc"
+        : "Thiếu tiêu chí tiên quyết",
     });
   } else {
-    checks.push(na("WEIGHTS", "Tổng trọng số tiêu chí = 100", "Chưa có tiêu chí"));
+    checks.push(
+      na("WEIGHTS", "Tổng trọng số tiêu chí = 100", "Chưa có tiêu chí"),
+    );
   }
 
   if (c.estimated_value_minor > LEGAL_REVIEW_ABOVE) {

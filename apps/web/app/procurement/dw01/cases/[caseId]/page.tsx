@@ -70,13 +70,25 @@ const ARTIFACT_ORDER = Object.keys(ARTIFACT_TITLE);
 // truy vết file nào của CP nào trong ô tài liệu.
 const DOC_KIND: Record<
   string,
-  { label: string; variant: "secondary" | "outline" | "warning" | "success"; order: number }
+  {
+    label: string;
+    variant: "secondary" | "outline" | "warning" | "success";
+    order: number;
+  }
 > = {
   approved_pr: { label: "PR đã duyệt", variant: "secondary", order: 1 },
-  publication_receipt: { label: "Bằng chứng phát hành", variant: "outline", order: 2 },
+  publication_receipt: {
+    label: "Bằng chứng phát hành",
+    variant: "outline",
+    order: 2,
+  },
   addendum: { label: "Sửa đổi · CP3", variant: "warning", order: 3 },
   supplier_submission: { label: "Hồ sơ dự thầu", variant: "outline", order: 4 },
-  bid_opening_minutes: { label: "Biên bản mở thầu · CP4", variant: "warning", order: 5 },
+  bid_opening_minutes: {
+    label: "Biên bản mở thầu · CP4",
+    variant: "warning",
+    order: 5,
+  },
   other: { label: "Khác", variant: "secondary", order: 9 },
 };
 
@@ -232,7 +244,9 @@ export default function Dw01CaseDetail({
         approval_reference: approvalReference,
         comment: verificationComment,
       });
-      toast.success("Đã xác minh và tự động chạy DW01 — dừng tại điểm kiểm soát.");
+      toast.success(
+        "Đã xác minh và tự động chạy DW01 — dừng tại điểm kiểm soát.",
+      );
       await refresh();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Lỗi không rõ";
@@ -410,7 +424,9 @@ export default function Dw01CaseDetail({
   }
   const historyByType = new Map<string, PreparationArtifact[]>();
   for (const a of data.artifacts) {
-    if (a.artifact_version === latestByType.get(a.artifact_type)?.artifact_version)
+    if (
+      a.artifact_version === latestByType.get(a.artifact_type)?.artifact_version
+    )
       continue;
     const list = historyByType.get(a.artifact_type) ?? [];
     list.push(a);
@@ -458,20 +474,16 @@ export default function Dw01CaseDetail({
   const intakeVerification = latestByType.get("intake_verification")
     ?.content as Record<string, any> | undefined;
   const supplierInput = latestByType.get("supplier_input")?.content as
-    | Record<string, any>
-    | undefined;
+    Record<string, any> | undefined;
   const supplierShortlist = latestByType.get("supplier_shortlist")?.content as
-    | Record<string, any>
-    | undefined;
+    Record<string, any> | undefined;
   const submissionItems = (latestByType.get("submission_register")?.content[
     "items"
   ] ?? []) as any[];
   const addendumDecision = latestByType.get("addendum_decision")?.content as
-    | Record<string, any>
-    | undefined;
+    Record<string, any> | undefined;
   const handoff = latestByType.get("evaluation_handoff")?.content as
-    | Record<string, any>
-    | undefined;
+    Record<string, any> | undefined;
   const official = latestByType.get("official_package_manifest");
   const runnable = data.state === "intake_ready" && canRun;
   const hasRunBefore = latestByType.has("demand_snapshot");
@@ -491,9 +503,10 @@ export default function Dw01CaseDetail({
     gateReasons.length > 0;
   // CP2 gate blockers (weighted total ≠ 100, shortlist below minimum, missing
   // sections) — same "never a silent dead-end" treatment as CP1.
-  const gateReasonsCp2 = (((latestByType.get("solicitation_package")?.content[
-    "gate"
-  ] as any)?.reasons ?? []) as string[]).filter(Boolean);
+  const gateReasonsCp2 = (
+    ((latestByType.get("solicitation_package")?.content["gate"] as any)
+      ?.reasons ?? []) as string[]
+  ).filter(Boolean);
   const stuckBeforeCp2 =
     data.state === "package_ready" && gateReasonsCp2.length > 0;
 
@@ -564,49 +577,50 @@ export default function Dw01CaseDetail({
               const done = i < stepIdx || (flowDone && i === stepIdx);
               const current = i === stepIdx && !flowDone;
               return (
-              <div key={s.key} className="flex items-center">
-                <button
-                  type="button"
-                  disabled={!reachable || !anchor}
-                  onClick={() => {
-                    if (anchor)
-                      document
-                        .getElementById(anchor)
-                        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-                  }}
-                  title={
-                    reachable && anchor
-                      ? "Xem lại bước này"
-                      : "Chưa tới bước này"
-                  }
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition",
-                    done
-                      ? "bg-success/15 text-success"
-                      : current
-                        ? "bg-primary/15 font-medium text-primary"
-                        : "bg-muted text-muted-foreground",
-                    reachable && anchor
-                      ? "cursor-pointer hover:ring-2 hover:ring-primary/30"
-                      : "cursor-default",
-                  )}
-                >
-                  {done ? (
-                    <CheckCircle2 className="size-3.5" />
-                  ) : (
-                    <Circle className="size-3.5" />
-                  )}
-                  {s.label}
-                </button>
-                {i < STEPPER.length - 1 && (
-                  <span
+                <div key={s.key} className="flex items-center">
+                  <button
+                    type="button"
+                    disabled={!reachable || !anchor}
+                    onClick={() => {
+                      if (anchor)
+                        document.getElementById(anchor)?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "center",
+                        });
+                    }}
+                    title={
+                      reachable && anchor
+                        ? "Xem lại bước này"
+                        : "Chưa tới bước này"
+                    }
                     className={cn(
-                      "h-px w-4",
-                      done ? "bg-success/50" : "bg-border",
+                      "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition",
+                      done
+                        ? "bg-success/15 text-success"
+                        : current
+                          ? "bg-primary/15 font-medium text-primary"
+                          : "bg-muted text-muted-foreground",
+                      reachable && anchor
+                        ? "cursor-pointer hover:ring-2 hover:ring-primary/30"
+                        : "cursor-default",
                     )}
-                  />
-                )}
-              </div>
+                  >
+                    {done ? (
+                      <CheckCircle2 className="size-3.5" />
+                    ) : (
+                      <Circle className="size-3.5" />
+                    )}
+                    {s.label}
+                  </button>
+                  {i < STEPPER.length - 1 && (
+                    <span
+                      className={cn(
+                        "h-px w-4",
+                        done ? "bg-success/50" : "bg-border",
+                      )}
+                    />
+                  )}
+                </div>
               );
             })}
           </div>
@@ -624,75 +638,79 @@ export default function Dw01CaseDetail({
         )}
       >
         <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Tài liệu hồ sơ (theo bước)
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          {[...data.documents]
-            .sort(
-              (a, b) =>
-                (DOC_KIND[(a as any).kind]?.order ?? 8) -
-                (DOC_KIND[(b as any).kind]?.order ?? 8),
-            )
-            .map((document) => {
-            const text = (document as any).text_content as string | undefined;
-            const kind =
-              DOC_KIND[(document as any).kind] ??
-              ({ label: "Khác", variant: "secondary" } as const);
-            return (
-              <div
-                key={document.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2"
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <Badge variant={kind.variant} className="shrink-0">
-                    {kind.label}
-                  </Badge>
-                  <span className="truncate font-medium">
-                    {document.filename}
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {(document.size_bytes / 1024).toFixed(1)} KiB
-                  </span>
-                </div>
-                {text ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDocViewer({ filename: document.filename, content: text })
-                    }
-                    className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition hover:bg-muted"
+          <CardHeader>
+            <CardTitle className="text-base">
+              Tài liệu hồ sơ (theo bước)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {[...data.documents]
+              .sort(
+                (a, b) =>
+                  (DOC_KIND[(a as any).kind]?.order ?? 8) -
+                  (DOC_KIND[(b as any).kind]?.order ?? 8),
+              )
+              .map((document) => {
+                const text = (document as any).text_content as
+                  string | undefined;
+                const kind =
+                  DOC_KIND[(document as any).kind] ??
+                  ({ label: "Khác", variant: "secondary" } as const);
+                return (
+                  <div
+                    key={document.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2"
                   >
-                    <Eye className="size-3.5" /> Xem nội dung
-                  </button>
-                ) : (
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    (không xem trước được)
-                  </span>
-                )}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Badge variant={kind.variant} className="shrink-0">
+                        {kind.label}
+                      </Badge>
+                      <span className="truncate font-medium">
+                        {document.filename}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {(document.size_bytes / 1024).toFixed(1)} KiB
+                      </span>
+                    </div>
+                    {text ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDocViewer({
+                            filename: document.filename,
+                            content: text,
+                          })
+                        }
+                        className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition hover:bg-muted"
+                      >
+                        <Eye className="size-3.5" /> Xem nội dung
+                      </button>
+                    ) : (
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        (không xem trước được)
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            {data.intake_verified_at ? (
+              <div className="rounded-lg border border-success/30 bg-success/5 p-2.5">
+                <p className="flex items-center gap-2 text-xs font-medium text-success">
+                  <FileCheck2 className="size-3.5" /> Đã xác minh đầu vào lúc{" "}
+                  {new Date(data.intake_verified_at).toLocaleString("vi-VN")}
+                  {intakeVerification?.approval_reference
+                    ? ` · Tham chiếu ${intakeVerification.approval_reference}`
+                    : ""}
+                </p>
               </div>
-            );
-          })}
-          {data.intake_verified_at ? (
-            <div className="rounded-lg border border-success/30 bg-success/5 p-2.5">
-              <p className="flex items-center gap-2 text-xs font-medium text-success">
-                <FileCheck2 className="size-3.5" /> Đã xác minh đầu vào lúc{" "}
-                {new Date(data.intake_verified_at).toLocaleString("vi-VN")}
-                {intakeVerification?.approval_reference
-                  ? ` · Tham chiếu ${intakeVerification.approval_reference}`
-                  : ""}
+            ) : (
+              <p className="text-xs text-warning">
+                Nguồn tải lên thủ công, chưa được xác minh — chưa thể chuyển
+                bước tiếp theo.
               </p>
-            </div>
-          ) : (
-            <p className="text-xs text-warning">
-              Nguồn tải lên thủ công, chưa được xác minh — chưa thể chuyển bước
-              tiếp theo.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
 
         {(supplierInput || supplierShortlist) && (
           <Card>
@@ -776,8 +794,8 @@ export default function Dw01CaseDetail({
               </>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Xác minh do <strong>Bình</strong> thực hiện trên thẻ Slack
-                (nút «Xác minh &amp; chạy DW01»).
+                Xác minh do <strong>Bình</strong> thực hiện trên thẻ Slack (nút
+                «Xác minh &amp; chạy DW01»).
               </p>
             )}
           </CardContent>
@@ -828,9 +846,9 @@ export default function Dw01CaseDetail({
               ))}
             </ul>
             <p className="text-xs text-muted-foreground">
-              Số nhà cung cấp ứng viên được nhập khi tạo hồ sơ. Với gói đấu
-              thầu rộng rãi/chào giá cạnh tranh cần tối thiểu 3 nhà cung cấp —
-              hãy tạo lại hồ sơ với đủ danh sách, hoặc điều chỉnh giá trị gói.
+              Số nhà cung cấp ứng viên được nhập khi tạo hồ sơ. Với gói đấu thầu
+              rộng rãi/chào giá cạnh tranh cần tối thiểu 3 nhà cung cấp — hãy
+              tạo lại hồ sơ với đủ danh sách, hoặc điều chỉnh giá trị gói.
             </p>
           </div>
         </Alert>
@@ -1178,8 +1196,8 @@ export default function Dw01CaseDetail({
         <Alert>
           <FileCheck2 className="size-4" />
           <div className="text-sm">
-            Addendum đang chờ <strong>quyết định CP3</strong> (người có thẩm quyền
-            ≠ người tạo).{" "}
+            Addendum đang chờ <strong>quyết định CP3</strong> (người có thẩm
+            quyền ≠ người tạo).{" "}
             <Link className="underline" href="/approvals">
               Mở trang Phê duyệt
             </Link>{" "}
@@ -1356,8 +1374,8 @@ export default function Dw01CaseDetail({
                 >
                   {cancelled
                     ? "Không cần gửi"
-                    : NOTIFICATION_STATUS[notification.status] ??
-                      notification.status}
+                    : (NOTIFICATION_STATUS[notification.status] ??
+                      notification.status)}
                 </Badge>
               </div>
             );
@@ -1647,7 +1665,9 @@ function renderArtifact(type: string, c: Record<string, any>) {
       );
     case "supplier_input":
       return (c.suppliers ?? []).length === 0 ? (
-        <p className="text-muted-foreground">Chưa nhập nhà cung cấp ứng viên.</p>
+        <p className="text-muted-foreground">
+          Chưa nhập nhà cung cấp ứng viên.
+        </p>
       ) : (
         <ul className="list-disc space-y-0.5 pl-5">
           {((c.suppliers ?? []) as any[]).map((s: any, i: number) => (
@@ -1666,8 +1686,8 @@ function renderArtifact(type: string, c: Record<string, any>) {
             </Badge>
           )}
           <p className="text-xs text-muted-foreground">
-            Tổng trọng số: {c.weighted_total} · tiêu chí đạt/không đạt lấy từ
-            bộ quy tắc
+            Tổng trọng số: {c.weighted_total} · tiêu chí đạt/không đạt lấy từ bộ
+            quy tắc
           </p>
           <ul className="list-disc space-y-0.5 pl-5">
             {(c.weighted ?? []).map((w: any) => (
@@ -1738,7 +1758,8 @@ function renderArtifact(type: string, c: Record<string, any>) {
               )}
             </Badge>
             <span className="text-xs text-muted-foreground">
-              {reqs.length} yêu cầu · {(c.unknowns ?? []).length} điểm cần làm rõ
+              {reqs.length} yêu cầu · {(c.unknowns ?? []).length} điểm cần làm
+              rõ
             </span>
           </div>
           <Row k="Giá trị" v={c.estimated_value} />

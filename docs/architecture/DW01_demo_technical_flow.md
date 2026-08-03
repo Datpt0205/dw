@@ -12,13 +12,13 @@
 Procurement mất 80% thời gian vào việc **đọc tài liệu, kiểm hồ sơ, hỏi đi hỏi lại, copy
 template, soạn văn bản, xin ký, theo dõi trạng thái**. DW01 giải bằng:
 
-| Painpoint (việc tay) | Công nghệ LÕI giải nó | Cơ chế |
-|---|---|---|
-| Đọc PR, bóc yêu cầu | **LLM** (structured extraction) | JSON → **validate Pydantic** |
-| Phát hiện thiếu thông tin, hỏi làm rõ | **LLM** (gợi ý câu trả lời) + rule đếm | Con người chỉ xác nhận |
-| Soạn HSMT, tiêu chí chấm | **LLM** (drafting) + **RAG** căn cứ pháp lý | Có fallback template/rule |
-| Điều phối nhiều bước + **dừng cho người duyệt** | **LangGraph** interrupt + checkpoint | Pause/resume **bền vững** |
-| Quyết định hình thức, ngưỡng, gate hợp lệ | **Rule pack** deterministic | Kiểm toán được, không nhờ AI |
+| Painpoint (việc tay)                            | Công nghệ LÕI giải nó                       | Cơ chế                       |
+| ----------------------------------------------- | ------------------------------------------- | ---------------------------- |
+| Đọc PR, bóc yêu cầu                             | **LLM** (structured extraction)             | JSON → **validate Pydantic** |
+| Phát hiện thiếu thông tin, hỏi làm rõ           | **LLM** (gợi ý câu trả lời) + rule đếm      | Con người chỉ xác nhận       |
+| Soạn HSMT, tiêu chí chấm                        | **LLM** (drafting) + **RAG** căn cứ pháp lý | Có fallback template/rule    |
+| Điều phối nhiều bước + **dừng cho người duyệt** | **LangGraph** interrupt + checkpoint        | Pause/resume **bền vững**    |
+| Quyết định hình thức, ngưỡng, gate hợp lệ       | **Rule pack** deterministic                 | Kiểm toán được, không nhờ AI |
 
 **Nguyên tắc:** AI làm phần nặng (đọc/soạn) → **con người quyết định tại CP1–CP4**
 (human-in-command A2). AI **không tự trao thầu**.
@@ -81,7 +81,7 @@ tuần tự + **cạnh điều kiện** (conditional edges). State là **TypedDi
 
 3. **Conditional routing — rẽ nhánh theo kết quả gate:**
    `approach_gate → {cp1_review | close_incomplete}`, `apply_cp1 → {draft_solicitation |
-   close_failed}`, `apply_cp2 → {finalize_official | close_failed}`. Logic rẽ nhánh **nằm
+close_failed}`, `apply_cp2 → {finalize_official | close_failed}`. Logic rẽ nhánh **nằm
    trong graph**, tách khỏi UI/DB.
 
 **Quy tắc kiến trúc trong node:** node **không** chứa SQL/HTTP/LLM SDK trực tiếp — chúng
@@ -100,6 +100,7 @@ nhiều lần dừng vẫn an toàn; graph có version để nâng cấp mà kh�
 
 **Kiến trúc gọi model (Ports & Strategy):**
 `node → model_gateway.generate_structured(ModelRequest, Schema, run_context)`.
+
 - `RoutingModelGateway` chọn adapter theo **profile** (`configs/models/deepseek.yaml`):
   task `structured_extraction` & `reasoning` → **DeepSeek** (`openai_compatible`).
 - Đổi LLM (DeepSeek ↔ OpenAI ↔ local) = **đổi profile YAML**, node không đổi 1 dòng.
@@ -122,17 +123,17 @@ nhiều lần dừng vẫn an toàn; graph có version để nâng cấp mà kh�
 
 **AI được dùng ở đúng 3 chỗ (đều có nhãn xanh trên UI):**
 
-| Node | AI làm gì | Van an toàn |
-|---|---|---|
-| `extract_requirements` | Bóc REQ-xx + phát hiện điểm chưa rõ + **gợi ý câu trả lời** | schema + rule fallback |
-| `draft_solicitation_package` | Soạn phạm vi + yêu cầu kỹ thuật HSMT | schema + template fallback + **RAG citations** |
-| `draft_evaluation_criteria` | Đề xuất **tiêu chí có trọng số** | **validate Σ=100** hoặc rule pack |
+| Node                         | AI làm gì                                                   | Van an toàn                                    |
+| ---------------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
+| `extract_requirements`       | Bóc REQ-xx + phát hiện điểm chưa rõ + **gợi ý câu trả lời** | schema + rule fallback                         |
+| `draft_solicitation_package` | Soạn phạm vi + yêu cầu kỹ thuật HSMT                        | schema + template fallback + **RAG citations** |
+| `draft_evaluation_criteria`  | Đề xuất **tiêu chí có trọng số**                            | **validate Σ=100** hoặc rule pack              |
 
 **RAG (căn cứ pháp lý):** khi soạn HSMT/tiêu chí, gateway tri thức truy hồi văn bản
 pháp lý/quy chế từ **Qdrant** (đã **lọc theo tenant/workspace/ACL**) và **gắn trích dẫn**
 vào artifact → HSMT có "grounding", không nói khơi khơi.
 
-**Chống hallucination có chủ đích:** AI **được phép** đề xuất *gợi ý* (draft) cho điểm
+**Chống hallucination có chủ đích:** AI **được phép** đề xuất _gợi ý_ (draft) cho điểm
 chưa rõ, nhưng **đánh dấu là gợi ý** để người xác nhận — không tự "bịa" thành dữ kiện chính
 thức.
 
@@ -146,7 +147,7 @@ thức.
 Trực tiếp điều khiển luồng:
 
 - **Chọn hình thức mua sắm** theo giá trị: ≤100tr → chỉ định (1 NCC); ≤1 tỷ → RFQ (3 NCC);
-  >1 tỷ → đấu thầu rộng rãi (3 NCC). → quyết định **rẽ nhánh & ràng buộc số NCC**.
+    > 1 tỷ → đấu thầu rộng rãi (3 NCC). → quyết định **rẽ nhánh & ràng buộc số NCC**.
 - **Gate CP1 (`approach_gate`)** và **Gate CP2 (`solicitation_gate`)**: kiểm PR đã duyệt,
   ngân sách, deadline, owner, **đủ NCC tối thiểu**, tiêu chí bắt buộc, **tổng trọng số = 100**,
   đủ mục HSMT. **Fail → lưu lý do → UI hiện Alert đỏ** (không dead-end im lặng).
@@ -160,20 +161,20 @@ Trực tiếp điều khiển luồng:
 
 > **IN** đầu vào · **OUT** artifact · **→NEXT** output thành input bước sau.
 
-| # | Bước (Actor) | AI / Graph / Rule làm gì | IN → OUT → NEXT |
-|---|---|---|---|
-| 0 | Tạo hồ sơ (Nhân viên) | — (validate form: số tiền, ≥ NCC tối thiểu) | PR file → `case(draft)`, `supplier_input` → khâu xác minh |
-| 1 | Xác minh đầu vào (Quản lý · **SoD**) | — → **auto-trigger graph** dưới danh nghĩa người tạo | `case(draft)` → `intake_verification` → khởi động **LangGraph** |
-| 2 | Chuẩn hoá nhu cầu | **LLM bóc yêu cầu** (validate Pydantic, idempotent) | PR text → `demand_snapshot(requirements, unknowns)` → completeness |
-| 3 | Kiểm đầy đủ & Làm rõ | **rule đếm** + **LLM gợi ý** câu trả lời | `unknowns` → `clarification_list/response` → đủ thì đi thẳng CP1 |
-| 4 | Phương án + Gate CP1 | **rule pack** chọn hình thức + `approach_gate` | requirements → `procurement_approach(+gate)` → `interrupt` CP1 |
-| 5 | **CP1 duyệt** (Quản lý) | **Graph resume** từ checkpoint | approval → `cp1_approved` → nhánh soạn hồ sơ |
-| 6 | Xây hồ sơ | **LLM+RAG** soạn HSMT · **LLM** tiêu chí (Σ=100) · shortlist · risk · `package_gate` | requirements → `solicitation_package`, `evaluation_criteria`, `supplier_shortlist` → `interrupt` CP2 |
-| 7 | **CP2 duyệt** (Quản lý) | **Graph resume** → `finalize_official` (khoá bộ hồ sơ) | approval → `official_package` → phát hành |
-| 8 | Phát hành | **SMTP connector** gửi RFQ + tự ghi nhận | official → `publication_record` → nhận thầu |
-| 9 | (tùy chọn) Addendum CP3 (**SoD**) | handler + quyết định → quay lại `published` | `addendum_draft/decision` → vòng lại |
-| 10 | Tiếp nhận HSDT | handler **append** nhiều NCC | HSDT → `submission_register` → CP4 |
-| 11 | **CP4 mở thầu** (Quản lý · **SoD**) | handler sinh gói bàn giao | biên bản + sổ → `evaluation_handoff` → **DW02** |
+| #   | Bước (Actor)                         | AI / Graph / Rule làm gì                                                             | IN → OUT → NEXT                                                                                      |
+| --- | ------------------------------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| 0   | Tạo hồ sơ (Nhân viên)                | — (validate form: số tiền, ≥ NCC tối thiểu)                                          | PR file → `case(draft)`, `supplier_input` → khâu xác minh                                            |
+| 1   | Xác minh đầu vào (Quản lý · **SoD**) | — → **auto-trigger graph** dưới danh nghĩa người tạo                                 | `case(draft)` → `intake_verification` → khởi động **LangGraph**                                      |
+| 2   | Chuẩn hoá nhu cầu                    | **LLM bóc yêu cầu** (validate Pydantic, idempotent)                                  | PR text → `demand_snapshot(requirements, unknowns)` → completeness                                   |
+| 3   | Kiểm đầy đủ & Làm rõ                 | **rule đếm** + **LLM gợi ý** câu trả lời                                             | `unknowns` → `clarification_list/response` → đủ thì đi thẳng CP1                                     |
+| 4   | Phương án + Gate CP1                 | **rule pack** chọn hình thức + `approach_gate`                                       | requirements → `procurement_approach(+gate)` → `interrupt` CP1                                       |
+| 5   | **CP1 duyệt** (Quản lý)              | **Graph resume** từ checkpoint                                                       | approval → `cp1_approved` → nhánh soạn hồ sơ                                                         |
+| 6   | Xây hồ sơ                            | **LLM+RAG** soạn HSMT · **LLM** tiêu chí (Σ=100) · shortlist · risk · `package_gate` | requirements → `solicitation_package`, `evaluation_criteria`, `supplier_shortlist` → `interrupt` CP2 |
+| 7   | **CP2 duyệt** (Quản lý)              | **Graph resume** → `finalize_official` (khoá bộ hồ sơ)                               | approval → `official_package` → phát hành                                                            |
+| 8   | Phát hành                            | **SMTP connector** gửi RFQ + tự ghi nhận                                             | official → `publication_record` → nhận thầu                                                          |
+| 9   | (tùy chọn) Addendum CP3 (**SoD**)    | handler + quyết định → quay lại `published`                                          | `addendum_draft/decision` → vòng lại                                                                 |
+| 10  | Tiếp nhận HSDT                       | handler **append** nhiều NCC                                                         | HSDT → `submission_register` → CP4                                                                   |
+| 11  | **CP4 mở thầu** (Quản lý · **SoD**)  | handler sinh gói bàn giao                                                            | biên bản + sổ → `evaluation_handoff` → **DW02**                                                      |
 
 ---
 
@@ -220,5 +221,5 @@ HITL** do LangGraph `interrupt` tạo ra.
 
 ---
 
-*Nguồn: `packages/python/dw_tender/{domain,application,workflows,adapters,presentation}`,
-`configs/prompts`, `configs/policies/dw01`, `configs/models`.*
+_Nguồn: `packages/python/dw_tender/{domain,application,workflows,adapters,presentation}`,
+`configs/prompts`, `configs/policies/dw01`, `configs/models`._

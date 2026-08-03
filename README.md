@@ -110,11 +110,11 @@ duyệt trên thẻ) — web-login của họ bị **disable** trong Keycloak.
 
 Danh tính demo (realm import từ [infra/keycloak/dw-realm.json](infra/keycloak/dw-realm.json)):
 
-| Danh tính     | Kênh làm việc            | Vai trò                                        |
-| ------------- | ------------------------ | ---------------------------------------------- |
-| An (Nguyễn)   | Slack (chat với Ngọc)    | member — tạo yêu cầu, trả lời làm rõ            |
-| Bình (Trần)   | Slack (thẻ phê duyệt)    | approver — xác minh intake, duyệt CP1–CP4       |
-| `chi` / `demo`| Web back office          | platform_admin — theo dõi, kiểm toán, nhận leo thang |
+| Danh tính      | Kênh làm việc         | Vai trò                                              |
+| -------------- | --------------------- | ---------------------------------------------------- |
+| An (Nguyễn)    | Slack (chat với Ngọc) | member — tạo yêu cầu, trả lời làm rõ                 |
+| Bình (Trần)    | Slack (thẻ phê duyệt) | approver — xác minh intake, duyệt CP1–CP4            |
+| `chi` / `demo` | Web back office       | platform_admin — theo dõi, kiểm toán, nhận leo thang |
 
 **Đăng ký:** bấm «Đăng ký tài khoản mới» → tạo tài khoản trong Keycloak → lần
 đăng nhập đầu, tài khoản được **lưu thật vào Postgres** (`platform.users` +

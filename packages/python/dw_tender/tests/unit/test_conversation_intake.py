@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -156,9 +157,9 @@ class FakeGateway:
 
 @dataclass
 class FakeCreateCase:
-    created: list[object] = field(default_factory=list)
+    created: list[Any] = field(default_factory=list)
 
-    async def handle(self, command, context) -> uuid.UUID:
+    async def handle(self, command: Any, context: Any) -> uuid.UUID:
         self.created.append(command)
         return uuid.uuid4()
 
@@ -171,11 +172,11 @@ def make_service(
 ) -> ConversationIntakeService:
     return ConversationIntakeService(
         store=store,
-        gateway=FakeGateway(turn, thinking=thinking),  # type: ignore[arg-type]
+        gateway=FakeGateway(turn, thinking=thinking),
         create_case=create_case or FakeCreateCase(),  # type: ignore[arg-type]
         rules=RULES,
-        clock=FakeClock(),  # type: ignore[arg-type]
-        id_generator=FakeIdGen(),  # type: ignore[arg-type]
+        clock=FakeClock(),
+        id_generator=FakeIdGen(),
     )
 
 

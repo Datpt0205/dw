@@ -13,6 +13,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -29,7 +30,7 @@ def _env() -> dict[str, str]:
     return values
 
 
-def _call(client: httpx.Client, method: str, **params: object) -> dict:
+def _call(client: httpx.Client, method: str, **params: object) -> dict[str, Any]:
     for _ in range(6):
         response = client.post(f"{API}/{method}", data=params)
         if response.status_code == 429:  # rate limited — honour Retry-After
@@ -38,7 +39,7 @@ def _call(client: httpx.Client, method: str, **params: object) -> dict:
             time.sleep(wait + 1)
             continue
         response.raise_for_status()
-        data = response.json()
+        data: dict[str, Any] = response.json()
         if not data.get("ok"):
             raise SystemExit(f"Slack {method} failed: {data.get('error')}")
         return data
