@@ -24,6 +24,10 @@ from dw_kernel.ids import TenantId, UserId
 from dw_knowledge.contracts import SearchQuery
 from dw_tender.application.preparation.drafts import CriteriaDraft, SolicitationDraft
 from dw_tender.application.preparation.extraction import PreparationExtraction
+from dw_tender.application.preparation.legal import (
+    LegalConstraintExtraction,
+    verified_constraint,
+)
 from dw_tender.application.preparation.review import ReviewRecommendation, review_card_lines
 from dw_tender.application.preparation.rules import (
     ProcurementRules,
@@ -75,8 +79,39 @@ def _fmt_vnd(minor: int) -> str:
 
 
 def _solicitation_window_days(method_key: str) -> int:
-    """Minimum bid-preparation window per method (đấu thầu > chào giá)."""
+    """Default bid-preparation window per method (đấu thầu > chào giá).
+
+    A verified legal minimum extracted from the retrieved căn cứ can only
+    EXTEND this window, never shorten it (max() at the call sites).
+    """
     return {"open_tender": 22, "rfq": 14}.get(method_key, 7)
+
+
+def _deadline_days(deadline: str | None) -> int | None:
+    """Parse An's need-by horizon ("60 ngày") into days; None when unparsable."""
+    match = re.search(r"(\d+)\s*ngày", deadline or "")
+    return int(match.group(1)) if match else None
+
+
+def _citation_lines(citations: list[dict[str, Any]], *, limit: int = 5) -> list[str]:
+    """Full retrieved passages as Slack blockquote lines (no truncation).
+
+    Lines starting with ">" are rendered without a bullet by the notifier.
+    Low-relevance hits (<10%) are noise on a card — kept on the artifact,
+    hidden here.
+    """
+    lines: list[str] = []
+    for cite in citations:
+        if float(cite.get("relevance_score", 0)) < 0.10:
+            continue
+        quote = " ".join(str(cite.get("quote", "")).split())
+        if not quote:
+            continue
+        score = round(float(cite.get("relevance_score", 0)) * 100)
+        lines.append(f"> «{quote}» — _liên quan {score}%_")
+        if len(lines) >= limit:
+            break
+    return lines
 
 
 def _clarification_question_lines(state: PreparationState) -> list[str]:
@@ -170,7 +205,9 @@ class PreparationNodes:
                 {
                     "source_document_id": str(ev.source_document_id),
                     "source_version": ev.source_version,
-                    "quote": chunk.content[:280],
+                    # Full chunk (bounded for artifact size) — cards must show
+                    # the real retrieved passage, not a teaser.
+                    "quote": chunk.content[:1200],
                     "relevance_score": round(ev.relevance_score, 4),
                     "classification": ev.classification,
                 }
@@ -365,6 +402,41 @@ class PreparationNodes:
             )
         except Exception:  # advisory only — never a gate
             return None
+
+    async def _extract_legal_constraints(
+        self,
+        rc: RunContext,
+        method_label: str,
+        citations: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Extract the minimum bid-preparation window from retrieved passages.
+
+        The model only COPIES a number + sentence out of the passages;
+        ``verified_constraint`` rejects anything not literally present in them
+        (anti-hallucination), and the caller applies the verified number
+        deterministically. No passages / no gateway / no verified hit → None,
+        and the rule-pack default window applies.
+        """
+        gateway = self.services.model_gateway
+        passages = [str(c.get("quote", "")) for c in citations if c.get("quote")]
+        if gateway is None or not passages:
+            return None
+        numbered = "\n".join(f"[{i}] {p}" for i, p in enumerate(passages, start=1))
+        try:
+            extraction: LegalConstraintExtraction = await gateway.generate_structured(
+                ModelRequest(
+                    task="preparation.legal_constraints",
+                    prompt_id="preparation.extract_legal_constraints",
+                    prompt_version="1.0.0",
+                    variables={"method_label": method_label, "passages": numbered},
+                    model_profile=self.services.model_profile,
+                ),
+                LegalConstraintExtraction,
+                run_context=rc,
+            )
+        except Exception:  # extraction is enrichment — never blocks drafting
+            return None
+        return verified_constraint(extraction, passages)
 
     # -- 1. intake --------------------------------------------------------
     async def load_case(self, state: PreparationState, config: RunnableConfig) -> PreparationState:
@@ -614,17 +686,9 @@ class PreparationNodes:
                 if method.key != "direct_purchase"
                 else "Mời nhà cung cấp ứng viên; eligibility được kiểm tra trước phát hành."
             ),
-            "timeline": [
-                {"step": "Phát hành hồ sơ", "offset_days": 0},
-                {
-                    "step": "Hạn nộp hồ sơ",
-                    "offset_days": _solicitation_window_days(method.key),
-                },
-                {
-                    "step": "Đánh giá & trình duyệt",
-                    "offset_days": _solicitation_window_days(method.key) + 7,
-                },
-            ],
+            # Timeline is filled in below once the legal minimum window has
+            # been extracted from the retrieved căn cứ (RAG → verified number).
+            "timeline": [],
             "approval_path": ["CP1 — duyệt phương án", "CP2 — duyệt bộ hồ sơ chính thức"],
             "legal_review_required": rules.needs_legal_review(value),
             "finance_review_required": rules.needs_finance_review(value),
@@ -643,11 +707,50 @@ class PreparationNodes:
             f"hình thức lựa chọn nhà thầu {method.label} điều kiện áp dụng",
             domain="legal",
         )
+        # Second retrieval intent: time constraints (Điều-45-type provisions) —
+        # a different question than "which method", so its own query.
+        window_basis = await self._cite(
+            rc,
+            "thời gian chuẩn bị hồ sơ dự thầu tối thiểu kể từ ngày phát hành hồ sơ",
+            domain="legal",
+        )
+        seen_quotes = {(c["source_document_id"], c["quote"]) for c in content["legal_basis"]}
+        for cite in window_basis:
+            if (cite["source_document_id"], cite["quote"]) not in seen_quotes:
+                content["legal_basis"].append(cite)
         content["policy_basis"] = await self._cite(
             rc,
             f"hạn mức phê duyệt phương án mua sắm giá trị {_fmt_vnd(value)}",
             domain="policy",
         )
+        # LLM copies the minimum window out of the passages; verified_constraint
+        # rejects anything not literally in them; code applies the number.
+        constraint = await self._extract_legal_constraints(
+            rc, method.label, list(content["legal_basis"])
+        )
+        default_window = _solicitation_window_days(method.key)
+        legal_min = constraint["min_bid_preparation_days"] if constraint else None
+        window = max(default_window, legal_min or 0)
+        an_days = _deadline_days(state.get("deadline"))
+        deadline_conflict: str | None = None
+        if legal_min is not None and an_days is not None and an_days < window:
+            deadline_conflict = (
+                f"Thời hạn cần hàng ({an_days} ngày) ngắn hơn thời gian tối thiểu "
+                f"cho nhà thầu chuẩn bị hồ sơ — {legal_min} ngày theo "
+                f"{constraint['article_ref'] or 'căn cứ đã truy xuất'}. "
+                f"Tiến độ phải đặt tối thiểu {window} ngày."
+            )
+        content["legal_constraints"] = {
+            "extracted": constraint,
+            "default_window_days": default_window,
+            "applied_window_days": window,
+            "deadline_conflict": deadline_conflict,
+        }
+        content["timeline"] = [
+            {"step": "Phát hành hồ sơ", "offset_days": 0},
+            {"step": "Hạn nộp hồ sơ", "offset_days": window},
+            {"step": "Đánh giá & trình duyệt", "offset_days": window + 7},
+        ]
         content["grounding_status"] = (
             "grounded" if content["legal_basis"] or content["policy_basis"] else "not_available"
         )
@@ -663,17 +766,26 @@ class PreparationNodes:
         rag_lines = [f"Phương án đề xuất: {method.label} — gói {_fmt_vnd(value)}."]
         if legal_cites or policy_cites:
             rag_lines.append(
-                f"📚 Truy xuất {len(legal_cites)} đoạn căn cứ pháp lý và "
-                f"{len(policy_cites)} đoạn quy chế nội bộ từ kho tri thức."
+                f"Truy xuất {len(legal_cites)} đoạn căn cứ pháp lý và "
+                f"{len(policy_cites)} đoạn quy chế nội bộ từ kho tri thức:"
             )
-            for cite in [*legal_cites[:2], *policy_cites[:1]]:
-                quote = " ".join(str(cite.get("quote", "")).split())[:110]
-                score = round(float(cite.get("relevance_score", 0)) * 100)
-                rag_lines.append(f"«{quote}…» — độ liên quan {score}%.")
+            rag_lines += _citation_lines([*legal_cites, *policy_cites])
         else:
             rag_lines.append(
                 "Không truy xuất được căn cứ từ kho tri thức — người duyệt "
                 "cần đối chiếu quy định thủ công."
+            )
+        if legal_min is not None and constraint is not None:
+            rag_lines.append(
+                f"Ràng buộc bóc từ căn cứ: thời gian chuẩn bị hồ sơ dự thầu tối "
+                f"thiểu {legal_min} ngày "
+                f"({constraint['article_ref'] or 'theo trích đoạn'}) — hạn nộp "
+                f"hồ sơ đặt {window} ngày kể từ phát hành."
+            )
+        if deadline_conflict:
+            rag_lines.append(
+                f"⚠️ {deadline_conflict} Nếu tiến độ này không phù hợp, nhắn để "
+                "điều chỉnh thời hạn hoặc phương án."
             )
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
@@ -695,6 +807,8 @@ class PreparationNodes:
             "method_label": method.label,
             "min_suppliers": method.min_suppliers,
             "supplier_count_planned": planned,
+            "solicitation_window_days": window,
+            "legal_constraints": dict(content["legal_constraints"]),
         }
 
     # -- 5. approach gate + CP1 payload -----------------------------------
@@ -802,6 +916,29 @@ class PreparationNodes:
                         ),
                     ],
                 )
+                # Legal constraint + retrieved evidence on the approver card:
+                # Bình decides WITH the căn cứ in front of them, not on trust.
+                legal_info = dict(state.get("legal_constraints", {}) or {})
+                extracted = dict(legal_info.get("extracted") or {})
+                constraint_lines: list[str] = []
+                if extracted.get("min_bid_preparation_days"):
+                    constraint_lines.append(
+                        f"Thời gian nộp hồ sơ: "
+                        f"{legal_info.get('applied_window_days', '—')} ngày — đáp ứng "
+                        f"tối thiểu {extracted['min_bid_preparation_days']} ngày theo "
+                        f"{extracted.get('article_ref') or 'căn cứ đã truy xuất'}."
+                    )
+                if legal_info.get("deadline_conflict"):
+                    constraint_lines.append(f"⚠️ {legal_info['deadline_conflict']}")
+                evidence_lines: list[str] = []
+                if approach is not None:
+                    evidence_lines = _citation_lines(
+                        [
+                            *(approach.content.get("legal_basis") or []),
+                            *(approach.content.get("policy_basis") or []),
+                        ],
+                        limit=4,
+                    )
                 cp1_lines = [
                     (
                         f"Gói {_fmt_vnd(state.get('estimated_value_minor', 0))}: "
@@ -813,8 +950,12 @@ class PreparationNodes:
                         f"tối thiểu {method.min_suppliers}."
                     ),
                     *_regulation_lines(rules, state.get("estimated_value_minor", 0)),
+                    *constraint_lines,
                     (f"Kiểm tra tự động: ĐẠT. Phiếu đề nghị: {state.get('source_pr_ref', '—')}."),
                 ]
+                if evidence_lines:
+                    cp1_lines.append("Căn cứ đã truy xuất từ kho tri thức:")
+                    cp1_lines += evidence_lines
                 if review is not None:
                     await self._add_artifact(
                         uow,
@@ -978,11 +1119,15 @@ class PreparationNodes:
             },
             "response_structure": list(self.services.rules.response_structure),
             "submission": {
-                # Thời gian chuẩn bị HSDT tối thiểu theo hình thức (đấu thầu
-                # cần cửa sổ dài hơn chào giá) — deterministic theo method.
-                "deadline_offset_days": _solicitation_window_days(state.get("method_key", "")),
+                # Window decided at the approach step: rule-pack default,
+                # extended by the verified legal minimum when one was extracted.
+                "deadline_offset_days": (
+                    state.get("solicitation_window_days")
+                    or _solicitation_window_days(state.get("method_key", ""))
+                ),
                 "method": "Nộp hồ sơ qua cổng/email theo hướng dẫn.",
             },
+            "legal_constraints": dict(state.get("legal_constraints", {}) or {}),
             "sections_present": [
                 "scope",
                 "requirements",
@@ -1129,6 +1274,13 @@ class PreparationNodes:
         rules = self.services.rules
         method = rules.select_method(state.get("estimated_value_minor", 0))
         criteria = state.get("criteria", {})
+        legal_info = dict(state.get("legal_constraints", {}) or {})
+        extracted = dict(legal_info.get("extracted") or {})
+        legal_min = extracted.get("min_bid_preparation_days")
+        window_days = int(
+            state.get("solicitation_window_days")
+            or _solicitation_window_days(state.get("method_key", ""))
+        )
         result = solicitation_gate(
             rules=rules,
             weighted_total=int(criteria.get("weighted_total", 0)),
@@ -1136,6 +1288,8 @@ class PreparationNodes:
             shortlist_count=len(state.get("shortlist", [])),
             method=method,
             missing_sections=[],
+            submission_window_days=window_days,
+            legal_min_window_days=int(legal_min) if legal_min else None,
         )
         gate = {"passed": result.passed, "reasons": list(result.reasons)}
         payload = {
@@ -1196,7 +1350,7 @@ class PreparationNodes:
                     case,
                     stage="cp2_gate",
                     dedupe=_hash(gate)[:12],
-                    heading="📄 HSMT đã dựng xong — gate CP2: ĐẠT, chờ duyệt",
+                    heading="HSMT đã dựng xong — gate CP2: ĐẠT, chờ duyệt",
                     lines=[
                         (
                             f"Tiêu chí đánh giá: tổng trọng số "
@@ -1212,8 +1366,21 @@ class PreparationNodes:
                         f"{int(criteria.get('weighted_total', 0))}/100."
                     ),
                     f"Shortlist: {len(state.get('shortlist', []))} nhà cung cấp.",
-                    "Gate CP2 tự động: ĐẠT — hồ sơ mời thầu sẵn sàng để duyệt.",
                 ]
+                if legal_min:
+                    cp2_lines.append(
+                        f"Hạn nộp hồ sơ: {window_days} ngày — đáp ứng tối thiểu "
+                        f"{legal_min} ngày theo "
+                        f"{extracted.get('article_ref') or 'căn cứ đã truy xuất'}."
+                    )
+                cp2_lines.append("Gate CP2 tự động: ĐẠT — hồ sơ mời thầu sẵn sàng để duyệt.")
+                package_refs = _citation_lines(
+                    list((package.content.get("references") if package else None) or []),
+                    limit=3,
+                )
+                if package_refs:
+                    cp2_lines.append("Căn cứ soạn hồ sơ:")
+                    cp2_lines += package_refs
                 if review is not None:
                     await self._add_artifact(
                         uow,

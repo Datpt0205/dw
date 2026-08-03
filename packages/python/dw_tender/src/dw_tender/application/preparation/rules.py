@@ -115,11 +115,27 @@ def solicitation_gate(
     shortlist_count: int,
     method: Method,
     missing_sections: list[str],
+    submission_window_days: int = 0,
+    legal_min_window_days: int | None = None,
 ) -> GateResult:
-    """CP2 gate: is the solicitation package complete, consistent, fair?"""
+    """CP2 gate: is the solicitation package complete, consistent, fair?
+
+    ``legal_min_window_days`` is the RAG-extracted, code-verified minimum
+    bid-preparation time — when present, a package whose submission window is
+    shorter FAILS the gate (the law has teeth, not just a citation).
+    """
     failures: list[str] = []
     for section in missing_sections:
         failures.append(f"Thiếu mục bắt buộc: {section}.")
+    if (
+        legal_min_window_days is not None
+        and submission_window_days
+        and submission_window_days < legal_min_window_days
+    ):
+        failures.append(
+            f"Hạn nộp hồ sơ {submission_window_days} ngày ngắn hơn mức tối thiểu "
+            f"{legal_min_window_days} ngày theo căn cứ pháp lý đã truy xuất."
+        )
     if rules.require_mandatory_criteria and not has_mandatory_criteria:
         failures.append("Thiếu tiêu chí bắt buộc (pass/fail).")
     if weighted_total != rules.weighted_total_must_equal:

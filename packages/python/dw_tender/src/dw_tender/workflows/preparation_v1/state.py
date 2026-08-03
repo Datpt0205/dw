@@ -31,6 +31,9 @@ class PreparationState(TypedDict, total=False):
     method_label: str
     min_suppliers: int
     supplier_count_planned: int
+    # RAG-extracted, code-verified legal constraint + the window it forces.
+    solicitation_window_days: int
+    legal_constraints: dict[str, Any]
 
     approach_gate: dict[str, Any]
     cp1_payload: dict[str, Any]

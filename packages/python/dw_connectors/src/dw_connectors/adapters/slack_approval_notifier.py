@@ -70,17 +70,37 @@ def _link_button(message: SlackApprovalMessage, label: str = "Mở hồ sơ DW01
     }
 
 
+def _body_blocks(case_title: str, lines: tuple[str, ...] | list[str]) -> list[dict[str, Any]]:
+    """Body sections: bullets for normal lines, blockquotes ("> ") kept as-is
+    (full RAG passages), split across sections to respect Slack's 3000-char
+    mrkdwn limit per block."""
+    segments = [f"*{case_title}*"]
+    for line in lines:
+        segments.append(line if line.startswith(">") else f"• {line}")
+    blocks: list[dict[str, Any]] = []
+    current = ""
+    for segment in segments:
+        candidate = f"{current}\n{segment}" if current else segment
+        if len(candidate) > 2800 and current:
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": current}})
+            current = segment
+        else:
+            current = candidate
+    if current:
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": current}})
+    return blocks
+
+
 def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
     """Render a card: heading + every line in the open (no thread-collapse —
     actionable content must be visible without extra clicks)."""
     event = message.event_type
     if event == "run.progress":
         heading = message.heading or "Cập nhật tiến trình"
-        body = f"*{message.case_title}*" + "".join(f"\n• {line}" for line in message.lines)
         text = f"{heading}: {message.case_title}"
         blocks: list[dict[str, Any]] = [
             {"type": "section", "text": {"type": "mrkdwn", "text": f"*{heading}*"}},
-            {"type": "section", "text": {"type": "mrkdwn", "text": body}},
+            *_body_blocks(message.case_title, message.lines),
             {
                 "type": "actions",
                 "elements": [*_action_buttons(message), _link_button(message)],
@@ -96,7 +116,6 @@ def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
             "CP4": "CP4 — Xác nhận mở thầu & bàn giao DW02",
         }.get(cp, cp)
         heading = f"{cp_label}: chờ bạn quyết định"
-        body = f"*{message.case_title}*" + "".join(f"\n• {line}" for line in message.lines)
         text = f"{heading} — {message.case_title}"
         if cp == "CP4":
             decision_elements: list[dict[str, Any]] = [
@@ -131,7 +150,7 @@ def _render(message: SlackApprovalMessage) -> tuple[str, list[dict[str, Any]]]:
             ]
         blocks = [
             {"type": "section", "text": {"type": "mrkdwn", "text": f"*{heading}*"}},
-            {"type": "section", "text": {"type": "mrkdwn", "text": body}},
+            *_body_blocks(message.case_title, message.lines),
             {
                 "type": "actions",
                 "elements": [*decision_elements, _link_button(message, "Xem chi tiết")],
