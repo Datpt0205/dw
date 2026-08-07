@@ -149,6 +149,24 @@ class IntakeChatTurn(BaseModel):
     reasoning_summary: str = Field(default="", description="1-2 câu: đã hiểu gì / vì sao hỏi lại")
 
 
+class ComposedReply(BaseModel):
+    """LLM-composed Slack reply from system-verified facts (ADR-020)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    reply_vi: str = Field(min_length=1, max_length=1200)
+
+
+class AddendumDraftText(BaseModel):
+    """LLM-drafted addendum body; metadata + raw quote stay system-built."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    change_section: str = Field(min_length=1, max_length=2000)
+    impact_section: str = Field(default="", max_length=2000)
+    affected_clauses: list[str] = Field(default_factory=list)
+
+
 # Field → label shown when asking for it. Order matters (asked in this order).
 _REQUIRED_LABELS: tuple[tuple[str, str], ...] = (
     ("item_summary", "Hàng hoá/dịch vụ cần mua"),

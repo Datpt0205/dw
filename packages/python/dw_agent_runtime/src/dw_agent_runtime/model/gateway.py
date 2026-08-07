@@ -15,7 +15,7 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.profiles import ModelProfileRegistry, ModelRoute
 from dw_agent_runtime.model.prompts import PromptRegistry, RenderedPrompt
 from dw_agent_runtime.ports import ModelRequest, OutputT
-from dw_kernel.errors import DomainError, NotFoundError
+from dw_kernel.errors import DomainError, InfrastructureError, NotFoundError
 
 
 @dataclass(frozen=True)
@@ -79,6 +79,19 @@ class RoutingModelGateway:
             return profile.reasoning
         return profile.structured_extraction
 
+    def _attempts(self, request: ModelRequest) -> list[ModelRoute]:
+        """Attempt order: primary, primary again (transient-failure retry),
+        then the profile's fallback route when it is a different model."""
+        primary = self._route(request)
+        attempts = [primary, primary]
+        fallback = self.profiles.resolve(request.model_profile).fallback
+        if fallback is not None and (fallback.provider, fallback.model) != (
+            primary.provider,
+            primary.model,
+        ):
+            attempts.append(fallback)
+        return attempts
+
     async def generate_structured(
         self,
         request: ModelRequest,
@@ -98,31 +111,45 @@ class RoutingModelGateway:
         *,
         run_context: RunContext,
     ) -> tuple[OutputT, str]:
-        route = self._route(request)
-        adapter = self.adapters.get(route.provider)
-        if adapter is None:
-            raise NotFoundError(
-                "model provider not configured",
-                details={"provider": route.provider, "profile": request.model_profile},
-            )
         prompt = self.prompts.render(
             request.prompt_id, request.prompt_version, dict(request.variables)
         )
-        raw, usage, reasoning = await adapter.complete_json(
-            prompt,
-            output_type.model_json_schema(),
-            route,
-            max_output_tokens=request.max_output_tokens,
-        )
-        self.usage_recorder.record(run_context, request, usage)
-        try:
-            return output_type.model_validate(raw), reasoning or ""
-        except ValidationError as exc:
-            raise DomainError(
-                "model output failed schema validation",
-                details={
-                    "prompt_id": request.prompt_id,
-                    "output_type": output_type.__name__,
-                    "errors": str(exc.error_count()),
-                },
-            ) from exc
+        # Transient provider errors and schema-invalid outputs get one retry
+        # on the primary route, then the profile fallback (if any). Non-model
+        # errors (unknown provider, missing mock fixture) fail fast.
+        last_error: Exception | None = None
+        for index, route in enumerate(self._attempts(request)):
+            adapter = self.adapters.get(route.provider)
+            if adapter is None:
+                if index == 0:
+                    raise NotFoundError(
+                        "model provider not configured",
+                        details={"provider": route.provider, "profile": request.model_profile},
+                    )
+                continue  # fallback route pointing at an unwired provider
+            try:
+                raw, usage, reasoning = await adapter.complete_json(
+                    prompt,
+                    output_type.model_json_schema(),
+                    route,
+                    max_output_tokens=request.max_output_tokens,
+                )
+            except InfrastructureError as exc:
+                last_error = exc
+                continue
+            self.usage_recorder.record(run_context, request, usage)
+            try:
+                return output_type.model_validate(raw), reasoning or ""
+            except ValidationError as exc:
+                last_error = DomainError(
+                    "model output failed schema validation",
+                    details={
+                        "prompt_id": request.prompt_id,
+                        "output_type": output_type.__name__,
+                        "errors": str(exc.error_count()),
+                    },
+                )
+                last_error.__cause__ = exc
+                continue
+        assert last_error is not None  # attempts list is never empty
+        raise last_error

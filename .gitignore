@@ -38,3 +38,8 @@ Thumbs.db
 evals/reports/*.json
 !evals/reports/.gitkeep
 release-manifest.local.json
+
+# Local working docs — not pushed to GitHub
+docs/LLM_BUDGET_*
+docs/architecture/AI_AGENT_BACKBONE.md
+docs/architecture/DW01_System_Design_*

@@ -5,13 +5,21 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from typing import Protocol
 
 from dw_connectors.adapters.slack_approval_notifier import (
     SlackApprovalMessage,
-    SlackApprovalNotifier,
+    SlackMessageRef,
 )
 from dw_kernel.errors import DWError
 from dw_tender.adapters.preparation.notification_store import IntakeNotificationJobStore
+
+
+class ApprovalNotifierPort(Protocol):
+    """Outbound approval-card sender (Slack buttons / Zalo words)."""
+
+    async def send(self, message: SlackApprovalMessage) -> SlackMessageRef: ...
+
 
 logger = logging.getLogger("dw_worker.slack_approvals")
 
@@ -60,7 +68,7 @@ def _slack_failure(exc: Exception) -> tuple[str, bool, str]:
 @dataclass
 class SlackApprovalConsumer:
     store: IntakeNotificationJobStore
-    notifier: SlackApprovalNotifier
+    notifier: ApprovalNotifierPort
     user_map: dict[str, str]
     web_base_url: str
 
@@ -106,7 +114,7 @@ class SlackApprovalConsumer:
             return
         payload = job.payload
         estimated_value = payload.get("estimated_value_minor", 0)
-        if not isinstance(estimated_value, (int, str)):
+        if not isinstance(estimated_value, int | str):
             estimated_value = 0
         raw_lines = payload.get("lines", [])
         lines = tuple(str(item) for item in raw_lines) if isinstance(raw_lines, list) else ()

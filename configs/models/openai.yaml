@@ -1,0 +1,38 @@
+schema_version: "1.0"
+profile_id: openai
+routing_policy_version: "1.0.0"
+# OpenAI GPT-5. Enable with:
+#   DW_MODEL_PROVIDER=openai_compatible
+#   OPENAI_BASE_URL=https://api.openai.com/v1
+#   OPENAI_API_KEY=sk-...
+#   DW_API_OPENAI_STRUCTURED_MODE=json_schema
+#   DW_API_MODEL_PROFILE=openai
+# Routes use the /v1/responses adapter (ADR-020): structured output plus the
+# model's own reasoning summary, which channels display as visible thinking.
+# reasoning_effort: slot extraction is ~70% of calls and needs no deep
+# thought (low = faster + fewer reasoning tokens); drafting gets the default
+# tier; the CP review advisory gets high.
+structured_extraction:
+  provider: openai_responses
+  model: gpt-5
+  timeout_seconds: 60
+  reasoning_effort: low
+reasoning:
+  provider: openai_responses
+  model: gpt-5
+  timeout_seconds: 120
+  reasoning_effort: medium
+deep_reasoning:
+  provider: openai_responses
+  model: gpt-5
+  timeout_seconds: 240
+  reasoning_effort: high
+# Tried when the primary route fails twice (provider error/timeout or schema
+# mismatch) — a cheaper sibling model keeps the demo alive.
+fallback:
+  provider: openai_responses
+  model: gpt-5-mini
+  timeout_seconds: 60
+budgets:
+  max_input_tokens_per_run: 100000
+  max_cost_usd_per_run: 1.00

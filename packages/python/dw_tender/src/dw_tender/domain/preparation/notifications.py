@@ -23,6 +23,11 @@ class IntakeNotificationType(StrEnum):
     # P4 Slack approvals: decision card for the approver with Duyệt/Từ chối
     # buttons. Payload: {"title", "checkpoint": "CP1"|"CP2", "lines", "case_id"}.
     CP_APPROVAL_REQUESTED = "cp.approval_requested"
+    # Addendum proposal from the requester: procurement (Bình) decides whether
+    # to draft it — the requester never files CP3 paperwork directly (role fix:
+    # An proposes, procurement drafts, authority decides). Payload:
+    # {"title", "lines", "buttons", "case_id"}.
+    ADDENDUM_PROPOSED = "addendum.proposed"
 
 
 class NotificationJobStatus(StrEnum):

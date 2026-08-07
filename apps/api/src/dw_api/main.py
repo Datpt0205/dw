@@ -47,6 +47,15 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
             slack_task = start_slack_front_office(
                 container, container.chat, REPO_ROOT, service=app.state.slack_front_office
             )
+        mailroom_task = None
+        zalo_task = None
+        if settings.profile != "test":
+            from dw_api.bootstrap import REPO_ROOT
+            from dw_api.channels.mailroom import start_mailroom
+            from dw_api.channels.zalo import start_zalo_front_office
+
+            mailroom_task = start_mailroom(container, REPO_ROOT)
+            zalo_task = start_zalo_front_office(container, REPO_ROOT)
         try:
             yield
         finally:
@@ -54,6 +63,10 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
                 bot_task.cancel()
             if slack_task is not None:
                 slack_task.cancel()
+            if mailroom_task is not None:
+                mailroom_task.cancel()
+            if zalo_task is not None:
+                zalo_task.cancel()
             await container.shutdown()
 
     app = FastAPI(

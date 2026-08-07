@@ -100,6 +100,15 @@ class ApiSettings(BaseSettings):
         default="json_schema",
         validation_alias=AliasChoices("DW_API_OPENAI_STRUCTURED_MODE"),
     )
+    # Responses API strict structured output — enable after a live smoke test.
+    # The Responses API validates schemas strictly REGARDLESS of the flag —
+    # sending a raw Pydantic schema is always rejected (verified live 08/2026:
+    # "required is required to be supplied..."). Default ON; the env override
+    # exists only for gateways that deviate.
+    openai_strict_schema: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("DW_API_OPENAI_STRICT_SCHEMA"),
+    )
     model_provider: str = Field(
         default="mock", validation_alias=AliasChoices("DW_API_MODEL_PROVIDER", "DW_MODEL_PROVIDER")
     )
@@ -191,6 +200,30 @@ class ApiSettings(BaseSettings):
             if isinstance(raw, dict):
                 forward.update({str(k): str(v).strip() for k, v in raw.items()})
         return {slack_id: subject for subject, slack_id in forward.items() if slack_id}
+
+    # --- Zalo Bot Platform channel (buttonless — approvals in words) ---
+    zalo_bot_token: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_ZALO_BOT_TOKEN", "ZALO_BOT_TOKEN")
+    )
+    zalo_user_an_id: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_AN_ID"))
+    zalo_user_binh_id: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_BINH_ID"))
+    zalo_user_chi_id: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_CHI_ID"))
+    zalo_user_map_json: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_MAP_JSON"))
+
+    def zalo_user_reverse_map(self) -> dict[str, str]:
+        """zalo_user_id -> dev subject (mirror of the Slack mapping style)."""
+        forward = {
+            "dev|an.nguyen": self.zalo_user_an_id.strip(),
+            "dev|binh.tran": self.zalo_user_binh_id.strip(),
+            "dev|chi.le": self.zalo_user_chi_id.strip(),
+        }
+        if self.zalo_user_map_json.strip():
+            import json
+
+            raw = json.loads(self.zalo_user_map_json)
+            if isinstance(raw, dict):
+                forward.update({str(k): str(v).strip() for k, v in raw.items()})
+        return {zalo_id: subject for subject, zalo_id in forward.items() if zalo_id}
 
     approval_reminder_seconds: int = Field(
         default=5,

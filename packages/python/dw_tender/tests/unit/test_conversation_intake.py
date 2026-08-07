@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from dw_kernel.errors import NotFoundError
 from dw_platform.application.access_context import AccessContext
 from dw_tender.application.conversation.schemas import (
     IntakeChatTurn,
@@ -102,6 +103,14 @@ class FakeStore:
         matches = [c for c in self.conversations.values() if c.channel_key == channel_key]
         return matches[-1] if matches else None
 
+    async def find_parked(self, *, tenant_id, workspace_id, channel_key):
+        matches = [
+            c
+            for c in self.conversations.values()
+            if c.channel_key == channel_key and c.state == "parked"
+        ]
+        return matches[-1] if matches else None
+
     async def list_case_conversations(self, *, tenant_id, workspace_id, channel_key):
         return [
             c
@@ -149,10 +158,35 @@ class FakeGateway:
     thinking: str = ""
 
     async def generate_structured(self, request, output_type, *, run_context):
+        if output_type.__name__ in ("ComposedReply", "AddendumDraftText"):
+            # Mirror the mock adapter without fixtures: presentation prompts
+            # fail → the service falls back to its deterministic template.
+            raise NotFoundError(
+                "no mock response registered for prompt",
+                details={"prompt_id": request.prompt_id},
+            )
         return self.turn
 
     async def generate_structured_traced(self, request, output_type, *, run_context):
         return self.turn, self.thinking
+
+
+@dataclass
+class ComposingFakeGateway(FakeGateway):
+    """Gateway whose presentation prompts succeed (real-provider behaviour)."""
+
+    composed_reply: str = "reply soạn bởi model"
+
+    async def generate_structured(self, request, output_type, *, run_context):
+        if output_type.__name__ == "ComposedReply":
+            return output_type(reply_vi=self.composed_reply)
+        if output_type.__name__ == "AddendumDraftText":
+            return output_type(
+                change_section="Gia hạn thời hạn nộp HSDT thêm 7 ngày.",
+                impact_section="Nhà cung cấp có thêm thời gian chuẩn bị.",
+                affected_clauses=["Thời hạn nộp HSDT"],
+            )
+        return self.turn
 
 
 @dataclass
@@ -169,10 +203,11 @@ def make_service(
     turn: IntakeChatTurn,
     create_case: FakeCreateCase | None = None,
     thinking: str = "",
+    gateway: FakeGateway | None = None,
 ) -> ConversationIntakeService:
     return ConversationIntakeService(
         store=store,
-        gateway=FakeGateway(turn, thinking=thinking),
+        gateway=gateway or FakeGateway(turn, thinking=thinking),
         create_case=create_case or FakeCreateCase(),  # type: ignore[arg-type]
         rules=RULES,
         clock=FakeClock(),
@@ -252,24 +287,36 @@ async def test_incomplete_message_asks_question_and_keeps_collecting() -> None:
     assert conv.slots.quantity == 100
 
 
-async def test_thinking_is_deterministic_trace_not_model_narration() -> None:
+async def test_thinking_prefers_model_reasoning_trace() -> None:
+    # ADR-020: the routed adapter's reasoning trace (OpenAI Responses summary /
+    # DeepSeek reasoning_content) IS the displayed thinking when present.
     store = FakeStore()
     turn = IntakeChatTurn(
         intent="provide_info",
         slots=FULL_SLOTS,
         reply_vi="ok",
-        reasoning_summary="lời kể tự thuật của model — KHÔNG được hiển thị",
+        reasoning_summary="trường schema — không phải nguồn hiển thị",
     )
-    outcome = await make_service(store, turn, thinking="raw CoT — KHÔNG hiển thị").handle_message(
+    outcome = await make_service(
+        store, turn, thinking="Ngân sách 7,5 tỷ vượt ngưỡng nên cần đấu thầu."
+    ).handle_message(channel_key="slack:D1", text="đủ", context=CONTEXT, display_name="An")
+    assert outcome.thinking.startswith("Ngân sách 7,5 tỷ")
+    assert "trường schema" not in outcome.thinking
+
+
+async def test_thinking_falls_back_to_system_trace_when_model_silent() -> None:
+    # Providers with no reasoning trace (mock, chat/completions) keep the
+    # deterministic system-built thinking — the line never disappears.
+    store = FakeStore()
+    turn = IntakeChatTurn(
+        intent="provide_info", slots=FULL_SLOTS, reply_vi="ok", reasoning_summary=""
+    )
+    outcome = await make_service(store, turn, thinking="").handle_message(
         channel_key="slack:D1", text="đủ", context=CONTEXT, display_name="An"
     )
-    # Real rule-pack evaluation shows up (7,5 tỷ -> Đấu thầu theo Phụ lục G, >=3 NCC)…
     assert "Đấu thầu" in outcome.thinking
     assert "tối thiểu 3 NCC" in outcome.thinking
     assert "Đã đủ thông tin bắt buộc" in outcome.thinking
-    # …and no self-reported narration leaks into the display.
-    assert "tự thuật" not in outcome.thinking
-    assert "raw CoT" not in outcome.thinking
 
 
 async def test_complete_message_returns_confirm_card() -> None:
@@ -347,11 +394,28 @@ async def test_cancel_intent_closes_conversation() -> None:
     turn = IntakeChatTurn(
         intent="cancel", slots=IntakeSlots(), reply_vi="Đã huỷ.", reasoning_summary=""
     )
-    await make_service(store, turn).handle_message(
+    outcome = await make_service(store, turn).handle_message(
         channel_key="slack:D1", text="thôi huỷ đi", context=CONTEXT, display_name="An"
     )
     conv = next(iter(store.conversations.values()))
     assert conv.state == "cancelled"
+    # Compose prompt has no mock fixture → deterministic fallback reply.
+    assert "Đã huỷ yêu cầu hiện tại" in outcome.replies[0].text
+
+
+async def test_cancel_reply_is_llm_composed_when_provider_supports_it() -> None:
+    # ADR-020 group 2: with a real provider the reply comes from the
+    # compose_reply prompt fed with system-verified facts.
+    store = FakeStore()
+    turn = IntakeChatTurn(
+        intent="cancel", slots=IntakeSlots(), reply_vi="Đã huỷ.", reasoning_summary=""
+    )
+    gateway = ComposingFakeGateway(turn, composed_reply="Mình đã huỷ giúp bạn rồi nha!")
+    outcome = await make_service(store, turn, gateway=gateway).handle_message(
+        channel_key="slack:D1", text="thôi huỷ đi", context=CONTEXT, display_name="An"
+    )
+    assert outcome.replies[0].text == "Mình đã huỷ giúp bạn rồi nha!"
+    assert next(iter(store.conversations.values())).state == "cancelled"
 
 
 def test_chat_reply_defaults() -> None:
@@ -386,3 +450,79 @@ async def test_money_guard_drops_mismatched_llm_value() -> None:
     assert conv.slots.estimated_value_vnd is None  # mismatch -> dropped, not committed
     assert "chưa khớp" in outcome.replies[0].text
     assert "Kiểm chéo số tiền" in outcome.thinking
+
+
+# --------------------------------------------------- mid-intake pivot ----
+@dataclass
+class SequenceGateway(FakeGateway):
+    """Returns scripted turns in order (multi-message scenarios)."""
+
+    turns: list[IntakeChatTurn] = field(default_factory=list)
+
+    async def generate_structured_traced(self, request, output_type, *, run_context):
+        return self.turns.pop(0), self.thinking
+
+
+def _laptop_partial() -> IntakeChatTurn:
+    return IntakeChatTurn(
+        intent="provide_info",
+        slots=IntakeSlots(item_summary="laptop cho nhân viên", quantity=500),
+        reply_vi="Bạn cho mình ngân sách và thời hạn nhé?",
+        reasoning_summary="",
+    )
+
+
+def _pivot_to_chairs() -> IntakeChatTurn:
+    return IntakeChatTurn(
+        intent="create_request",
+        slots=IntakeSlots(item_summary="ghế văn phòng", quantity=5),
+        reply_vi="OK, mình ghi nhận yêu cầu mua ghế mới nhé.",
+        reasoning_summary="",
+    )
+
+
+async def test_new_request_mid_intake_parks_old_draft_and_opens_fresh() -> None:
+    store = FakeStore()
+    gw = SequenceGateway(turn=_laptop_partial(), turns=[_laptop_partial(), _pivot_to_chairs()])
+    service = make_service(store, _laptop_partial(), gateway=gw)
+    await service.handle_message(
+        channel_key="zalo:1", text="mua 500 laptop", context=CONTEXT, display_name="An"
+    )
+    outcome = await service.handle_message(
+        channel_key="zalo:1", text="thôi, giờ cần mua 5 ghế", context=CONTEXT, display_name="An"
+    )
+    states = {c.state for c in store.conversations.values()}
+    assert "parked" in states  # laptop draft is parked, not blended
+    convs = list(store.conversations.values())
+    parked = next(c for c in convs if c.state == "parked")
+    active = next(c for c in convs if c.state == "collecting")
+    assert parked.slots.item_summary == "laptop cho nhân viên"
+    assert active.slots.item_summary == "ghế văn phòng"
+    assert active.slots.quantity == 5
+    assert any("tạm treo" in r.text for r in outcome.replies)
+
+
+async def test_cancel_resumes_parked_draft() -> None:
+    store = FakeStore()
+    cancel_turn = IntakeChatTurn(
+        intent="cancel", slots=IntakeSlots(), reply_vi="Đã huỷ.", reasoning_summary=""
+    )
+    gw = SequenceGateway(
+        turn=cancel_turn,
+        turns=[_laptop_partial(), _pivot_to_chairs(), cancel_turn],
+    )
+    service = make_service(store, cancel_turn, gateway=gw)
+    await service.handle_message(
+        channel_key="zalo:1", text="mua laptop", context=CONTEXT, display_name="An"
+    )
+    await service.handle_message(
+        channel_key="zalo:1", text="thôi, mua ghế", context=CONTEXT, display_name="An"
+    )
+    outcome = await service.handle_message(
+        channel_key="zalo:1", text="thôi huỷ vụ ghế đi", context=CONTEXT, display_name="An"
+    )
+    resumed = next(
+        c for c in store.conversations.values() if c.slots.item_summary == "laptop cho nhân viên"
+    )
+    assert resumed.state == "collecting"  # parked draft is live again
+    assert any("Quay lại hồ sơ" in r.text for r in outcome.replies)

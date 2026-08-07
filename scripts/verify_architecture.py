@@ -19,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Import name -> distribution name for third-party packages we use.
 IMPORT_TO_DIST = {
+    "PIL": "pillow",
     "pydantic": "pydantic",
     "pydantic_settings": "pydantic-settings",
     "fastapi": "fastapi",

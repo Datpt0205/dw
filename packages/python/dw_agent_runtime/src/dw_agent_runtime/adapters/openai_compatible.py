@@ -76,7 +76,10 @@ class OpenAICompatibleAdapter:
         if response_format is not None:
             body["response_format"] = response_format
         if max_output_tokens:
-            body["max_tokens"] = max_output_tokens
+            # OpenAI reasoning models (gpt-5*, o-series) reject `max_tokens`;
+            # generic OpenAI-compatible providers (vLLM, DeepSeek) still use it.
+            reasoning_family = route.model.startswith(("gpt-5", "o1", "o3", "o4"))
+            body["max_completion_tokens" if reasoning_family else "max_tokens"] = max_output_tokens
 
         if self.breaker is not None:
             self.breaker.before_call()

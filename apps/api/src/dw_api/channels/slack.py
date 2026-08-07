@@ -20,6 +20,7 @@ from uuid import UUID
 
 import yaml
 
+from dw_api.channels.decisions import DecisionEngine
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.identity import VerifiedClaims
 
@@ -42,6 +43,10 @@ _VIEW_PR = "dw01_view_pr"
 # Receipt desk (bước 8): procurement records incoming bids with one click.
 _RECORD_SUB = "dw01_record_sub"
 _OPEN_BIDS = "dw01_open_bids"
+# Addendum proposal card (role fix): procurement drafts + files CP3 — the
+# requester only proposed. Value carries {case_id, change, impact, proposer}.
+_ADDENDUM_SUBMIT = "dw01_addendum_submit"
+_ADDENDUM_DISMISS = "dw01_addendum_dismiss"
 
 # Slack section blocks cap at 3000 chars; keep the thinking readable.
 _THINKING_MAX_CHARS = 2200
@@ -58,6 +63,18 @@ class SlackFrontOfficeService:
     # the actual bid file to be dropped into the DM (in-memory is fine for the
     # demo — a restart just means clicking the supplier button again).
     pending_uploads: dict[str, dict[str, str]] = field(default_factory=dict)
+    _engine: DecisionEngine | None = field(default=None, init=False)
+
+    @property
+    def engine(self) -> DecisionEngine:
+        """Shared channel-neutral decision engine (also used by Zalo)."""
+        if self._engine is None:
+            self._engine = DecisionEngine(
+                container=self.container,
+                conversation_service=self.chat.conversation_service,
+                channel_label="Slack",
+            )
+        return self._engine
 
     # ------------------------------------------------------------- identity --
     def _resolve_subject(self, slack_user_id: str) -> str | None:
@@ -463,281 +480,17 @@ class SlackFrontOfficeService:
     async def _execute_decision(
         self, action_id: str, value: str, context: AccessContext, display_name: str
     ) -> str:
-        preparation = self.container.preparation
-        assert preparation is not None
-        now = datetime.now(tz=UTC)
-
-        if action_id in (_INTAKE_APPROVE, _INTAKE_REJECT):
-            case_id = UUID(value)
-            if action_id == _INTAKE_APPROVE:
-                await preparation.verify_intake.handle(
-                    case_id,
-                    approval_reference=f"SLACK-{now:%Y%m%d-%H%M%S}",
-                    comment=f"Xác minh qua Slack bởi {display_name}",
-                    context=context,
-                )
-                return (
-                    "✅ Đã xác minh intake — Digital Worker bắt đầu chạy. "
-                    "Người tạo hồ sơ sẽ nhận tiến độ từng bước."
-                )
-            await preparation.reject_intake.handle(
-                case_id, comment=f"Từ chối qua Slack bởi {display_name}", context=context
-            )
-            return "❌ Đã từ chối hồ sơ — người tạo sẽ nhận thông báo kèm lý do."
-
-        if action_id in (_CP_APPROVE, _CP_REJECT):
-            cp, _, case_raw = value.partition(":")
-            case_id = UUID(case_raw)
-            approve = action_id == _CP_APPROVE
-            if cp == "cp3":
-                # CP3 is a domain decision (no LangGraph interrupt behind it).
-                await preparation.decide_cp3.handle(
-                    case_id,
-                    approve=approve,
-                    approval_reference=f"SLACK-{now:%Y%m%d-%H%M%S}",
-                    comment=f"Quyết định qua Slack bởi {display_name}",
-                    context=context,
-                )
-                return (
-                    "✅ Đã duyệt CP3 — addendum có hiệu lực."
-                    if approve
-                    else "⛔ Đã từ chối CP3 — HSMT giữ nguyên."
-                )
-            approval_id = await self._find_pending_approval(cp, case_id, context)
-            if approval_id is None:
-                return (
-                    "⚠️ Không còn yêu cầu phê duyệt đang chờ cho checkpoint này "
-                    "(có thể đã được quyết định)."
-                )
-            await self.container.approval_flow.decide(  # type: ignore[union-attr]
-                approval_id=approval_id,
-                approve=approve,
-                comment=f"Quyết định qua Slack bởi {display_name}",
-                context=context,
-                authorization=self.container.authorization,
-            )
-            label = cp.upper()
-            if not approve:
-                return f"⛔ Đã từ chối {label} — quy trình dừng, người tạo sẽ được thông báo."
-            if cp == "cp2":
-                # CP2 per B5.4 IS the publication authorization ("cho phép
-                # phát hành") — publish immediately, no extra human click.
-                # decide() resumed the graph synchronously, so the official
-                # package is already sealed at this point.
-                try:
-                    result = await preparation.auto_publish.handle(case_id, context)
-                    sent_to = str(result.get("sent_to", "")) if isinstance(result, dict) else ""
-                    suffix = f" tới {sent_to}" if sent_to else ""
-                    return (
-                        "✅ Đã duyệt CP2 — bộ hồ sơ niêm phong bản chính thức "
-                        f"và RFQ đã phát hành qua email{suffix}."
-                    )
-                except Exception as exc:
-                    logger.warning("auto publish after CP2 failed: %s", exc)
-                    return (
-                        "✅ Đã duyệt CP2 — hồ sơ đã niêm phong, nhưng phát hành "
-                        f"tự động chưa chạy được ({str(exc)[:160]}). "
-                        "Người tạo có thể yêu cầu phát hành lại qua chat."
-                    )
-            if cp == "cp1":
-                return (
-                    "✅ Đã duyệt CP1 — mình đang soạn hồ sơ mời thầu và tiêu chí, "
-                    "sẽ trình CP2 trong ít phút."
-                )
-            return f"✅ Đã duyệt {label} — quy trình tiếp tục chạy tự động."
-
-        if action_id == _CP4_CONFIRM:
-            from dw_tender.application.preparation.handlers import CompleteCp4Command
-
-            case_id = UUID(value)
-            # Biên bản do hệ thống lập từ hồ sơ (danh mục HSDT nằm trong sổ
-            # tiếp nhận đã niêm phong) — không ai phải upload file.
-            minutes_md = (
-                f"# Biên bản mở thầu\n\n"
-                f"- Thời điểm mở: {now:%d/%m/%Y %H:%M} (UTC)\n"
-                f"- Người xác nhận: {display_name} (qua Slack)\n"
-                f"- Danh mục hồ sơ dự thầu: theo sổ tiếp nhận (SUBMISSION_REGISTER) "
-                f"đã niêm phong trong hồ sơ.\n"
-                f"- Ghi chú: biên bản do hệ thống lập tự động trong môi trường mô phỏng.\n"
-            )
-            await preparation.complete_cp4.handle(
-                case_id,
-                CompleteCp4Command(
-                    filename="bid-opening-minutes.md",
-                    content_type="text/markdown; charset=utf-8",
-                    content=minutes_md.encode("utf-8"),
-                    opening_at=now.isoformat(),
-                    witnesses=(display_name,),
-                    approval_reference=f"SLACK-{now:%Y%m%d-%H%M%S}",
-                    comment=f"Xác nhận CP4 qua Slack bởi {display_name}",
-                ),
-                context,
-            )
-            return (
-                "CP4 hoàn tất — biên bản mở thầu đã lập, gói bàn giao DW02 đã "
-                "niêm phong. Quy trình DW01 kết thúc."
-            )
-
-        if action_id == _OPEN_BIDS:
-            from dw_kernel.errors import ConflictError, DomainError
-
-            case_id = UUID(value)
-            try:
-                count = await preparation.request_cp4.handle(case_id, context)
-            except (ConflictError, DomainError):
-                return (
-                    "⚠️ Chưa có hồ sơ dự thầu nào được ghi nhận — bấm ghi nhận "
-                    "từng nhà cung cấp trước rồi mới chốt sổ nhé."
-                )
-            return (
-                f"Đã chốt sổ với {count} hồ sơ dự thầu — thẻ xác nhận mở thầu (CP4) "
-                "sẽ đến ngay sau đây."
-            )
-
-        if action_id == _PUBLISH:
-            case_id = UUID(value)
-            result = await preparation.auto_publish.handle(case_id, context)
-            recipient = str(result.get("recipient", "")) if isinstance(result, dict) else ""
-            suffix = f" tới {recipient}" if recipient else ""
-            return f"Đã phát hành RFQ qua email{suffix} và ghi nhận phát hành vào hồ sơ."
-
-        raise ValueError(f"unknown action {action_id}")
-
-    async def _find_pending_approval(
-        self, cp: str, case_id: UUID, context: AccessContext
-    ) -> UUID | None:
-        uow_factory = self.container.uow_factory
-        if uow_factory is None:
-            return None
-        wanted_type = f"preparation.{cp}"
-        async with uow_factory(context) as uow:
-            for request in await uow.approvals.list_pending():
-                if request.approval_type == wanted_type and str(
-                    request.payload.get("case_id", "")
-                ) == str(case_id):
-                    return request.id
-        return None
+        # Single source of truth for decisions — shared with the Zalo channel.
+        return await self.engine.execute(action_id, value, context, display_name)
 
     # ----------------------------------------------------- text decisions ---
-    async def _pending_decisions(self, context: AccessContext) -> list[dict[str, str]]:
-        """Everything currently waiting for a human decision, workspace-wide.
-
-        Deterministic source of truth (case states + pending approvals) — no
-        model guesses what is decidable.
-        """
-        preparation = self.container.preparation
-        if preparation is None:
-            return []
-        out: list[dict[str, str]] = []
-        cases = await preparation.list_cases.handle(context)
-        for case in cases:
-            if case.state == "draft":
-                out.append(
-                    {
-                        "kind": "intake",
-                        "cp": "",
-                        "case_id": str(case.id),
-                        "label": "Xác minh hồ sơ đầu vào",
-                        "title": case.title,
-                    }
-                )
-            elif case.state == "cp3_pending":
-                out.append(
-                    {
-                        "kind": "cp",
-                        "cp": "cp3",
-                        "case_id": str(case.id),
-                        "label": "CP3 — duyệt sửa đổi",
-                        "title": case.title,
-                    }
-                )
-            elif case.state == "cp4_ready":
-                out.append(
-                    {
-                        "kind": "cp4",
-                        "cp": "cp4",
-                        "case_id": str(case.id),
-                        "label": "CP4 — xác nhận mở thầu",
-                        "title": case.title,
-                    }
-                )
-        uow_factory = self.container.uow_factory
-        if uow_factory is not None:
-            titles = {str(case.id): case.title for case in cases}
-            async with uow_factory(context) as uow:
-                for request in await uow.approvals.list_pending():
-                    if not request.approval_type.startswith("preparation.cp"):
-                        continue
-                    cp = request.approval_type.rsplit(".", 1)[-1]
-                    case_id = str(request.payload.get("case_id", ""))
-                    out.append(
-                        {
-                            "kind": "cp",
-                            "cp": cp,
-                            "case_id": case_id,
-                            "label": f"{cp.upper()} — duyệt",
-                            "title": titles.get(
-                                case_id, str(request.payload.get("case_title", ""))
-                            ),
-                        }
-                    )
-        return out
-
     async def _try_text_decision(
         self, channel: str, text: str, context: AccessContext, display_name: str
     ) -> bool:
-        """'duyệt cp1 đi' / 'từ chối cp2' / 'xác minh đi' — buttons as words.
-
-        Keywords are finite and the pending list comes from the DB, so this
-        stays deterministic; only genuinely ambiguous cases ask back.
-        """
-        lowered = text.casefold()
-        reject = any(w in lowered for w in ("từ chối", "không duyệt", "reject"))
-        approve = not reject and any(
-            w in lowered for w in ("duyệt", "đồng ý", "approve", "xác minh", "xác nhận")
-        )
-        if not (approve or reject):
+        """'duyệt cp1 đi' / 'từ chối cp2' / 'xác minh đi' — buttons as words."""
+        reply = await self.engine.try_text(text, context, display_name)
+        if reply is None:
             return False
-        candidates = await self._pending_decisions(context)
-        cp_match = re.search(r"cp\s*([1-4])", lowered)
-        if cp_match:
-            wanted = f"cp{cp_match.group(1)}"
-            candidates = [c for c in candidates if c["cp"] == wanted]
-        elif "xác minh" in lowered:
-            candidates = [c for c in candidates if c["kind"] == "intake"]
-        if not candidates:
-            await self.chat.chat_client.post_message(
-                channel=channel,
-                text="Hiện không có mục nào đang chờ bạn quyết định.",
-            )
-            return True
-        if len(candidates) > 1:
-            listing = "; ".join(f"{c['label']} ({c['title']})" for c in candidates)
-            await self.chat.chat_client.post_message(
-                channel=channel,
-                text=f"Đang chờ nhiều mục: {listing}. Bạn ghi rõ giúp mình (vd: duyệt CP1).",
-            )
-            return True
-        target = candidates[0]
-        if target["kind"] == "intake":
-            action = _INTAKE_APPROVE if approve else _INTAKE_REJECT
-            value = target["case_id"]
-        elif target["kind"] == "cp4":
-            if not approve:
-                await self.chat.chat_client.post_message(
-                    channel=channel,
-                    text="CP4 chỉ có bước xác nhận mở thầu — không có luồng từ chối.",
-                )
-                return True
-            action, value = _CP4_CONFIRM, target["case_id"]
-        else:
-            action = _CP_APPROVE if approve else _CP_REJECT
-            value = f"{target['cp']}:{target['case_id']}"
-        try:
-            reply = await self._execute_decision(action, value, context, display_name)
-        except Exception as exc:
-            logger.warning("text decision failed: %s", exc)
-            reply = f"⚠️ Không thực hiện được: {str(exc)[:200]}"
         await self.chat.chat_client.post_message(channel=channel, text=reply)
         return True
 

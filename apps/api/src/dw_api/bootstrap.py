@@ -21,6 +21,7 @@ from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.mock_model import MockModelAdapter
 from dw_agent_runtime.adapters.openai_compatible import OpenAICompatibleAdapter
+from dw_agent_runtime.adapters.openai_responses import OpenAIResponsesAdapter
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.telemetry_usage import TelemetryUsageRecorder
 from dw_agent_runtime.adapters.tool_execution_store import SqlToolExecutionStore
@@ -85,6 +86,7 @@ from dw_tender.application.preparation.handlers import (
     GetPreparationCaseHandler,
     ListPreparationCasesHandler,
     PreparationAuditRecorder,
+    ProposePreparationAddendumHandler,
     RecordPreparationPublicationHandler,
     RecordPreparationSubmissionHandler,
     RejectPreparationIntakeHandler,
@@ -160,6 +162,7 @@ class PreparationHandlers:
     request_cp4: RequestCp4Handler
     complete_cp4: CompletePreparationCp4Handler
     submit_addendum: SubmitPreparationAddendumHandler
+    propose_addendum: ProposePreparationAddendumHandler
     decide_cp3: DecidePreparationCp3Handler
     audit_recorder: PreparationAuditRecorder
 
@@ -199,6 +202,9 @@ class ApiContainer:
     memory_service: MemoryService | None = None
     tool_registry: ToolRegistry | None = None
     chat: ChatFrontOffice | None = None
+    # Channel-agnostic chat core — shared by Slack (buttons) and Zalo (words).
+    conversation_store: SqlConversationStore | None = None
+    conversation_service: ConversationIntakeService | None = None
 
     def run_context_for(self, context: AccessContext, run_id: uuid.UUID) -> RunContext:
         return RunContext(
@@ -251,6 +257,15 @@ def _build_model_adapters(settings: ApiSettings) -> dict[str, ModelProviderAdapt
             api_key=settings.openai_api_key,
             structured_mode=settings.openai_structured_mode,
             breaker=CircuitBreaker(clock=SystemClock(), name="model.openai_compatible"),
+        )
+        # Responses-dialect adapter (real OpenAI only): same credentials, but
+        # /v1/responses returns the model's reasoning summary for visible
+        # thinking (ADR-020). Profiles opt in with provider: openai_responses.
+        adapters["openai_responses"] = OpenAIResponsesAdapter(
+            base_url=settings.openai_base_url,
+            api_key=settings.openai_api_key,
+            strict_schema=settings.openai_strict_schema,
+            breaker=CircuitBreaker(clock=SystemClock(), name="model.openai_responses"),
         )
     if settings.profile == "production" and "openai_compatible" not in adapters:
         raise RuntimeError("production requires a real model provider")
@@ -343,6 +358,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
     memory_service: MemoryService | None = None
     tool_registry: ToolRegistry | None = None
     chat: ChatFrontOffice | None = None
+    conversation_store: SqlConversationStore | None = None
+    conversation_service: ConversationIntakeService | None = None
 
     if settings.database_url:
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
@@ -678,6 +695,12 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     clock=clock,
                     id_generator=id_generator,
                 ),
+                propose_addendum=ProposePreparationAddendumHandler(
+                    uow_factory=preparation_uow_factory,
+                    authorization=authorization,
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
                 decide_cp3=DecidePreparationCp3Handler(
                     uow_factory=preparation_uow_factory,
                     authorization=authorization,
@@ -691,37 +714,38 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 ),
             )
 
-            # ---- Slack chat front office (conversation-first P1) ----------
-            if (
-                settings.chat_front_office_enabled
-                and settings.slack_bot_token
-                and settings.slack_app_token
-            ):
+            # ---- Chat front office (conversation-first P1) ---------------
+            # The conversation service is CHANNEL-AGNOSTIC: built whenever the
+            # front office is enabled; Slack (buttons) and Zalo (words) are
+            # just transports on top of the same service instance.
+            if settings.chat_front_office_enabled:
                 conversation_store = SqlConversationStore(
                     session_factory=session_factory, clock=clock
                 )
-                chat = ChatFrontOffice(
-                    app_token=settings.slack_app_token,
-                    chat_client=SlackChatClient(bot_token=settings.slack_bot_token),
-                    conversation_store=conversation_store,
-                    conversation_service=ConversationIntakeService(
-                        store=conversation_store,
-                        gateway=gateway,
-                        create_case=preparation.create_case,
-                        rules=procurement_rules,
-                        clock=clock,
-                        id_generator=id_generator,
-                        submit_addendum=preparation.submit_addendum,
-                        record_submission=preparation.record_submission,
-                        request_cp4=preparation.request_cp4,
-                        get_case=preparation.get_case,
-                        answer_clarifications=preparation.answer_clarifications,
-                        run_case=preparation.run_case,
-                        model_profile=settings.model_profile,
-                        web_base_url=settings.public_web_url,
-                    ),
-                    slack_user_reverse_map=settings.slack_user_reverse_map(),
+                conversation_service = ConversationIntakeService(
+                    store=conversation_store,
+                    gateway=gateway,
+                    create_case=preparation.create_case,
+                    rules=procurement_rules,
+                    clock=clock,
+                    id_generator=id_generator,
+                    propose_addendum=preparation.propose_addendum,
+                    record_submission=preparation.record_submission,
+                    request_cp4=preparation.request_cp4,
+                    get_case=preparation.get_case,
+                    answer_clarifications=preparation.answer_clarifications,
+                    run_case=preparation.run_case,
+                    model_profile=settings.model_profile,
+                    web_base_url=settings.public_web_url,
                 )
+                if settings.slack_bot_token and settings.slack_app_token:
+                    chat = ChatFrontOffice(
+                        app_token=settings.slack_app_token,
+                        chat_client=SlackChatClient(bot_token=settings.slack_bot_token),
+                        conversation_store=conversation_store,
+                        conversation_service=conversation_service,
+                        slack_user_reverse_map=settings.slack_user_reverse_map(),
+                    )
     elif settings.profile == "production":
         settings.require_database_url()
 
@@ -746,4 +770,6 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         memory_service=memory_service,
         tool_registry=tool_registry,
         chat=chat,
+        conversation_store=conversation_store,
+        conversation_service=conversation_service,
     )

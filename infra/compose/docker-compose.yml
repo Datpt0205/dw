@@ -178,11 +178,23 @@ services:
     restart: unless-stopped
 
   # ------------------------------------------------- model inference (RAG) --
-  # BGE-M3 dense embeddings on GPU (GTX 1650 4GB → float16). Turing image.
+  # BGE-M3 dense embeddings. TEI GPU images need compute cap >= 7.5 (Turing+),
+  # so the default is the CPU image, which runs everywhere. On a Turing+ GPU
+  # (e.g. GTX 1650) set in .env:
+  #   DW_TEI_EMBED_IMAGE=ghcr.io/huggingface/text-embeddings-inference:turing-1.6
+  #   DW_TEI_EMBED_DTYPE=float16
   tei-embed:
-    image: ghcr.io/huggingface/text-embeddings-inference:turing-1.6
+    image: ${DW_TEI_EMBED_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.6}
     profiles: ["full", "models"]
-    command: ["--model-id", "BAAI/bge-m3", "--dtype", "float16", "--port", "80"]
+    command:
+      [
+        "--model-id",
+        "BAAI/bge-m3",
+        "--dtype",
+        "${DW_TEI_EMBED_DTYPE:-float32}",
+        "--port",
+        "80",
+      ]
     environment:
       HF_HOME: /data
     volumes:
@@ -280,6 +292,12 @@ services:
       SLACK_USER_BINH_ID: ${SLACK_USER_BINH_ID:-}
       SLACK_USER_CHI_ID: ${SLACK_USER_CHI_ID:-}
       SLACK_USER_MAP_JSON: ${SLACK_USER_MAP_JSON:-}
+      # Zalo Bot channel (buttonless — approvals in words)
+      ZALO_BOT_TOKEN: ${ZALO_BOT_TOKEN:-}
+      ZALO_USER_AN_ID: ${ZALO_USER_AN_ID:-}
+      ZALO_USER_BINH_ID: ${ZALO_USER_BINH_ID:-}
+      ZALO_USER_CHI_ID: ${ZALO_USER_CHI_ID:-}
+      ZALO_USER_MAP_JSON: ${ZALO_USER_MAP_JSON:-}
       DW_PUBLIC_WEB_URL: ${DW_PUBLIC_WEB_URL:-http://localhost:3000}
       DW_AUTONOMY_PROFILE: ${DW_AUTONOMY_PROFILE:-governed_production}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
@@ -289,6 +307,14 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       DW_PUBLICATION_EMAIL: ${DW_PUBLICATION_EMAIL:-}
+      # Mailroom: suppliers reply to the RFQ email with their bid attached —
+      # the API polls IMAP, records receipts, auto-requests CP4 (demo min=1).
+      DW_EMAIL_SUBMISSIONS_ENABLED: ${DW_EMAIL_SUBMISSIONS_ENABLED:-false}
+      IMAP_HOST: ${IMAP_HOST:-imap.gmail.com}
+      IMAP_USER: ${IMAP_USER:-}
+      IMAP_PASSWORD: ${IMAP_PASSWORD:-}
+      DW_SUBMISSIONS_MIN_TO_CLOSE: ${DW_SUBMISSIONS_MIN_TO_CLOSE:-1}
+      DW_MAILROOM_SUBJECT: ${DW_MAILROOM_SUBJECT:-dev|binh.tran}
       QDRANT_URL: http://qdrant:6333
       REDIS_URL: redis://valkey:6379/0
       S3_ENDPOINT_URL: http://minio:9000
@@ -349,6 +375,13 @@ services:
       SLACK_USER_BINH_ID: ${SLACK_USER_BINH_ID:-}
       SLACK_USER_CHI_ID: ${SLACK_USER_CHI_ID:-}
       SLACK_USER_MAP_JSON: ${SLACK_USER_MAP_JSON:-}
+      # Approval cards channel: slack (buttons) | zalo (words)
+      DW_APPROVAL_CHANNEL: ${DW_APPROVAL_CHANNEL:-slack}
+      ZALO_BOT_TOKEN: ${ZALO_BOT_TOKEN:-}
+      ZALO_USER_AN_ID: ${ZALO_USER_AN_ID:-}
+      ZALO_USER_BINH_ID: ${ZALO_USER_BINH_ID:-}
+      ZALO_USER_CHI_ID: ${ZALO_USER_CHI_ID:-}
+      ZALO_USER_MAP_JSON: ${ZALO_USER_MAP_JSON:-}
       DW_PUBLIC_WEB_URL: ${DW_PUBLIC_WEB_URL:-http://localhost:3000}
     networks: [dw-internal, dw-edge]
     depends_on:

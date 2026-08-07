@@ -553,7 +553,11 @@ class AutoPublishPreparationHandler:
                 for s in shortlist_items
                 if isinstance(s, dict) and str(s.get("name", "")).strip()
             ]
-            subject = f"[MỜI CHÀO GIÁ] {case.title} — {case.source_pr_ref or ''}".strip()
+            # The [DW01:<case-id>] tag survives "Re:" replies — the email
+            # submission ingest (mailroom) uses it to route bids to the case.
+            subject = (
+                f"[MỜI CHÀO GIÁ][DW01:{case.id.value}] {case.title} — {case.source_pr_ref or ''}"
+            ).strip()
             body = _build_rfq_email_body(case, package.content if package else {})
 
             # Send first — if email fails we do NOT record a publication.
@@ -703,6 +707,107 @@ def _build_rfq_email_body(case: PreparationCase, package: dict[str, Any]) -> str
         "Phòng Mua sắm.",
     ]
     return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class ProposeAddendumCommand:
+    change_summary: str
+    impact_summary: str
+    proposer_name: str
+
+
+@dataclass
+class ProposePreparationAddendumHandler:
+    """Requester-side addendum PROPOSAL (role fix, see ADR-020 discussion).
+
+    The requester (An) never files CP3 paperwork — this only notifies the
+    procurement side (Bình) with a decision card: [Lập addendum & trình CP3]
+    or dismiss. Actual drafting/submission happens with the procurement
+    user's identity via ``SubmitPreparationAddendumHandler``.
+    """
+
+    uow_factory: PreparationUnitOfWorkFactory
+    authorization: ScopeAuthorizationService
+    clock: UtcClock
+    id_generator: IdGenerator
+
+    async def handle(
+        self,
+        case_id: uuid.UUID,
+        command: ProposeAddendumCommand,
+        context: AccessContext,
+    ) -> None:
+        await self.authorization.require(
+            context=context,
+            action="tender.write",
+            resource_type="preparation_addendum_proposal",
+            resource_id=str(case_id),
+        )
+        change = command.change_summary.strip()
+        async with self.uow_factory(TenantId(context.tenant_id)) as uow:
+            case = await uow.cases.get(PreparationCaseId(case_id))
+            if case is None:
+                raise NotFoundError("preparation case not found")
+            if case.state is not CaseState.PUBLISHED:
+                raise ConflictError(
+                    "addendum can only be proposed while the package is published",
+                    details={"state": case.state.value},
+                )
+            recipient = await uow.notifications.find_recipient_for_role("approver")
+            if recipient is None:
+                raise NotFoundError("no procurement recipient configured for addendum proposals")
+            button_value = json.dumps(
+                {
+                    "case_id": str(case.id.value),
+                    "change": change[:600],
+                    "impact": command.impact_summary.strip()[:400],
+                    "proposer": command.proposer_name[:80],
+                },
+                ensure_ascii=False,
+            )
+            await uow.notifications.enqueue(
+                IntakeNotificationJob(
+                    id=self.id_generator.new_uuid(),
+                    tenant_id=case.tenant_id,
+                    workspace_id=case.workspace_id,
+                    case_id=case.id,
+                    event_type=IntakeNotificationType.ADDENDUM_PROPOSED,
+                    recipient_user_id=recipient,
+                    due_at=self.clock.now(),
+                    idempotency_key=(
+                        f"dw01:{case.id.value}:addm-proposal:"
+                        f"{hashlib.sha256(change.encode()).hexdigest()[:12]}"
+                    ),
+                    payload={
+                        "title": case.title,
+                        "heading": "📝 Đề nghị sửa đổi HSMT (từ người yêu cầu)",
+                        "case_id": str(case.id.value),
+                        "lines": [
+                            f"Người đề nghị: {command.proposer_name}",
+                            f"Nội dung: {change[:300]}",
+                            (
+                                "Ảnh hưởng (tự khai): "
+                                + (command.impact_summary.strip()[:200] or "chưa nêu")
+                            ),
+                            "Bạn là bên mời thầu — quyết định có lập addendum hay không.",
+                        ],
+                        "buttons": [
+                            {
+                                "action_id": "dw01_addendum_submit",
+                                "label": "📝 Lập addendum & trình CP3",
+                                "value": button_value,
+                                "style": "primary",
+                            },
+                            {
+                                "action_id": "dw01_addendum_dismiss",
+                                "label": "Bỏ qua đề nghị",
+                                "value": str(case.id.value),
+                            },
+                        ],
+                    },
+                )
+            )
+            await uow.commit()
 
 
 @dataclass(frozen=True)

@@ -100,11 +100,44 @@ class WorkerSettings(BaseSettings):
             mapping.update({str(key): str(value).strip() for key, value in raw.items()})
         return {key: value for key, value in mapping.items() if value}
 
+    # Which chat channel receives approval cards: "slack" (buttons) or
+    # "zalo" (plain words parsed by the API-side DecisionEngine).
+    approval_channel: str = Field(
+        default="slack", validation_alias=AliasChoices("DW_APPROVAL_CHANNEL")
+    )
+    zalo_bot_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DW_WORKER_ZALO_BOT_TOKEN", "ZALO_BOT_TOKEN"),
+    )
+    zalo_user_an_id: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_AN_ID"))
+    zalo_user_binh_id: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_BINH_ID"))
+    zalo_user_chi_id: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_CHI_ID"))
+    zalo_user_map_json: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_MAP_JSON"))
+
+    def zalo_user_map(self) -> dict[str, str]:
+        mapping = {
+            "dev|an.nguyen": self.zalo_user_an_id.strip(),
+            "dev|binh.tran": self.zalo_user_binh_id.strip(),
+            "dev|chi.le": self.zalo_user_chi_id.strip(),
+        }
+        if self.zalo_user_map_json.strip():
+            raw = json.loads(self.zalo_user_map_json)
+            if not isinstance(raw, dict):
+                raise RuntimeError("ZALO_USER_MAP_JSON must be a JSON object")
+            mapping.update({str(key): str(value).strip() for key, value in raw.items()})
+        return {key: value for key, value in mapping.items() if value}
+
     def validate_slack(self) -> None:
         if not self.slack_approvals_enabled:
             return
         if not self.database_url:
             raise RuntimeError("Slack approvals require DW_WORKER_DATABASE_URL")
+        if self.approval_channel == "zalo":
+            if not self.zalo_bot_token:
+                raise RuntimeError("Zalo approvals require ZALO_BOT_TOKEN")
+            if "dev|binh.tran" not in self.zalo_user_map():
+                raise RuntimeError("Zalo approvals require ZALO_USER_BINH_ID (approver)")
+            return
         if not self.slack_bot_token or not self.slack_bot_token.startswith("xoxb-"):
             raise RuntimeError("Slack approvals require a Bot User OAuth Token (xoxb-...)")
         mapping = self.slack_user_map()

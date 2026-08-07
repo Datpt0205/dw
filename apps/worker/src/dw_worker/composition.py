@@ -7,6 +7,7 @@ Docling+OCR parser lives. Only the composition root imports concrete adapters
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import (
@@ -17,6 +18,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from dw_connectors.adapters.slack_approval_notifier import SlackApprovalNotifier
+from dw_connectors.adapters.zalo_approval_notifier import ZaloApprovalNotifier
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_knowledge.adapters.composite_parser import CompositeParser
 from dw_knowledge.adapters.text_parser import PlaintextParser
@@ -40,7 +42,7 @@ class IngestComponents:
 class SlackApprovalComponents:
     engine: AsyncEngine
     store: IntakeNotificationJobStore
-    notifier: SlackApprovalNotifier
+    notifier: SlackApprovalNotifier | ZaloApprovalNotifier
     user_map: dict[str, str]
     web_base_url: str
 
@@ -133,16 +135,32 @@ def build_slack_approval_components(
 ) -> SlackApprovalComponents | None:
     if not settings.slack_approvals_enabled:
         return None
-    settings.validate_slack()
+    try:
+        settings.validate_slack()
+    except RuntimeError as exc:
+        # Missing channel config must not crash the whole worker (it also runs
+        # ingest/reminders) — approvals stay off until the env is completed.
+        logging.getLogger("dw_worker.composition").warning(
+            "approval notifications disabled: %s", exc
+        )
+        return None
     assert settings.database_url is not None
-    assert settings.slack_bot_token is not None
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     clock = SystemClock()
+    notifier: SlackApprovalNotifier | ZaloApprovalNotifier
+    if settings.approval_channel == "zalo":
+        assert settings.zalo_bot_token is not None
+        notifier = ZaloApprovalNotifier(bot_token=settings.zalo_bot_token)
+        user_map = settings.zalo_user_map()
+    else:
+        assert settings.slack_bot_token is not None
+        notifier = SlackApprovalNotifier(bot_token=settings.slack_bot_token)
+        user_map = settings.slack_user_map()
     return SlackApprovalComponents(
         engine=engine,
         store=IntakeNotificationJobStore(session_factory=session_factory, clock=clock),
-        notifier=SlackApprovalNotifier(bot_token=settings.slack_bot_token),
-        user_map=settings.slack_user_map(),
+        notifier=notifier,
+        user_map=user_map,
         web_base_url=settings.slack_web_base_url,
     )

@@ -8,6 +8,7 @@ slot-filling → deterministic completeness → confirm-before-commit → the sa
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC
@@ -19,7 +20,9 @@ from dw_kernel.errors import ConflictError, DomainError
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
 from dw_tender.application.conversation.schemas import (
+    AddendumDraftText,
     ClarifyTurn,
+    ComposedReply,
     IntakeChatTurn,
     IntakeSlots,
     missing_required,
@@ -32,17 +35,17 @@ from dw_tender.application.preparation.handlers import (
     CreatePreparationCaseCommand,
     CreatePreparationCaseHandler,
     GetPreparationCaseHandler,
+    ProposeAddendumCommand,
+    ProposePreparationAddendumHandler,
     RecordPreparationSubmissionHandler,
     RecordSubmissionCommand,
     RequestCp4Handler,
     RunPreparationHandler,
-    SubmitAddendumCommand,
-    SubmitPreparationAddendumHandler,
 )
 from dw_tender.application.preparation.rules import ProcurementRules
 from dw_tender.domain.preparation.entities import BusinessDomain, ProcurementType
 
-ConversationState = Literal["collecting", "confirming", "case_created", "cancelled"]
+ConversationState = Literal["collecting", "confirming", "case_created", "cancelled", "parked"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +75,12 @@ class ConversationStorePort(Protocol):
         self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, channel_key: str
     ) -> ConversationView | None:
         """Most recent conversation on this channel regardless of state."""
+        ...
+
+    async def find_parked(
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, channel_key: str
+    ) -> ConversationView | None:
+        """Most recent PARKED draft on this channel (mid-intake pivot)."""
         ...
 
     async def list_case_conversations(
@@ -129,8 +138,9 @@ class ChatReply:
 class TurnOutcome:
     """One handled inbound turn: the model's visible thinking + the replies.
 
-    ``thinking`` is the reasoner's reasoning_content (falling back to the
-    structured reasoning_summary) — shown by the channel BEFORE the replies.
+    ``thinking`` is the model's own reasoning trace (OpenAI Responses reasoning
+    summary / DeepSeek reasoning_content) when the routed adapter surfaces one,
+    else the system-built trace (ADR-020) — shown BEFORE the replies.
     """
 
     replies: tuple[ChatReply, ...]
@@ -151,7 +161,8 @@ class ConversationIntakeService:
     id_generator: IdGenerator
     # Post-publication lifecycle driven from chat (docs are GENERATED from the
     # conversation — no manual uploads). Optional so intake-only wiring works.
-    submit_addendum: SubmitPreparationAddendumHandler | None = None
+    # Requester-side addendum is a PROPOSAL only — procurement drafts (role fix).
+    propose_addendum: ProposePreparationAddendumHandler | None = None
     record_submission: RecordPreparationSubmissionHandler | None = None
     request_cp4: RequestCp4Handler | None = None
     # Clarification loop over chat (the web form is read-only now).
@@ -204,7 +215,40 @@ class ConversationIntakeService:
                 subject=str(context.principal_id),
             )
 
-        turn = await self._run_turn(conversation, text, context, display_name)
+        turn, model_thinking = await self._run_turn(conversation, text, context, display_name)
+
+        # Mid-intake pivot ("thôi, giờ cần mua X khác"): PARK the current draft
+        # and open a fresh conversation so two requests never blend into one.
+        # Deterministic trigger: new-request intent + a DIFFERENT item than the
+        # draft already holds. The parked draft auto-resumes after this one
+        # finishes (case created or cancelled).
+        park_note = ""
+        if (
+            turn.intent == "create_request"
+            and conversation.state in ("collecting", "confirming")
+            and (conversation.slots.item_summary or "").strip()
+            and (turn.slots.item_summary or "").strip()
+            and (turn.slots.item_summary or "").strip().casefold()
+            != (conversation.slots.item_summary or "").strip().casefold()
+        ):
+            parked_item = conversation.slots.item_summary
+            await self.store.update(
+                conversation_id=conversation.id,
+                tenant_id=context.tenant_id,
+                state="parked",
+            )
+            conversation = await self.store.create(
+                conversation_id=self.id_generator.new_uuid(),
+                tenant_id=context.tenant_id,
+                workspace_id=context.workspace_id,
+                channel_key=channel_key,
+                subject=str(context.principal_id),
+            )
+            park_note = (
+                f"⏸ Mình tạm treo hồ sơ đang khai «{parked_item}» — xong yêu cầu "
+                "mới này mình sẽ tự quay lại nó nhé."
+            )
+
         merged = conversation.slots.merged_with(turn.slots)
 
         # Deterministic money cross-check: if the message names an amount and
@@ -229,20 +273,29 @@ class ConversationIntakeService:
                 tenant_id=context.tenant_id,
                 state="cancelled",
             )
+            cancel_reply = ChatReply(
+                text=await self._compose_reply(
+                    event="cancel_intake",
+                    facts={"action": "đã huỷ yêu cầu mua sắm đang khai báo"},
+                    fallback=("Đã huỷ yêu cầu hiện tại. Khi cần mua sắm, bạn cứ nhắn cho tôi nhé."),
+                    context=context,
+                    trace=f"reply-{str(conversation.id)[:8]}",
+                )
+            )
+            resume = await self._resume_parked(channel_key, context)
             return TurnOutcome(
-                replies=(
-                    ChatReply(
-                        text="Đã huỷ yêu cầu hiện tại. Khi cần mua sắm, bạn cứ nhắn cho tôi nhé."
-                    ),
-                ),
-                thinking="• Người dùng muốn huỷ yêu cầu hiện tại.",
+                replies=(cancel_reply, *((resume,) if resume else ())),
+                thinking=model_thinking or "• Người dùng muốn huỷ yêu cầu hiện tại.",
             )
 
         missing = missing_required(merged, self.rules)
-        # The visible "thinking" is SYSTEM-BUILT from what actually happened
-        # (validated slot diff, real rule-pack evaluation, completeness count) —
-        # never the model narrating itself (plan §7.5: auditable, no self-report).
-        thinking = self._build_thinking(before=conversation.slots, merged=merged, missing=missing)
+        # Visible "thinking" prefers the model's OWN reasoning trace (ADR-020:
+        # OpenAI Responses reasoning summary / DeepSeek reasoning_content).
+        # Providers that surface none fall back to the system-built trace, and
+        # system guard lines are still appended below — they never disappear.
+        thinking = model_thinking or self._build_thinking(
+            before=conversation.slots, merged=merged, missing=missing
+        )
         next_state: ConversationState = "collecting" if missing else "confirming"
         await self.store.update(
             conversation_id=conversation.id,
@@ -256,12 +309,15 @@ class ConversationIntakeService:
                 "\n• ⚠️ Kiểm chéo số tiền: giá trị LLM quy đổi không khớp con số "
                 "trong tin nhắn → bỏ qua, hỏi lại chính xác."
             )
+        park_replies = (ChatReply(text=park_note),) if park_note else ()
         if missing:
             return TurnOutcome(
-                replies=(ChatReply(text=turn.reply_vi + money_guard),), thinking=thinking
+                replies=(*park_replies, ChatReply(text=turn.reply_vi + money_guard)),
+                thinking=thinking,
             )
         return TurnOutcome(
-            replies=(self._confirm_card(conversation.id, merged),), thinking=thinking
+            replies=(*park_replies, self._confirm_card(conversation.id, merged)),
+            thinking=thinking,
         )
 
     # -------------------------------------------------------------- actions --
@@ -335,6 +391,7 @@ class ConversationIntakeService:
             state="case_created",
             case_id=case_id,
         )
+        resume = await self._resume_parked(conversation.channel_key, context)
         return TurnOutcome(
             replies=(
                 self._case_link(
@@ -343,8 +400,30 @@ class ConversationIntakeService:
                     "Duyệt xong là mình chạy luôn — có tiến độ mới mình nhắn bạn "
                     "ngay tại đây nhé.",
                 ),
+                *((resume,) if resume else ()),
             )
         )
+
+    async def _resume_parked(self, channel_key: str, context: AccessContext) -> ChatReply | None:
+        """Reactivate the most recent parked draft on this channel (if any)."""
+        parked = await self.store.find_parked(
+            tenant_id=context.tenant_id,
+            workspace_id=context.workspace_id,
+            channel_key=channel_key,
+        )
+        if parked is None:
+            return None
+        await self.store.update(
+            conversation_id=parked.id, tenant_id=context.tenant_id, state="collecting"
+        )
+        missing = missing_required(parked.slots, self.rules)
+        item = parked.slots.item_summary or parked.slots.title or "yêu cầu trước"
+        tail = (
+            "Còn thiếu: " + "; ".join(missing)
+            if missing
+            else "Thông tin đã đủ — mình chốt lại nhé."
+        )
+        return ChatReply(text=f"▶️ Quay lại hồ sơ đang khai dở «{item}». {tail}")
 
     # ----------------------------------------------------- lifecycle (P4b) ---
     async def _try_lifecycle_turn(
@@ -372,9 +451,9 @@ class ConversationIntakeService:
             if view.state == "waiting_clarification":
                 return await self._clarify_flow(view, case_id, text, context, display_name)
 
-        turn = await self._run_turn(conversation, text, context, display_name)
+        turn, model_thinking = await self._run_turn(conversation, text, context, display_name)
         outcome = await self._lifecycle_action(
-            turn, conversation, case_id, text, context, display_name
+            turn, model_thinking, conversation, case_id, text, context, display_name
         )
         if outcome is None:
             return None
@@ -383,32 +462,25 @@ class ConversationIntakeService:
     async def _lifecycle_action(
         self,
         turn: IntakeChatTurn,
+        model_thinking: str,
         conversation: ConversationView,
         case_id: uuid.UUID,
         text: str,
         context: AccessContext,
         display_name: str,
     ) -> TurnOutcome | None:
-        if turn.intent == "request_addendum" and self.submit_addendum is not None:
+        if turn.intent == "request_addendum" and self.propose_addendum is not None:
+            # Role fix: the requester only PROPOSES a change — procurement
+            # (Bình) decides whether to draft the addendum and file CP3.
             change = (turn.addendum.change_summary if turn.addendum else "").strip() or text
             impact = (turn.addendum.impact_summary if turn.addendum else "").strip()
-            markdown = (
-                f"# Văn bản sửa đổi/làm rõ HSMT (addendum)\n\n"
-                f"- Hồ sơ: {conversation.channel_key}\n"
-                f"- Người yêu cầu: {display_name} (qua Slack)\n"
-                f"- Ngày lập: {self.clock.now().astimezone(UTC):%d/%m/%Y %H:%M}\n\n"
-                f"## Nội dung sửa đổi\n\n{change}\n\n"
-                f"## Đánh giá ảnh hưởng\n\n{impact or 'Chưa đánh giá — cần CP3 xem xét.'}\n"
-            )
             try:
-                await self.submit_addendum.handle(
+                await self.propose_addendum.handle(
                     case_id,
-                    SubmitAddendumCommand(
-                        filename="addendum-from-chat.md",
-                        content_type="text/markdown; charset=utf-8",
-                        content=markdown.encode("utf-8"),
+                    ProposeAddendumCommand(
                         change_summary=change,
                         impact_summary=impact,
+                        proposer_name=display_name,
                     ),
                     context,
                 )
@@ -416,9 +488,19 @@ class ConversationIntakeService:
                 return TurnOutcome(
                     replies=(
                         ChatReply(
-                            text=(
-                                "Hiện chưa lập được sửa đổi — hồ sơ phải ở trạng thái "
-                                "đã phát hành và không có sửa đổi nào đang chờ duyệt."
+                            text=await self._compose_reply(
+                                event="addendum_rejected",
+                                facts={
+                                    "reason": (
+                                        "hồ sơ chưa phát hành hoặc đã qua giai đoạn nhận sửa đổi"
+                                    )
+                                },
+                                fallback=(
+                                    "Hiện chưa gửi được đề nghị sửa đổi — hồ sơ phải ở "
+                                    "trạng thái đã phát hành."
+                                ),
+                                context=context,
+                                trace=f"reply-{str(case_id)[:8]}",
                             )
                         ),
                     )
@@ -426,16 +508,31 @@ class ConversationIntakeService:
             return TurnOutcome(
                 replies=(
                     ChatReply(
-                        text=(
-                            "Đã lập văn bản sửa đổi (addendum) từ nội dung bạn nêu và "
-                            "trình duyệt CP3. Quản lý sẽ nhận thẻ quyết định trên Slack."
+                        text=await self._compose_reply(
+                            event="addendum_proposed",
+                            facts={
+                                "change": change[:200],
+                                "next_step": (
+                                    "bộ phận mua sắm xem xét; nếu hợp lệ sẽ lập addendum "
+                                    "và trình CP3 — bạn sẽ được báo kết quả"
+                                ),
+                            },
+                            fallback=(
+                                "Đã chuyển đề nghị sửa đổi của bạn tới bộ phận mua sắm. "
+                                "Nếu được chấp thuận, văn bản addendum sẽ được lập và "
+                                "trình duyệt CP3 — mình sẽ báo bạn kết quả."
+                            ),
+                            context=context,
+                            trace=f"reply-{str(case_id)[:8]}",
                         )
                     ),
                 ),
-                thinking=(
-                    "• Nhận diện yêu cầu sửa đổi sau phát hành.\n"
+                thinking=model_thinking
+                or (
+                    "• Nhận diện đề nghị sửa đổi sau phát hành từ người yêu cầu.\n"
                     f"• Nội dung: {change[:160]}\n"
-                    "• Văn bản addendum được hệ thống tự soạn và lưu vào hồ sơ → chờ CP3."
+                    "• Chuyển bộ phận mua sắm quyết định lập addendum (SoD: người "
+                    "yêu cầu không tự lập hồ sơ CP3)."
                 ),
             )
 
@@ -443,7 +540,17 @@ class ConversationIntakeService:
             supplier = (turn.submission.supplier_name if turn.submission else "").strip()
             if not supplier:
                 return TurnOutcome(
-                    replies=(ChatReply(text="Bạn cho tôi biết tên nhà cung cấp đã nộp hồ sơ nhé?"),)
+                    replies=(
+                        ChatReply(
+                            text=await self._compose_reply(
+                                event="submission_missing_supplier",
+                                facts={"need": "tên nhà cung cấp đã nộp hồ sơ dự thầu"},
+                                fallback="Bạn cho tôi biết tên nhà cung cấp đã nộp hồ sơ nhé?",
+                                context=context,
+                                trace=f"reply-{str(case_id)[:8]}",
+                            )
+                        ),
+                    )
                 )
             reference = (turn.submission.external_reference if turn.submission else "").strip()
             now = self.clock.now().astimezone(UTC)
@@ -472,10 +579,19 @@ class ConversationIntakeService:
                 return TurnOutcome(
                     replies=(
                         ChatReply(
-                            text=(
-                                "Hồ sơ đang không ở giai đoạn tiếp nhận HSDT nên mình "
-                                "chưa ghi nhận được — cần phát hành hồ sơ mời thầu "
-                                "trước đã nhé."
+                            text=await self._compose_reply(
+                                event="submission_rejected",
+                                facts={
+                                    "reason": "hồ sơ đang không ở giai đoạn tiếp nhận HSDT",
+                                    "next_step": "phát hành hồ sơ mời thầu trước",
+                                },
+                                fallback=(
+                                    "Hồ sơ đang không ở giai đoạn tiếp nhận HSDT nên mình "
+                                    "chưa ghi nhận được — cần phát hành hồ sơ mời thầu "
+                                    "trước đã nhé."
+                                ),
+                                context=context,
+                                trace=f"reply-{str(case_id)[:8]}",
                             )
                         ),
                     )
@@ -483,13 +599,24 @@ class ConversationIntakeService:
             return TurnOutcome(
                 replies=(
                     ChatReply(
-                        text=(
-                            f"Đã ghi nhận hồ sơ dự thầu của {supplier} và lưu biên nhận "
-                            "vào sổ tiếp nhận."
+                        text=await self._compose_reply(
+                            event="submission_recorded",
+                            facts={
+                                "supplier": supplier,
+                                "reference": reference or "(không có)",
+                                "stored": "biên nhận đã lưu vào sổ tiếp nhận",
+                            },
+                            fallback=(
+                                f"Đã ghi nhận hồ sơ dự thầu của {supplier} và lưu biên nhận "
+                                "vào sổ tiếp nhận."
+                            ),
+                            context=context,
+                            trace=f"reply-{str(case_id)[:8]}",
                         )
                     ),
                 ),
-                thinking=(
+                thinking=model_thinking
+                or (
                     f"• Ghi nhận HSDT từ «{supplier}»"
                     + (f" (tham chiếu {reference})" if reference else "")
                     + ".\n• Biên nhận được hệ thống tự lập và niêm phong vào hồ sơ."
@@ -503,14 +630,29 @@ class ConversationIntakeService:
                 return TurnOutcome(
                     replies=(
                         ChatReply(
-                            text=(
-                                "Chưa có hồ sơ dự thầu nào trong sổ tiếp nhận nên mình "
-                                "chưa trình mở thầu được. Bạn báo từng nhà cung cấp đã "
-                                "nộp trước nhé — ví dụ: Synnex FPT vừa nộp hồ sơ."
+                            text=await self._compose_reply(
+                                event="open_bids_rejected",
+                                facts={
+                                    "reason": (
+                                        "sổ tiếp nhận trống hoặc hồ sơ chưa ở giai đoạn nhận HSDT"
+                                    ),
+                                    "next_step": (
+                                        "báo từng nhà cung cấp đã nộp trước, "
+                                        "ví dụ: Synnex FPT vừa nộp hồ sơ"
+                                    ),
+                                },
+                                fallback=(
+                                    "Chưa có hồ sơ dự thầu nào trong sổ tiếp nhận nên mình "
+                                    "chưa trình mở thầu được. Bạn báo từng nhà cung cấp đã "
+                                    "nộp trước nhé — ví dụ: Synnex FPT vừa nộp hồ sơ."
+                                ),
+                                context=context,
+                                trace=f"reply-{str(case_id)[:8]}",
                             )
                         ),
                     ),
-                    thinking=(
+                    thinking=model_thinking
+                    or (
                         "• Yêu cầu mở thầu nhưng sổ tiếp nhận trống hoặc hồ sơ chưa "
                         "ở giai đoạn nhận HSDT → hướng dẫn báo nộp trước."
                     ),
@@ -518,22 +660,54 @@ class ConversationIntakeService:
             return TurnOutcome(
                 replies=(
                     ChatReply(
-                        text=(
-                            f"Đã đề nghị chốt sổ với {count} hồ sơ dự thầu và mở thầu. "
-                            "Quản lý sẽ nhận thẻ xác nhận CP4 trên Slack — khi xác nhận, "
-                            "biên bản mở thầu và gói bàn giao DW02 sẽ được lập tự động."
+                        text=await self._compose_reply(
+                            event="open_bids_requested",
+                            facts={
+                                "submissions": str(count),
+                                "next_step": (
+                                    "Quản lý xác nhận CP4 qua thẻ Slack; khi xác nhận, "
+                                    "biên bản mở thầu và gói bàn giao DW02 lập tự động"
+                                ),
+                            },
+                            fallback=(
+                                f"Đã đề nghị chốt sổ với {count} hồ sơ dự thầu và mở thầu. "
+                                "Quản lý sẽ nhận thẻ xác nhận CP4 trên Slack — khi xác nhận, "
+                                "biên bản mở thầu và gói bàn giao DW02 sẽ được lập tự động."
+                            ),
+                            context=context,
+                            trace=f"reply-{str(case_id)[:8]}",
                         )
                     ),
                 ),
-                thinking=(
+                thinking=model_thinking
+                or (
                     f"• Sổ tiếp nhận có {count} hồ sơ dự thầu.\n"
                     "• CP4 cần người có thẩm quyền xác nhận (SoD) → gửi thẻ cho Quản lý."
                 ),
             )
 
         if turn.intent == "ask_status":
+            facts = {"info": "gửi link trang hồ sơ"}
+            if self.get_case is not None:
+                try:
+                    view = await self.get_case.handle(case_id, context)
+                    facts = {"title": view.title, "state": str(view.state)}
+                except Exception:
+                    pass
             return TurnOutcome(
-                replies=(self._case_link(case_id, "Trạng thái chi tiết của hồ sơ:"),)
+                replies=(
+                    self._case_link(
+                        case_id,
+                        await self._compose_reply(
+                            event="status_summary",
+                            facts=facts,
+                            fallback="Trạng thái chi tiết của hồ sơ:",
+                            context=context,
+                            trace=f"reply-{str(case_id)[:8]}",
+                        ),
+                    ),
+                ),
+                thinking=model_thinking,
             )
         if turn.intent == "create_request":
             return None  # new purchase → caller opens a fresh intake conversation
@@ -614,7 +788,17 @@ class ConversationIntakeService:
         pending = [item for item in items if item.get("blocking")]
         if not pending:
             return TurnOutcome(
-                replies=(ChatReply(text="Không còn câu hỏi làm rõ nào — mình chạy tiếp đây."),)
+                replies=(
+                    ChatReply(
+                        text=await self._compose_reply(
+                            event="no_pending_clarifications",
+                            facts={"state": "không còn câu hỏi làm rõ, workflow chạy tiếp"},
+                            fallback="Không còn câu hỏi làm rõ nào — mình chạy tiếp đây.",
+                            context=context,
+                            trace=f"reply-{str(case_id)[:8]}",
+                        )
+                    ),
+                )
             )
         questions_text = "\n".join(
             f"- {item.get('id')} | {item.get('question')} | gợi ý: "
@@ -622,7 +806,7 @@ class ConversationIntakeService:
             for item in pending
         )
         run_context = self._agent_run_context(context, trace=f"clarify-{str(case_id)[:8]}")
-        turn = await self.gateway.generate_structured(
+        turn, model_thinking = await self.gateway.generate_structured_traced(
             ModelRequest(
                 task="conversation.clarify_answers",
                 prompt_id="conversation.clarify_answers",
@@ -637,6 +821,7 @@ class ConversationIntakeService:
             ClarifyTurn,
             run_context=run_context,
         )
+        model_thinking = model_thinking.strip()
         valid_ids = {str(item.get("id")) for item in pending}
         answers = tuple(
             ClarificationAnswer(
@@ -658,14 +843,15 @@ class ConversationIntakeService:
         if not answers:
             return TurnOutcome(
                 replies=(ChatReply(text=turn.reply_vi),),
-                thinking=(
+                thinking=model_thinking
+                or (
                     f"• {len(pending)} câu hỏi làm rõ đang chờ; tin nhắn chưa trả lời "
                     "được câu nào → hỏi lại."
                 ),
             )
         await self.answer_clarifications.handle(case_id, answers, context)  # type: ignore[union-attr]
         remaining = len(pending) - len(answers)
-        thinking = (
+        thinking = model_thinking or (
             f"• Ghi nhận {len(answers)}/{len(pending)} câu trả lời làm rõ (lưu "
             "CLARIFICATION_RESPONSE).\n"
             + (
@@ -676,15 +862,119 @@ class ConversationIntakeService:
         )
         if remaining <= 0 and self.run_case is not None:
             await self.run_case.handle(case_id, context)
-            reply_text = (
-                "✅ Đã ghi nhận đủ câu trả lời — mình chạy tiếp đây, "
-                "có tiến độ mới mình nhắn bạn ngay."
+            reply_text = await self._compose_reply(
+                event="clarifications_complete",
+                facts={
+                    "answered": f"{len(answers)}/{len(pending)} câu hỏi làm rõ",
+                    "next_step": "workflow chạy tiếp, sẽ báo khi có tiến độ mới",
+                },
+                fallback=(
+                    "✅ Đã ghi nhận đủ câu trả lời — mình chạy tiếp đây, "
+                    "có tiến độ mới mình nhắn bạn ngay."
+                ),
+                context=context,
+                trace=f"reply-{str(case_id)[:8]}",
             )
         else:
             reply_text = turn.reply_vi
         return TurnOutcome(replies=(ChatReply(text=reply_text),), thinking=thinking)
 
     # ------------------------------------------------------------ internals --
+    async def _compose_reply(
+        self,
+        *,
+        event: str,
+        facts: dict[str, str],
+        fallback: str,
+        context: AccessContext,
+        trace: str,
+    ) -> str:
+        """LLM-composed reply from system-verified facts (ADR-020 group 2).
+
+        Presentation-only: the action already happened, so ANY model failure
+        (mock without fixture, provider error, junk output) falls back to the
+        deterministic template — the reply never blocks or invents facts.
+        """
+        try:
+            composed = await self.gateway.generate_structured(
+                ModelRequest(
+                    task="conversation.compose_reply",
+                    prompt_id="conversation.compose_reply",
+                    prompt_version="1.0.0",
+                    variables={
+                        "event": event,
+                        "facts": json.dumps(facts, ensure_ascii=False),
+                        "fallback": fallback,
+                    },
+                    model_profile=self.model_profile,
+                ),
+                ComposedReply,
+                run_context=self._agent_run_context(context, trace=trace),
+            )
+            return composed.reply_vi.strip() or fallback
+        except Exception:
+            return fallback
+
+    async def _addendum_markdown(
+        self,
+        *,
+        case_id: uuid.UUID,
+        channel_key: str,
+        change: str,
+        impact: str,
+        raw_text: str,
+        display_name: str,
+        context: AccessContext,
+    ) -> str:
+        """Addendum document: LLM-drafted body, system-built provenance.
+
+        The metadata header and the verbatim Slack quote are ALWAYS code-built
+        (auditable trail); the LLM only elaborates the change/impact sections
+        and never sees authority to alter figures. On any model failure the
+        body degrades to the raw statements — same content, plainer wording.
+        """
+        change_section, impact_section, clauses = change, impact, list[str]()
+        try:
+            draft = await self.gateway.generate_structured(
+                ModelRequest(
+                    task="conversation.draft_addendum",
+                    prompt_id="conversation.draft_addendum",
+                    prompt_version="1.0.0",
+                    variables={
+                        "case_title": await self._case_title(case_id, context),
+                        "requester": display_name,
+                        "change": change,
+                        "impact": impact or "(người yêu cầu chưa nêu)",
+                    },
+                    model_profile=self.model_profile,
+                ),
+                AddendumDraftText,
+                run_context=self._agent_run_context(context, trace=f"addm-{str(case_id)[:8]}"),
+            )
+            change_section = draft.change_section.strip() or change
+            impact_section = draft.impact_section.strip() or impact
+            clauses = [c.strip() for c in draft.affected_clauses if c.strip()]
+        except Exception:
+            pass
+        clauses_md = (
+            "\n## Hạng mục HSMT có thể bị ảnh hưởng\n\n"
+            + "\n".join(f"- {c}" for c in clauses)
+            + "\n"
+            if clauses
+            else ""
+        )
+        return (
+            f"# Văn bản sửa đổi/làm rõ HSMT (addendum)\n\n"
+            f"- Hồ sơ: {channel_key}\n"
+            f"- Người yêu cầu: {display_name} (qua Slack)\n"
+            f"- Ngày lập: {self.clock.now().astimezone(UTC):%d/%m/%Y %H:%M}\n\n"
+            f"## Nội dung sửa đổi\n\n{change_section}\n\n"
+            f"## Đánh giá ảnh hưởng\n\n"
+            f"{impact_section or 'Chưa đánh giá — cần CP3 xem xét.'}\n"
+            f"{clauses_md}\n"
+            f"## Nguyên văn yêu cầu (Slack)\n\n> {raw_text.strip()[:600]}\n"
+        )
+
     def _agent_run_context(self, context: AccessContext, *, trace: str) -> RunContext:
         return RunContext(
             run_id=self.id_generator.new_uuid(),
@@ -706,7 +996,7 @@ class ConversationIntakeService:
         text: str,
         context: AccessContext,
         display_name: str,
-    ) -> IntakeChatTurn:
+    ) -> tuple[IntakeChatTurn, str]:
         missing = missing_required(conversation.slots, self.rules)
         request = ModelRequest(
             task="conversation.intake_chat",
@@ -722,11 +1012,12 @@ class ConversationIntakeService:
             model_profile=self.model_profile,
         )
         run_context = self._agent_run_context(context, trace=f"chat-{str(conversation.id)[:12]}")
-        # reasoning_summary/reasoning_content stay available for logging, but
-        # the DISPLAYED thinking is system-built (see _build_thinking).
-        return await self.gateway.generate_structured(
+        # Traced call: the second element is the model's own reasoning trace
+        # ("" when the routed provider surfaces none — mock, chat/completions).
+        turn, reasoning = await self.gateway.generate_structured_traced(
             request, IntakeChatTurn, run_context=run_context
         )
+        return turn, reasoning.strip()
 
     _SLOT_LABELS: ClassVar[tuple[tuple[str, str], ...]] = (
         ("title", "tên gói"),

@@ -163,3 +163,75 @@ def test_extract_json_object_tolerates_fences_and_preamble() -> None:
         _extract_json_object("no json here")
     with pytest.raises(ValueError):
         _extract_json_object("[1, 2]")
+
+
+async def test_gateway_retries_once_on_schema_invalid_output() -> None:
+    attempts: list[int] = []
+
+    def flaky_builder(prompt: object) -> dict[str, object]:
+        attempts.append(1)
+        if len(attempts) == 1:
+            return {"wrong_field": True}
+        return {"summary": "Lần hai chuẩn.", "language": "vi"}
+
+    adapter = MockModelAdapter()
+    adapter.register_builder("demo.summarize", "1.0.0", flaky_builder)
+    gateway = make_gateway(adapter)
+    request = ModelRequest(
+        task="structured_extraction",
+        prompt_id="demo.summarize",
+        prompt_version="1.0.0",
+        variables={"content": "x"},
+    )
+    output = await gateway.generate_structured(
+        request, SummaryOutput, run_context=make_run_context()
+    )
+    assert output.summary == "Lần hai chuẩn."
+    assert len(attempts) == 2
+
+
+async def test_gateway_uses_fallback_route_when_primary_provider_errors() -> None:
+    from dw_agent_runtime.model.profiles import ModelBudgets, ModelProfile, ModelRoute
+    from dw_kernel.errors import InfrastructureError
+
+    class FailingAdapter:
+        provider_name = "flaky"
+
+        async def complete_json(self, prompt, json_schema, route, *, max_output_tokens):
+            raise InfrastructureError("provider down")
+
+    mock = MockModelAdapter()
+    mock.register_builder(
+        "demo.summarize", "1.0.0", lambda prompt: {"summary": "từ fallback", "language": "vi"}
+    )
+    profiles = ModelProfileRegistry()
+    profiles.register(
+        ModelProfile(
+            schema_version="1.0",
+            profile_id="with_fallback",
+            routing_policy_version="1.0.0",
+            structured_extraction=ModelRoute(provider="flaky", model="primary-1"),
+            reasoning=ModelRoute(provider="flaky", model="primary-1"),
+            fallback=ModelRoute(provider="mock", model="fallback-1"),
+            budgets=ModelBudgets(),
+        )
+    )
+    prompts = PromptRegistry()
+    prompts.register(make_prompt())
+    gateway = RoutingModelGateway(
+        profiles=profiles,
+        prompts=prompts,
+        adapters={"flaky": FailingAdapter(), "mock": mock},
+        usage_recorder=InMemoryUsageRecorder(),
+    )
+    request = ModelRequest(
+        task="structured_extraction",
+        prompt_id="demo.summarize",
+        prompt_version="1.0.0",
+        variables={"content": "x"},
+        model_profile="with_fallback",
+    )
+    output = await gateway.generate_structured(
+        request, SummaryOutput, run_context=make_run_context()
+    )
+    assert output.summary == "từ fallback"

@@ -47,6 +47,14 @@ class TelemetryUsageRecorder:
                 "dw.model": usage.model,
                 "dw.input_tokens": usage.input_tokens,
                 "dw.output_tokens": usage.output_tokens,
+                # OTel GenAI semconv mirror: lets Langfuse (via OTLP, ADR-016)
+                # recognise the call as a generation and price it from its
+                # model table — cost REPORTING without any run-blocking caps.
+                "gen_ai.system": usage.provider,
+                "gen_ai.request.model": usage.model,
+                "gen_ai.response.model": usage.model,
+                "gen_ai.usage.input_tokens": usage.input_tokens,
+                "gen_ai.usage.output_tokens": usage.output_tokens,
             },
         ):
             pass

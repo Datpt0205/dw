@@ -70,6 +70,26 @@ class SqlConversationStore:
             ).one_or_none()
             return _view(row) if row else None
 
+    async def find_parked(
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, channel_key: str
+    ) -> ConversationView | None:
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_TENANT, {"tenant_id": str(tenant_id)})
+            row = (
+                await session.execute(
+                    sa.select(chat_conversations)
+                    .where(
+                        chat_conversations.c.tenant_id == tenant_id,
+                        chat_conversations.c.workspace_id == workspace_id,
+                        chat_conversations.c.channel_key == channel_key,
+                        chat_conversations.c.state == "parked",
+                    )
+                    .order_by(chat_conversations.c.updated_at.desc())
+                    .limit(1)
+                )
+            ).one_or_none()
+            return _view(row) if row else None
+
     async def find_latest(
         self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, channel_key: str
     ) -> ConversationView | None:

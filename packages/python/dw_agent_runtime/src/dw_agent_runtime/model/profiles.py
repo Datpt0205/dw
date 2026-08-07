@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -18,6 +19,9 @@ class ModelRoute(BaseModel):
     provider: str
     model: str
     timeout_seconds: int = Field(default=60, gt=0, le=600)
+    # Reasoning-model effort hint (OpenAI Responses `reasoning.effort`).
+    # None → provider default; ignored by adapters that have no such knob.
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
 
 
 class ModelBudgets(BaseModel):

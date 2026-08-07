@@ -68,20 +68,25 @@ Trên web mở hồ sơ → khối **«Vết thực thi»**:
 **Bình**: Duyệt CP1 → duyệt CP2 → **RFQ tự phát hành qua email ngay khi CP2
 được duyệt** (không ai phải bấm thêm).
 
-Sau phát hành, **Bình** (bộ phận mua sắm — đúng vai bước 8) nhận card
-**«Tiếp nhận hồ sơ dự thầu»** — nút Chốt sổ CHƯA có (chỉ hiện khi ≥1 hồ sơ):
+Sau phát hành — **NCC nộp HSDT qua EMAIL, không ai upload tay** (mailroom):
 
-1. Bấm **[Synnex FPT đã nộp]** → card đổi: "⏳ đang chờ file HSDT".
-2. **Thả file** (PDF/DOCX bất kỳ) vào DM → mình lưu làm hồ sơ chính thức,
-   lập biên nhận → card đổi: "✅ Synnex FPT — đã nhận hồ sơ" và nút
-   **[Chốt sổ & mở thầu]** xuất hiện.
-3. Lặp cho NCC còn lại (hoặc chốt luôn với 1 hồ sơ) → bấm
-   **[Chốt sổ & mở thầu]** → card **CP4** → xác nhận → biên bản mở thầu tự
-   lập, bàn giao DW02 niêm phong — hết luồng DW01.
+1. Mở hộp mail cá nhân (đã nhận RFQ `[MỜI CHÀO GIÁ][DW01:<case>]`) →
+   **Reply đúng thư đó, đính kèm 1 file** (PDF/DOCX bất kỳ).
+2. Trong ≤ `DW_MAILROOM_POLL_SECONDS` (mặc định 20s): hệ thống tự ghi sổ
+   tiếp nhận + lập biên nhận (timestamp + hash) + **reply email xác nhận**
+   cho NCC.
+3. Demo cần **1 hồ sơ là đủ** (`DW_SUBMISSIONS_MIN_TO_CLOSE=1`) → card
+   **CP4** tự tới Bình → xác nhận → biên bản mở thầu tự lập, bàn giao DW02
+   niêm phong — hết luồng DW01. *(Bình không bấm nút ghi nhận/không thả
+   file — chỉ còn đúng một quyết định CP4.)*
 
-⚠️ Cần scope Slack **`files:read`** (OAuth & Permissions → thêm → Reinstall).
+Bật trong `.env`: `DW_EMAIL_SUBMISSIONS_ENABLED=true` (+ IMAP dùng lại tài
+khoản SMTP; xem `.env.example`). Đường tay cũ (bấm [NCC đã nộp] + thả file,
+cần scope Slack `files:read`) vẫn hoạt động làm dự phòng khi không có mạng.
 
-(An không đụng vào HSDT — chỉ nhắn khi cần **sửa đổi/gia hạn** → CP3, tùy chọn.)
+**CP3 (role đúng vai):** An chỉ **đề nghị** sửa đổi qua chat → Bình nhận card
+«Đề nghị sửa đổi HSMT» với nút **[📝 Lập addendum & trình CP3]** / [Bỏ qua] —
+người lập là Bình (bên mời thầu), An không đứng tên hồ sơ CP3 nữa.
 
 ## Màn 2 — Thử phá (kịch bản âm D11.5)
 

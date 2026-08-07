@@ -47,6 +47,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM python:3.12-slim-bookworm AS runtime
 
 RUN groupadd --gid 1001 dw && useradd --uid 1001 --gid dw --create-home dw
+# Vietnamese-capable font for the rendered "thinking card" images (Zalo has
+# no rich text — thoughts are sent as styled PNGs).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=builder --chown=dw:dw /app/.venv /app/.venv
