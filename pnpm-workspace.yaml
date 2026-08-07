@@ -6,7 +6,7 @@ allowBuilds:
   unrs-resolver: true
 # Force patched versions of vulnerable transitive deps (pnpm audit high+).
 overrides:
-  "js-yaml@>=4.0.0 <4.3.0": ">=4.3.0"
+  "js-yaml@>=4.0.0 <4.3.1": ">=4.3.1"
   "sharp@<0.35.0": ">=0.35.0"
   "postcss@<8.5.18": ">=8.5.18"
   "brace-expansion@<1.1.17": "^1.1.17"
