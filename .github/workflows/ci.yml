@@ -123,7 +123,11 @@ jobs:
       - name: Start infra profile
         run: |
           cp .env.example .env
-          docker compose --env-file .env -f infra/compose/docker-compose.yml --profile infra up -d --wait
+          # `up --wait` fails as soon as ANY container in the set exits — even
+          # cleanly — so the one-shot bucket bootstrapper (minio-setup) is
+          # started without --wait, then we block on the long-running services.
+          docker compose --env-file .env -f infra/compose/docker-compose.yml --profile infra up -d
+          docker compose --env-file .env -f infra/compose/docker-compose.yml --profile infra up -d --wait postgres qdrant valkey minio keycloak
       - name: Integration + E2E tests
         run: uv run pytest -m integration
       - name: Stop infra
@@ -140,7 +144,10 @@ jobs:
       - name: Build and start full profile
         run: |
           cp .env.example .env
-          docker compose --env-file .env -f infra/compose/docker-compose.yml --profile full up -d --build --wait
+          # Same reason as the integration job: minio-setup/migrate/seed are
+          # one-shot containers, so wait only on the services that stay up.
+          docker compose --env-file .env -f infra/compose/docker-compose.yml --profile full up -d --build
+          docker compose --env-file .env -f infra/compose/docker-compose.yml --profile full up -d --wait postgres qdrant valkey minio keycloak api web
       - name: "Smoke: API health"
         run: curl --fail --retry 5 --retry-delay 3 http://localhost:8000/api/v1/health
       - name: "Smoke: web responds"
