@@ -157,7 +157,9 @@ async def test_dw01_upload_only_cp1_to_cp4(
     )
     assert verified.status_code == 200, verified.text
     case = await _case(preparation_client, case_id, member)
-    assert case["notifications"][-1]["event_type"] == "intake.approved"
+    # Verification notifies the owner, then auto-starts DW01 — so the approval
+    # card is followed by the run's own progress card.
+    assert "intake.approved" in [item["event_type"] for item in case["notifications"]]
 
     first_run = await preparation_client.post(
         f"/api/v1/procurement/preparation/cases/{case_id}/run", headers=member

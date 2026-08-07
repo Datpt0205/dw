@@ -179,10 +179,11 @@ services:
 
   # ------------------------------------------------- model inference (RAG) --
   # BGE-M3 dense embeddings. TEI GPU images need compute cap >= 7.5 (Turing+),
-  # so the default is the CPU image, which runs everywhere. On a Turing+ GPU
-  # (e.g. GTX 1650) set in .env:
-  #   DW_TEI_EMBED_IMAGE=ghcr.io/huggingface/text-embeddings-inference:turing-1.6
-  #   DW_TEI_EMBED_DTYPE=float16
+  # so the default here is the CPU image, which runs everywhere (CI included).
+  # On a Turing+ GPU add the opt-in overlay, which swaps in the CUDA image and
+  # reserves the device:
+  #   docker compose -f infra/compose/docker-compose.yml \
+  #                  -f infra/compose/docker-compose.gpu.yml --profile full up -d
   tei-embed:
     image: ${DW_TEI_EMBED_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.6}
     profiles: ["full", "models"]
@@ -202,13 +203,6 @@ services:
     ports:
       - "127.0.0.1:8085:80"
     networks: [dw-internal, dw-edge]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "bash", "-lc", "exec 3<>/dev/tcp/127.0.0.1/80"]
       interval: 15s

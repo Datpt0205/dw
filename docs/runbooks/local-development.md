@@ -47,6 +47,15 @@ docker compose --env-file .env -f infra/compose/docker-compose.yml --profile ful
 make docker-down
 ```
 
+Embedding (BGE-M3) mặc định chạy **CPU** để máy nào cũng lên được — TEI bản GPU
+đòi compute capability >= 7.5, GTX 10xx (Pascal) không chạy. Máy có GPU Turing
+trở lên thì chồng thêm overlay:
+
+```bash
+docker compose -f infra/compose/docker-compose.yml \
+               -f infra/compose/docker-compose.gpu.yml --profile full up -d
+```
+
 ## Khi Postgres không lên
 
 1. `docker logs dw-postgres-1 --tail 50` — thường do volume cũ khác password.
