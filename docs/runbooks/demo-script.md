@@ -77,8 +77,8 @@ Sau phát hành — **NCC nộp HSDT qua EMAIL, không ai upload tay** (mailroom
    cho NCC.
 3. Demo cần **1 hồ sơ là đủ** (`DW_SUBMISSIONS_MIN_TO_CLOSE=1`) → card
    **CP4** tự tới Bình → xác nhận → biên bản mở thầu tự lập, bàn giao DW02
-   niêm phong — hết luồng DW01. *(Bình không bấm nút ghi nhận/không thả
-   file — chỉ còn đúng một quyết định CP4.)*
+   niêm phong — hết luồng DW01. _(Bình không bấm nút ghi nhận/không thả
+   file — chỉ còn đúng một quyết định CP4.)_
 
 Bật trong `.env`: `DW_EMAIL_SUBMISSIONS_ENABLED=true` (+ IMAP dùng lại tài
 khoản SMTP; xem `.env.example`). Đường tay cũ (bấm [NCC đã nộp] + thả file,

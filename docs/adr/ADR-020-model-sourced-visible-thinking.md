@@ -8,10 +8,10 @@
 ## Quyết định
 
 1. Dòng "Suy nghĩ" hiển thị ưu tiên **reasoning trace do model tự sinh**:
-   - OpenAI: **reasoning summary** từ `/v1/responses`
-     (`reasoning: {summary: "auto"}`) — bản tóm tắt chính thức của chuỗi
-     reasoning nội bộ GPT-5; API không bao giờ trả raw chain-of-thought.
-   - DeepSeek-style reasoner: `reasoning_content` (đường cũ, vẫn hoạt động).
+    - OpenAI: **reasoning summary** từ `/v1/responses`
+      (`reasoning: {summary: "auto"}`) — bản tóm tắt chính thức của chuỗi
+      reasoning nội bộ GPT-5; API không bao giờ trả raw chain-of-thought.
+    - DeepSeek-style reasoner: `reasoning_content` (đường cũ, vẫn hoạt động).
 2. Thêm adapter mới `OpenAIResponsesAdapter` (provider id `openai_responses`)
    cạnh `OpenAICompatibleAdapter` — cùng port `ModelProviderAdapter`, cùng
    credentials, chỉ khác dialect. Profile chọn qua `provider:` trong

@@ -26,15 +26,15 @@ token Slack). Mỗi người nhắn bot lần đầu sẽ được bot báo Zalo
 
 Toàn bộ thao tác bằng tiếng Việt tự nhiên:
 
-| Việc | Nhắn |
-| --- | --- |
-| Khai intake | chat như thường (Ngọc hỏi gộp phần thiếu) |
-| Xác nhận tạo hồ sơ | «đồng ý» (hoặc nhắn nội dung cần sửa) |
-| Xác minh đầu vào (Bình) | «xác minh» / «từ chối» |
-| Duyệt checkpoint | «duyệt cp1», «từ chối cp2»… |
-| Chốt sổ mở thầu | «xác nhận mở thầu» |
-| Lập sửa đổi (Bình) | «lập addendum gia hạn nộp thầu thêm 7 ngày» |
-| Đổi hồ sơ đang nói tới | «chọn 1», «chọn 2» |
+| Việc                    | Nhắn                                        |
+| ----------------------- | ------------------------------------------- |
+| Khai intake             | chat như thường (Ngọc hỏi gộp phần thiếu)   |
+| Xác nhận tạo hồ sơ      | «đồng ý» (hoặc nhắn nội dung cần sửa)       |
+| Xác minh đầu vào (Bình) | «xác minh» / «từ chối»                      |
+| Duyệt checkpoint        | «duyệt cp1», «từ chối cp2»…                 |
+| Chốt sổ mở thầu         | «xác nhận mở thầu»                          |
+| Lập sửa đổi (Bình)      | «lập addendum gia hạn nộp thầu thêm 7 ngày» |
+| Đổi hồ sơ đang nói tới  | «chọn 1», «chọn 2»                          |
 
 Đang khai dở mà đổi ý mua thứ khác («thôi, giờ cần mua 5 ghế») → bản nháp cũ
 tự TẠM TREO, xong/huỷ yêu cầu mới sẽ tự quay lại đúng chỗ cũ.
