@@ -23,6 +23,7 @@ from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
 from dw_tender.application.conversation.schemas import (
     AddendumDraftText,
+    CaseOverviewReply,
     ClarifyTurn,
     ComposedReply,
     IntakeChatTurn,
@@ -37,6 +38,7 @@ from dw_tender.application.preparation.handlers import (
     CreatePreparationCaseCommand,
     CreatePreparationCaseHandler,
     GetPreparationCaseHandler,
+    ListPreparationCasesHandler,
     ProposeAddendumCommand,
     ProposePreparationAddendumHandler,
     RecordPreparationSubmissionHandler,
@@ -198,11 +200,14 @@ class ConversationIntakeService:
     request_cp4: RequestCp4Handler | None = None
     # Clarification loop over chat (the web form is read-only now).
     get_case: GetPreparationCaseHandler | None = None
+    # Portfolio question ("hồ sơ tới đâu rồi?"). Visibility is decided here,
+    # not by the model: approvers see the workspace, requesters see their own.
+    list_cases: ListPreparationCasesHandler | None = None
     answer_clarifications: AnswerPreparationClarificationsHandler | None = None
     run_case: RunPreparationHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.4.0"
+    prompt_version: str = "1.5.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 
@@ -257,7 +262,9 @@ class ConversationIntakeService:
 
         # "Quay lại vụ laptop" / "đang dở những gì?" — resolve BEFORE any slot
         # from this message is merged, so nothing leaks into the wrong request.
-        focus = await self._focus_from_turn(turn, conversation, open_convs, text, context)
+        focus = await self._focus_from_turn(
+            turn, conversation, open_convs, text, context, display_name, model_thinking
+        )
         if focus is not None:
             return focus
 
@@ -531,8 +538,12 @@ class ConversationIntakeService:
         open_convs: list[ConversationView],
         text: str,
         context: AccessContext,
+        display_name: str = "",
+        model_thinking: str = "",
     ) -> TurnOutcome | None:
         """Act on the model's switch/list intent — code picks the target."""
+        if turn.intent == "list_cases":
+            return await self._case_overview_outcome(text, context, display_name, model_thinking)
         if turn.intent == "list_requests":
             return self._open_list_outcome(open_convs)
         if turn.intent != "switch_request":
@@ -600,6 +611,121 @@ class ConversationIntakeService:
                     )
                 ),
             )
+        )
+
+    # Vietnamese labels for every case state the portfolio answer may show.
+    _STATE_LABELS: ClassVar[dict[str, str]] = {
+        "draft": "chờ xác minh đầu vào",
+        "intake_rejected": "đầu vào bị từ chối",
+        "intake_ready": "đã xác minh, chuẩn bị chạy",
+        "analyzing": "đang phân tích yêu cầu",
+        "waiting_clarification": "chờ trả lời làm rõ",
+        "approach_ready": "đã có phương án, chuẩn bị trình CP1",
+        "cp1_pending": "chờ duyệt CP1",
+        "cp1_rejected": "CP1 bị từ chối",
+        "cp1_approved": "CP1 đã duyệt",
+        "building_solicitation": "đang soạn HSMT",
+        "package_ready": "HSMT xong, chuẩn bị trình CP2",
+        "cp2_pending": "chờ duyệt CP2",
+        "cp2_rejected": "CP2 bị từ chối",
+        "cp2_approved": "CP2 đã duyệt",
+        "package_official": "hồ sơ chính thức, chờ phát hành",
+        "published": "đã phát hành, chờ nhà cung cấp nộp",
+        "cp3_pending": "chờ duyệt CP3 (addendum)",
+        "receiving_bids": "đang nhận hồ sơ dự thầu",
+        "cp4_ready": "chờ xác nhận mở thầu (CP4)",
+        "completed": "hoàn tất",
+    }
+    # States where the ball is in an approver's court.
+    _DECIDE_STATES: ClassVar[frozenset[str]] = frozenset(
+        {"draft", "cp1_pending", "cp2_pending", "cp3_pending", "cp4_ready", "receiving_bids"}
+    )
+
+    async def _case_overview_outcome(
+        self,
+        text: str,
+        context: AccessContext,
+        display_name: str,
+        model_thinking: str = "",
+    ) -> TurnOutcome:
+        """ "Hồ sơ tới đâu rồi?" — code fetches and filters, the model writes.
+
+        Visibility is a code decision: someone who can decide approvals sees the
+        whole workspace, everyone else sees only the cases they filed. The model
+        never receives a case it is not allowed to mention.
+        """
+        if self.list_cases is None:
+            return TurnOutcome(
+                replies=(ChatReply(text="Mình chưa xem được danh sách hồ sơ ở kênh này."),)
+            )
+        cases = await self.list_cases.handle(context)
+        can_decide = context.has_scope("approvals.decide")
+        if not can_decide:
+            cases = [case for case in cases if case.created_by == context.principal_id]
+
+        completed = [c for c in cases if c.state == "completed"]
+        awaiting = [c for c in cases if can_decide and c.state in self._DECIDE_STATES]
+        awaiting_ids = {c.id for c in awaiting}
+        in_flight = [c for c in cases if c.state != "completed" and c.id not in awaiting_ids]
+
+        def line(case: Any) -> str:
+            label = self._STATE_LABELS.get(case.state, case.state)
+            owner = f" — người đề nghị: {case.owner_name}" if case.owner_name else ""
+            return f"- {case.title} — {label}{owner}"
+
+        case_lines = "\n".join(line(c) for c in (*awaiting, *in_flight, *completed)) or "(trống)"
+        scope_note = (
+            "toàn bộ hồ sơ trong workspace, gồm cả hồ sơ do người khác đề nghị"
+            if can_decide
+            else "chỉ những hồ sơ do chính họ đề nghị"
+        )
+        fallback = (
+            f"📊 Tổng {len(cases)} hồ sơ — hoàn tất {len(completed)}, "
+            f"đang chạy {len(in_flight)}, chờ bạn quyết {len(awaiting)}.\n{case_lines}"
+            if cases
+            else "Hiện chưa có hồ sơ nào trong phạm vi bạn xem được."
+        )
+
+        reply = fallback
+        if cases:
+            try:
+                composed = await self.gateway.generate_structured(
+                    ModelRequest(
+                        task="conversation.summarize_cases",
+                        prompt_id="conversation.summarize_cases",
+                        prompt_version="1.0.0",
+                        variables={
+                            "display_name": display_name or "bạn",
+                            "viewer_role": (
+                                "người có thẩm quyền phê duyệt"
+                                if can_decide
+                                else "người đề nghị mua sắm"
+                            ),
+                            "scope_note": scope_note,
+                            "message": text,
+                            "total": str(len(cases)),
+                            "completed": str(len(completed)),
+                            "in_flight": str(len(in_flight)),
+                            "awaiting": str(len(awaiting)),
+                            "case_lines": case_lines,
+                        },
+                        model_profile=self.model_profile,
+                    ),
+                    CaseOverviewReply,
+                    run_context=self._agent_run_context(context, trace="overview"),
+                )
+                reply = composed.reply_vi.strip() or fallback
+            except Exception:
+                reply = fallback  # never block the answer on the model
+
+        return TurnOutcome(
+            replies=(ChatReply(text=reply),),
+            thinking=model_thinking
+            or (
+                f"• Truy {len(cases)} hồ sơ trong phạm vi được xem ({scope_note}).\n"
+                f"• Hoàn tất {len(completed)}; đang chạy {len(in_flight)}; "
+                f"chờ quyết định {len(awaiting)}."
+            ),
         )
 
     def _open_list_outcome(self, open_convs: list[ConversationView]) -> TurnOutcome:
@@ -677,7 +803,13 @@ class ConversationIntakeService:
             conversation, text, context, display_name, open_convs
         )
         focus = await self._focus_from_turn(
-            turn, conversation, open_convs or [conversation], text, context
+            turn,
+            conversation,
+            open_convs or [conversation],
+            text,
+            context,
+            display_name,
+            model_thinking,
         )
         if focus is not None:
             return focus

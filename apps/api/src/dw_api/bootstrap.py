@@ -733,6 +733,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     record_submission=preparation.record_submission,
                     request_cp4=preparation.request_cp4,
                     get_case=preparation.get_case,
+                    list_cases=preparation.list_cases,
                     answer_clarifications=preparation.answer_clarifications,
                     run_case=preparation.run_case,
                     model_profile=settings.model_profile,

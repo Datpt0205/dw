@@ -1410,6 +1410,11 @@ export interface components {
             artifacts: components["schemas"]["ArtifactView"][];
             /** Business Domain */
             business_domain: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
             /** Currency */
             currency: string;
             /** Current Official Artifact Id */

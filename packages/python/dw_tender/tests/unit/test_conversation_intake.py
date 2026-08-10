@@ -159,7 +159,7 @@ class FakeGateway:
     thinking: str = ""
 
     async def generate_structured(self, request, output_type, *, run_context):
-        if output_type.__name__ in ("ComposedReply", "AddendumDraftText"):
+        if output_type.__name__ in ("ComposedReply", "AddendumDraftText", "CaseOverviewReply"):
             # Mirror the mock adapter without fixtures: presentation prompts
             # fail → the service falls back to its deterministic template.
             raise NotFoundError(
@@ -180,6 +180,8 @@ class ComposingFakeGateway(FakeGateway):
 
     async def generate_structured(self, request, output_type, *, run_context):
         if output_type.__name__ == "ComposedReply":
+            return output_type(reply_vi=self.composed_reply)
+        if output_type.__name__ == "CaseOverviewReply":
             return output_type(reply_vi=self.composed_reply)
         if output_type.__name__ == "AddendumDraftText":
             return output_type(
@@ -612,6 +614,136 @@ async def test_pivot_back_to_a_parked_item_continues_it() -> None:
     assert laptop.slots.quantity == 500  # earlier slots survived
     assert laptop.slots.estimated_value_vnd == 7_500_000_000  # new one merged in
     assert len([c for c in store.conversations.values() if c.state != "parked"]) == 1
+
+
+# ------------------------------------------- portfolio question (list_cases) --
+@dataclass
+class FakeCaseView:
+    id: uuid.UUID
+    title: str
+    state: str
+    owner_name: str
+    created_by: uuid.UUID
+
+
+@dataclass
+class FakeListCases:
+    cases: list[FakeCaseView] = field(default_factory=list)
+
+    async def handle(self, context: Any) -> list[FakeCaseView]:
+        return list(self.cases)
+
+
+AN = uuid.uuid4()
+BINH = uuid.uuid4()
+
+
+def _approver_context() -> AccessContext:
+    return AccessContext(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        principal_id=BINH,
+        roles=frozenset({"manager"}),
+        scopes=frozenset({"tender.read", "tender.write", "approvals.decide"}),
+        plan_id="team",
+        feature_flags=frozenset({"tender"}),
+    )
+
+
+def _requester_context(principal: uuid.UUID) -> AccessContext:
+    return AccessContext(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        principal_id=principal,
+        roles=frozenset({"member"}),
+        scopes=frozenset({"tender.read", "tender.write"}),
+        plan_id="team",
+        feature_flags=frozenset({"tender"}),
+    )
+
+
+def _portfolio() -> FakeListCases:
+    return FakeListCases(
+        cases=[
+            FakeCaseView(uuid.uuid4(), "Mua 500 laptop", "cp1_pending", "An", AN),
+            FakeCaseView(uuid.uuid4(), "Bàn ghế phòng họp", "completed", "An", AN),
+            FakeCaseView(uuid.uuid4(), "Thuê bảo trì máy lạnh", "published", "Bình", BINH),
+        ]
+    )
+
+
+def _overview_service(store: FakeStore, gateway: FakeGateway) -> ConversationIntakeService:
+    service = make_service(store, _list_cases_turn(), gateway=gateway)
+    service.list_cases = _portfolio()  # type: ignore[assignment]
+    return service
+
+
+def _list_cases_turn() -> IntakeChatTurn:
+    return IntakeChatTurn(
+        intent="list_cases", slots=IntakeSlots(), reply_vi="", reasoning_summary=""
+    )
+
+
+async def test_approver_sees_every_case_in_the_workspace() -> None:
+    store = FakeStore()
+    gw = SequenceGateway(turn=_list_cases_turn(), turns=[_list_cases_turn()])
+    service = _overview_service(store, gw)
+    outcome = await service.handle_message(
+        channel_key="zalo:binh",
+        text="có bao nhiêu hồ sơ rồi, tới đâu rồi?",
+        context=_approver_context(),
+        display_name="Bình",
+    )
+    text = outcome.replies[0].text
+    assert "Mua 500 laptop" in text  # An's case is visible to the approver
+    assert "Thuê bảo trì máy lạnh" in text
+    assert "Tổng 3 hồ sơ" in text
+
+
+async def test_requester_only_sees_their_own_cases() -> None:
+    store = FakeStore()
+    gw = SequenceGateway(turn=_list_cases_turn(), turns=[_list_cases_turn()])
+    service = _overview_service(store, gw)
+    outcome = await service.handle_message(
+        channel_key="zalo:an",
+        text="hồ sơ của tôi tới đâu rồi?",
+        context=_requester_context(AN),
+        display_name="An",
+    )
+    text = outcome.replies[0].text
+    assert "Mua 500 laptop" in text
+    assert "Bình" not in text  # never leaks another requester's case
+    assert "Thuê bảo trì máy lạnh" not in text
+
+
+async def test_portfolio_answer_is_written_by_the_model_when_available() -> None:
+    """The model phrases it; the numbers still come from the query."""
+    store = FakeStore()
+    gw = ComposingFakeGateway(
+        turn=_list_cases_turn(),
+        composed_reply="Hiện có 3 hồ sơ: 1 đang chờ bạn duyệt CP1, 1 đã phát hành, 1 hoàn tất.",
+    )
+    service = _overview_service(store, gw)
+    outcome = await service.handle_message(
+        channel_key="zalo:binh",
+        text="tình hình chung thế nào?",
+        context=_approver_context(),
+        display_name="Bình",
+    )
+    assert outcome.replies[0].text.startswith("Hiện có 3 hồ sơ")
+
+
+async def test_portfolio_falls_back_to_system_text_when_model_fails() -> None:
+    store = FakeStore()
+    gw = SequenceGateway(turn=_list_cases_turn(), turns=[_list_cases_turn()])
+    service = _overview_service(store, gw)  # FakeGateway raises for CaseOverviewReply
+    outcome = await service.handle_message(
+        channel_key="zalo:binh",
+        text="bao nhiêu hồ sơ?",
+        context=_approver_context(),
+        display_name="Bình",
+    )
+    assert "Tổng 3 hồ sơ" in outcome.replies[0].text  # deterministic answer survives
 
 
 async def test_cancel_resumes_parked_draft() -> None:

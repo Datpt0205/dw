@@ -1798,6 +1798,11 @@
             "title": "Business Domain",
             "type": "string"
           },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -1949,6 +1954,7 @@
           "currency",
           "deadline",
           "owner_name",
+          "created_by",
           "procurement_type",
           "business_domain",
           "method_key",

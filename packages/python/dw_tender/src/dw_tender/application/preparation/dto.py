@@ -102,6 +102,9 @@ class PreparationCaseView(BaseModel):
     currency: str
     deadline: str | None
     owner_name: str
+    # Who filed the request — drives "only my own cases" visibility for
+    # requesters (approvers see the whole workspace).
+    created_by: UUID
     procurement_type: str
     business_domain: str
     method_key: str | None
@@ -135,6 +138,7 @@ class PreparationCaseView(BaseModel):
             currency=case.currency,
             deadline=case.deadline,
             owner_name=case.owner_name,
+            created_by=case.created_by.value,
             procurement_type=case.procurement_type.value,
             business_domain=case.business_domain.value,
             method_key=case.method_key,

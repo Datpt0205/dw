@@ -1,18 +1,5 @@
 # Demo DW01 — cheat sheet (Zalo)
 
-Zalo (trái, chat với bot DW01) + web `localhost:3000` (phải, login 1 nút **Chi** /
-`demo`). **Không còn nút bấm nào** — mọi quyết định nói bằng tiếng Việt đời thường.
-
-Tài khoản Zalo đang map là **Bình** (mua sắm, toàn quyền) nên một người diễn được
-cả vai người yêu cầu lẫn người duyệt. Có 2 máy thì map thêm `ZALO_USER_AN_ID` để
-diễn đúng SoD.
-
-## Reset trước demo
-
-```bash
-bash scripts/demo_reset.sh    # quên hết hội thoại + hồ sơ
-```
-
 ## Điều cần chứng minh
 
 Ba điều, không phải "AI trả lời hay":
@@ -211,29 +198,3 @@ không tự duyệt, không đoán số, không vượt SoD, không im lặng kh
 không quên bạn đang làm dở cái gì."_
 
 ---
-
-## Câu lệnh duyệt bằng lời
-
-| Việc               | Nhắn                                |
-| ------------------ | ----------------------------------- |
-| Xác nhận tạo hồ sơ | `đồng ý` / `ok` / `chốt`            |
-| Sửa trước khi tạo  | `sửa …` (vd `sửa ngân sách 8 tỷ`)   |
-| Xác minh PR        | `xác minh`                          |
-| Duyệt / từ chối    | `duyệt cp1` · `từ chối cp2`         |
-| Addendum (CP3)     | `lập addendum <nội dung>`           |
-| Mở thầu (CP4)      | `xác nhận mở thầu`                  |
-| Đổi hồ sơ          | `chọn 2` · `quay lại vụ <tên hàng>` |
-| Xem việc đang dở   | `đang dở những gì thế?`             |
-
-## Checklist
-
-- `.env`: `DW_CHAT_FRONT_OFFICE_ENABLED=true` · `DW_APPROVAL_CHANNEL=zalo` ·
-  `ZALO_BOT_TOKEN` + `ZALO_USER_BINH_ID` · `DW_AUTONOMY_PROFILE=autonomous_demo`
-  · `DW_APPROVAL_REMINDER_SECONDS=90` · `DW_EMAIL_SUBMISSIONS_ENABLED=true`.
-- Thẻ "suy nghĩ" mặc định **tắt** (`DW_ZALO_SHOW_THINKING=false`). Muốn diễn
-  phần reasoning thì bật lên rồi `make docker-up` lại — reasoning vẫn luôn được
-  trace vào Langfuse dù bật hay tắt.
-- Stack full chạy; log worker có `approval notification sent`.
-- Q&A: agent không duyệt — người quyết (trừ CP1 gói nhỏ theo uỷ quyền, có ghi
-  vết); ngưỡng lấy từ rule pack Phụ lục G chứ model không đặt ngưỡng; chấm thầu
-  là DW-02 (giai đoạn sau).

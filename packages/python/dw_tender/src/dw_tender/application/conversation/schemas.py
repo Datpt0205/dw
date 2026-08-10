@@ -83,7 +83,8 @@ ChatIntent = Literal[
     "other",
     # Working on several requests at once (the user juggles them in one chat):
     "switch_request",  # "quay lại vụ laptop", "làm nốt cái bàn ghế đi"
-    "list_requests",  # "đang dở những gì thế?"
+    "list_requests",  # "đang dở những gì thế?" — MY unfinished drafts
+    "list_cases",  # "có bao nhiêu hồ sơ rồi?" — filed cases and where they stand
     # Post-publication lifecycle (only meaningful when the case exists):
     "request_addendum",
     "record_submission",
@@ -165,6 +166,15 @@ class ComposedReply(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     reply_vi: str = Field(min_length=1, max_length=1200)
+
+
+class CaseOverviewReply(BaseModel):
+    """LLM-written portfolio answer. Every number it may use is supplied by
+    code; the model only decides wording, grouping and what to point out."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    reply_vi: str = Field(min_length=1, max_length=2000)
 
 
 class AddendumDraftText(BaseModel):
