@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from dw_tender.application.preparation.rules import (
@@ -33,6 +35,42 @@ RULES = ProcurementRules(
     require_deadline=True,
     require_owner=True,
 )
+
+
+def test_approval_tier_routes_cp2_to_the_head_for_large_packages() -> None:
+    """Ma trận thẩm quyền: gói lớn thì CP2 phải lên Trưởng ban, CP1 vẫn ở chuyên gia."""
+    from dw_tender.application.preparation.rules import ApprovalTier
+
+    tiered = replace(
+        RULES,
+        approval_tiers=(
+            ApprovalTier(max_value=500_000_000, cp1_role="approver", cp2_role="approver"),
+            ApprovalTier(max_value=None, cp1_role="approver", cp2_role="procurement_head"),
+        ),
+    )
+    assert tiered.approver_role_for(400_000_000, "CP1") == "approver"
+    assert tiered.approver_role_for(400_000_000, "CP2") == "approver"
+    assert tiered.approver_role_for(500_000_000_000, "CP1") == "approver"
+    assert tiered.approver_role_for(500_000_000_000, "CP2") == "procurement_head"
+
+
+def test_approval_tier_falls_back_when_rule_pack_declares_none() -> None:
+    assert RULES.approver_role_for(500_000_000_000, "CP2") == "approver"
+
+
+def test_rule_pack_on_disk_sends_large_cp2_to_the_head() -> None:
+    """The shipped pack must actually carry the two-tier matrix."""
+    from pathlib import Path
+
+    from dw_tender.adapters.preparation.rules_loader import load_procurement_rules
+
+    repo_root = Path(__file__).resolve().parents[5]
+    rules = load_procurement_rules(
+        repo_root / "configs" / "policies" / "dw01" / "procurement_rules_v1.yaml"
+    )
+    assert rules.approver_role_for(500_000_000_000, "CP2") == "procurement_head"
+    assert rules.approver_role_for(500_000_000_000, "CP1") == "approver"
+    assert rules.approver_role_for(8_000_000, "CP2") == "approver"
 
 
 def test_method_selection_by_value() -> None:

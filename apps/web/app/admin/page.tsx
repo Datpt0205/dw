@@ -41,9 +41,26 @@ const ROLE_CATALOG: {
   },
   {
     key: "approver",
-    label: "Quản lý",
+    label: "Chuyên gia mua sắm",
     summary:
-      "Toàn quyền của nhân viên, cộng thêm quyết định phê duyệt. Không có quyền quản trị.",
+      "Toàn quyền của nhân viên, cộng thêm thẩm định và quyết định checkpoint. Không có quyền quản trị.",
+    scopes: [
+      "tender.read",
+      "tender.write",
+      "work_ops.read",
+      "work_ops.write",
+      "approvals.read",
+      "approvals.decide",
+      "knowledge.read",
+      "knowledge.write",
+      "memory.read",
+    ],
+  },
+  {
+    key: "procurement_head",
+    label: "Trưởng ban mua sắm",
+    summary:
+      "Như chuyên gia mua sắm, và là cấp phê duyệt CP2 cho gói vượt ngưỡng theo rule pack.",
     scopes: [
       "tender.read",
       "tender.write",

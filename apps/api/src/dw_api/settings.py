@@ -209,10 +209,10 @@ class ApiSettings(BaseSettings):
     zalo_user_binh_id: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_BINH_ID"))
     zalo_user_chi_id: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_CHI_ID"))
     zalo_user_map_json: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_MAP_JSON"))
-    # Visible "thinking" card on Zalo. Off by default — the reasoning is still
-    # produced, traced and stored (ADR-020), just not pushed to the chat.
+    # Show the model's reasoning on Zalo. It rides in the SAME message as the
+    # reply (no separate card); set false to keep it trace-only (ADR-020).
     zalo_show_thinking: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices("DW_API_ZALO_SHOW_THINKING", "DW_ZALO_SHOW_THINKING"),
     )
 

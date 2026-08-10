@@ -43,15 +43,22 @@ logger = logging.getLogger("dw_api.channels.zalo")
 _CONFIRM_PHRASES = ("đồng ý", "dong y", "xác nhận", "xac nhan", "ok", "oke", "chốt", "chot")
 _EDIT_PHRASES = ("sửa", "sua", "chỉnh", "chinh")
 _PICK_RE = re.compile(r"^\s*chọn\s+(\d)\s*$", re.IGNORECASE)
-_THINKING_MAX = 1500
+_THINKING_MAX = 1200
 
 
-def _render_thinking(thinking: str) -> str:
-    """Visually distinct 'thought bubble' — plain text is all Zalo gives us,
-    so the frame does the differentiating (gutter bar + light rule)."""
+def _with_reasoning(thinking: str, reply: str) -> str:
+    """One message: the reasoning leads, the answer follows.
+
+    Zalo has no rich text, so a separate "thinking" message just reads as a
+    second reply. Keeping both in one bubble — reasoning in a light gutter,
+    a hairline, then the answer — keeps the turn to a single notification and
+    needs no label to explain itself.
+    """
     lines = [ln.strip() for ln in thinking[:_THINKING_MAX].splitlines() if ln.strip()]
-    body = "\n".join(f"┆ {ln}" for ln in lines)
-    return f"💭 THINK\n{body}\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄"
+    if not lines:
+        return reply
+    body = "\n".join(f"┆ {ln.lstrip('•').strip()}" for ln in lines)
+    return f"{body}\n┄┄┄┄┄┄┄┄┄┄\n{reply}"
 
 
 @dataclass
@@ -240,20 +247,13 @@ class ZaloFrontOfficeService:
 
     # ------------------------------------------------------------ rendering --
     async def _send_outcome(self, chat_id: str, outcome: TurnOutcome) -> None:
-        if outcome.thinking and self.show_thinking:
-            # Thought = styled PNG card (Zalo has no rich text). Any rendering
-            # or upload hiccup falls back to the framed-text version.
-            try:
-                from dw_api.channels.thinking_card import render_thinking_card
-
-                await self._client.send_photo(
-                    chat_id, render_thinking_card(outcome.thinking), "suy-nghi.png"
-                )
-            except Exception:
-                logger.warning("thinking card failed — falling back to text", exc_info=True)
-                await self._client.send_message(chat_id, _render_thinking(outcome.thinking))
-        for reply in outcome.replies:
-            await self._client.send_message(chat_id, self._render_reply(chat_id, reply))
+        for index, reply in enumerate(outcome.replies):
+            text = self._render_reply(chat_id, reply)
+            # Reasoning rides along with the FIRST reply of the turn, never as
+            # a message of its own.
+            if index == 0 and outcome.thinking and self.show_thinking:
+                text = _with_reasoning(outcome.thinking, text)
+            await self._client.send_message(chat_id, text)
 
     def _render_reply(self, chat_id: str, reply: ChatReply) -> str:
         parts = [reply.text]

@@ -292,14 +292,21 @@ class PreparationNodes:
         dedupe: str,
         lines: list[str],
     ) -> None:
-        """Decision card with Duyệt/Từ chối buttons for the approver (P4).
+        """Decision card for whoever holds authority over this checkpoint (P4).
 
-        Recipient comes from the membership directory (role ``approver``) — the
-        same trust path the intake notifications use. The click resolves back
-        through identity → AccessContext → the normal decide handlers; Slack
-        itself never authorizes anything.
+        WHO receives it comes from the versioned rule pack's approval matrix,
+        by package value: a 500 tỷ package sends CP2 to the head of procurement
+        while the specialist keeps CP1. Recipient is then resolved through the
+        membership directory — the same trust path the intake notifications
+        use. The reply resolves back through identity → AccessContext → the
+        normal decide handlers; the chat channel never authorizes anything.
         """
-        approver = await uow.notifications.find_recipient_for_role("approver")
+        role = self.services.rules.approver_role_for(case.estimated_value_minor, checkpoint)
+        approver = await uow.notifications.find_recipient_for_role(role)
+        if approver is None:  # role unstaffed → fall back so the run never stalls
+            approver = await uow.notifications.find_recipient_for_role(
+                self.services.rules.default_approver_role
+            )
         if approver is None:
             return
         await uow.notifications.enqueue(
@@ -976,8 +983,10 @@ class PreparationNodes:
                     )
                     cp1_lines += review_card_lines(review)
                 if autopilot:
-                    # Inform the approver (no buttons) — with a standing override path.
-                    approver = await uow.notifications.find_recipient_for_role("approver")
+                    # Inform whoever would have decided CP1 — with an override path.
+                    approver = await uow.notifications.find_recipient_for_role(
+                        self.services.rules.approver_role_for(case.estimated_value_minor, "CP1")
+                    )
                     if approver is not None:
                         await self._notify_progress(
                             uow,

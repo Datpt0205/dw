@@ -9,15 +9,16 @@ const ROLE_BADGE: Record<
   string,
   { label: string; variant: "success" | "warning" | "secondary" }
 > = {
-  approver: { label: "quản lý", variant: "success" },
+  approver: { label: "chuyên gia mua sắm", variant: "success" },
+  procurement_head: { label: "trưởng ban mua sắm", variant: "success" },
   platform_admin: { label: "quản trị", variant: "warning" },
   member: { label: "nhân viên", variant: "secondary" },
 };
 
 // Role hierarchy (low → high). Only the highest role a user holds is shown as a
-// badge — a manager isn't labelled "nhân viên · quản lý", just "quản lý", even
-// though the manager tier includes every member permission.
-const ROLE_RANK = ["member", "approver", "platform_admin"];
+// badge — a specialist isn't labelled "nhân viên · chuyên gia mua sắm", just the
+// highest one, even though each tier includes every permission below it.
+const ROLE_RANK = ["member", "approver", "procurement_head", "platform_admin"];
 
 /**
  * Header chip: who is signed in + sign-out. The web is Chi's read-only back

@@ -37,9 +37,10 @@ ROLES = [
     },
     {
         "key": "approver",
-        # Manager tier: a superset of "member" plus approval authority. Sits
-        # between Nhân viên and Quản trị in the hierarchy.
-        "name": "Quản lý",
+        # Chuyên gia mua sắm: everything a member can do plus authority over
+        # the appraisal checkpoint (CP1) and the day-to-day case decisions.
+        # One rung above a requester, below the head of procurement.
+        "name": "Chuyên gia mua sắm",
         "scopes": [
             # everything a member can do …
             "work_ops.read",
@@ -51,6 +52,23 @@ ROLES = [
             "knowledge.write",
             "memory.read",
             # … plus deciding approvals.
+            "approvals.decide",
+        ],
+    },
+    {
+        "key": "procurement_head",
+        # Trưởng ban mua sắm: signs off the official solicitation package.
+        # The rule pack routes CP2 here once a package passes its threshold.
+        "name": "Trưởng ban mua sắm",
+        "scopes": [
+            "work_ops.read",
+            "work_ops.write",
+            "tender.read",
+            "tender.write",
+            "approvals.read",
+            "knowledge.read",
+            "knowledge.write",
+            "memory.read",
             "approvals.decide",
         ],
     },
@@ -126,7 +144,7 @@ USERS = [
         "chi.le@alpha.local",
         "Lê Thị Chi",
         "tenant-alpha",
-        ["platform_admin", "member"],
+        ["platform_admin", "procurement_head", "member"],
         "dieu-hanh",
     ),
     (

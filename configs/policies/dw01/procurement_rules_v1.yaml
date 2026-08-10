@@ -34,16 +34,17 @@ methods:
 # CP1 = duyệt phương án; CP2 = duyệt bộ hồ sơ chính thức. Theo quy định, chủ
 # thể phê duyệt là Tổng giám đốc/người được ủy quyền — danh sách ủy quyền cụ
 # thể là tham số Config Register #3 (chặn PoC, chưa có).
+# CP1 = duyệt phương án (chuyên gia mua sắm thẩm định).
+# CP2 = duyệt bộ hồ sơ mời thầu chính thức — gói lớn phải lên Trưởng ban.
 approval_tiers:
-  - max_value: 500000000          # ≤ 500 triệu
-    cp1_role: procurement_manager
-    cp2_role: procurement_manager
-  - max_value: null               # > 500 triệu
-    cp1_role: procurement_manager
-    cp2_role: cp2_approver
+  - max_value: 500000000          # ≤ 500 triệu: chuyên gia quyết cả hai
+    cp1_role: approver
+    cp2_role: approver
+  - max_value: null               # > 500 triệu: CP2 lên Trưởng ban mua sắm
+    cp1_role: approver
+    cp2_role: procurement_head
 
-# Trong POC, cả CP1 và CP2 map về scope approvals.decide (role approver).
-# approval_tiers ở trên là dữ liệu tham chiếu cho bước sau khi có role riêng.
+# Mọi role trong approval_tiers đều phải có scope này thì quyết định mới hợp lệ.
 checkpoint_scope: approvals.decide
 
 # --- Ngưỡng xem xét bổ sung (G3, G4) ----------------------------------------

@@ -19,6 +19,15 @@ class Method:
 
 
 @dataclass(frozen=True, slots=True)
+class ApprovalTier:
+    """Who may decide each checkpoint for packages up to ``max_value``."""
+
+    max_value: int | None
+    cp1_role: str
+    cp2_role: str
+
+
+@dataclass(frozen=True, slots=True)
 class GateResult:
     passed: bool
     reasons: tuple[str, ...]
@@ -50,6 +59,22 @@ class ProcurementRules:
     payment_term_template: str = ""
     tax_term_template: str = ""
     response_structure: tuple[str, ...] = ()
+    # Phụ lục: ma trận thẩm quyền theo giá trị gói (CP1 thẩm định, CP2 phê duyệt).
+    approval_tiers: tuple[ApprovalTier, ...] = ()
+    # Role dùng khi rule pack chưa khai tier nào (giữ hành vi cũ).
+    default_approver_role: str = "approver"
+
+    def approver_role_for(self, value_minor: int, checkpoint: str) -> str:
+        """Membership role that must receive/decide this checkpoint.
+
+        Deterministic and versioned: a 500 tỷ package sends CP2 to the head of
+        procurement, a small one keeps both checkpoints with the specialist.
+        The model has no say in this.
+        """
+        for tier in self.approval_tiers:
+            if tier.max_value is None or value_minor <= tier.max_value:
+                return tier.cp2_role if checkpoint.upper() == "CP2" else tier.cp1_role
+        return self.default_approver_role
 
     def select_method(self, value_minor: int) -> Method:
         """Cheapest/fastest method whose ceiling still covers the package value."""

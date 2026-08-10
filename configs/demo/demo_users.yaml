@@ -6,22 +6,22 @@ schema_version: "1.0"
 users:
   - subject: dev|an.nguyen
     display_name: Nguyễn Văn An
-    description: Nhân viên mua hàng — tạo hồ sơ, chạy phân tích
+    description: Nhân viên đơn vị — nêu nhu cầu, tạo PR qua chat
     roles: [member]
     tenant_id: d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d
     tenant_name: Công ty Alpha
     workspace_id: 64764894-718d-5558-ba17-9a2949214063
   - subject: dev|binh.tran
     display_name: Trần Thanh Bình
-    description: Trưởng phòng mua sắm — xác minh intake và phê duyệt CP1–CP4
+    description: Chuyên gia mua sắm — thẩm định phương án (CP1), hoàn thiện HSMT
     roles: [approver, member]
     tenant_id: d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d
     tenant_name: Công ty Alpha
     workspace_id: 64764894-718d-5558-ba17-9a2949214063
   - subject: dev|chi.le
     display_name: Lê Kim Chi
-    description: Quản trị nền tảng — xem mọi trang, cấu hình
-    roles: [platform_admin, member]
+    description: Trưởng ban mua sắm — phê duyệt CP2 gói lớn; kiêm quản trị nền tảng
+    roles: [platform_admin, procurement_head, member]
     tenant_id: d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d
     tenant_name: Công ty Alpha
     workspace_id: 64764894-718d-5558-ba17-9a2949214063

@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 from dw_kernel.errors import InfrastructureError
-from dw_tender.application.preparation.rules import Method, ProcurementRules
+from dw_tender.application.preparation.rules import ApprovalTier, Method, ProcurementRules
 
 
 def load_procurement_rules(path: Path) -> ProcurementRules:
@@ -26,6 +26,14 @@ def load_procurement_rules(path: Path) -> ProcurementRules:
             min_suppliers=int(m["min_suppliers"]),
         )
         for m in data["methods"]
+    )
+    tiers = tuple(
+        ApprovalTier(
+            max_value=(None if t.get("max_value") is None else int(t["max_value"])),
+            cp1_role=str(t["cp1_role"]),
+            cp2_role=str(t["cp2_role"]),
+        )
+        for t in data.get("approval_tiers", [])
     )
     evaluation = data.get("evaluation", {})
     solicitation = data.get("solicitation_template", {})
@@ -54,4 +62,5 @@ def load_procurement_rules(path: Path) -> ProcurementRules:
         payment_term_template=str(solicitation.get("payment_term", "")),
         tax_term_template=str(solicitation.get("tax_term", "")),
         response_structure=tuple(str(item) for item in solicitation.get("response_structure", [])),
+        approval_tiers=tiers,
     )

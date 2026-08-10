@@ -52,21 +52,6 @@ class ZaloBotClient:
         async with httpx.AsyncClient(base_url=f"{_BASE}/bot{self.bot_token}", timeout=10) as client:
             await client.post("/sendChatAction", json={"chat_id": chat_id, "action": action})
 
-    async def send_photo(self, chat_id: str, image_png: bytes, filename: str = "card.png") -> str:
-        """Send a PNG (multipart) — used for styled 'thinking card' images."""
-        async with httpx.AsyncClient(base_url=f"{_BASE}/bot{self.bot_token}", timeout=30) as client:
-            response = await client.post(
-                "/sendPhoto",
-                data={"chat_id": chat_id},
-                files={"photo": (filename, image_png, "image/png")},
-            )
-            response.raise_for_status()
-            data = response.json()
-        if not data.get("ok"):
-            raise RuntimeError(f"zalo sendPhoto failed: {data.get('description')}")
-        result = data.get("result") or {}
-        return str(result.get("message_id", ""))
-
     async def send_message(self, chat_id: str, text: str) -> str:
         """Send plain text; returns the message id (best effort)."""
         async with httpx.AsyncClient(base_url=f"{_BASE}/bot{self.bot_token}", timeout=15) as client:
