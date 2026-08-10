@@ -61,6 +61,9 @@ class ZaloFrontOfficeService:
     bot_token: str
     repo_root: Path
     web_base_url: str = "http://localhost:3000"
+    # Visible thinking is produced and traced regardless; this only decides
+    # whether the card is pushed to the chat (DW_ZALO_SHOW_THINKING).
+    show_thinking: bool = False
     _client: ZaloBotClient = field(init=False)
     _offset: int = field(default=0, init=False)
     _engine: DecisionEngine | None = field(default=None, init=False)
@@ -237,7 +240,7 @@ class ZaloFrontOfficeService:
 
     # ------------------------------------------------------------ rendering --
     async def _send_outcome(self, chat_id: str, outcome: TurnOutcome) -> None:
-        if outcome.thinking:
+        if outcome.thinking and self.show_thinking:
             # Thought = styled PNG card (Zalo has no rich text). Any rendering
             # or upload hiccup falls back to the framed-text version.
             try:
@@ -282,5 +285,6 @@ def start_zalo_front_office(container: ApiContainer, repo_root: Path) -> asyncio
         bot_token=token,
         repo_root=repo_root,
         web_base_url=container.settings.public_web_url,
+        show_thinking=container.settings.zalo_show_thinking,
     )
     return asyncio.get_running_loop().create_task(service.run_forever(), name="dw-zalo")

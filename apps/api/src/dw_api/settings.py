@@ -209,6 +209,12 @@ class ApiSettings(BaseSettings):
     zalo_user_binh_id: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_BINH_ID"))
     zalo_user_chi_id: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_CHI_ID"))
     zalo_user_map_json: str = Field(default="", validation_alias=AliasChoices("ZALO_USER_MAP_JSON"))
+    # Visible "thinking" card on Zalo. Off by default — the reasoning is still
+    # produced, traced and stored (ADR-020), just not pushed to the chat.
+    zalo_show_thinking: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("DW_API_ZALO_SHOW_THINKING", "DW_ZALO_SHOW_THINKING"),
+    )
 
     def zalo_user_reverse_map(self) -> dict[str, str]:
         """zalo_user_id -> dev subject (mirror of the Slack mapping style)."""

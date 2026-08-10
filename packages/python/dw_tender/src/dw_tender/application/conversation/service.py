@@ -9,6 +9,8 @@ slot-filling → deterministic completeness → confirm-before-commit → the sa
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import UTC
@@ -47,6 +49,34 @@ from dw_tender.domain.preparation.entities import BusinessDomain, ProcurementTyp
 
 ConversationState = Literal["collecting", "confirming", "case_created", "cancelled", "parked"]
 
+# Juggling several requests: the MODEL decides the user wants to switch
+# (intent=switch_request, however they phrase it) and names the target; the
+# code below decides WHICH conversation that name refers to and moves the
+# state. Same split as everywhere else — LLM understands, code decides.
+# Words that carry no identity ("mua 5 ghế" → "ghe" is the discriminator).
+_LABEL_STOPWORDS = frozenset(
+    {
+        "mua","cho","cua","cai","bo","cac","moi","voi","va","ho","so","hoso","yeu","cau",
+        "them","tai","tren","duoc","nhan","vien","phong","ban","cong","ty","don","vi",
+        "sam","dung","can","the","nay","kia","do","lai","tiep","quay","ve",
+    }
+)  # fmt: skip
+
+
+def _fold(text: str) -> str:
+    """Accent- and case-insensitive form for matching Vietnamese labels."""
+    lowered = text.casefold().replace("đ", "d")
+    decomposed = unicodedata.normalize("NFD", lowered)
+    return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+
+
+def _label_tokens(label: str) -> set[str]:
+    return {
+        token
+        for token in re.split(r"[^0-9a-z]+", _fold(label))
+        if len(token) >= 3 and token not in _LABEL_STOPWORDS
+    }
+
 
 @dataclass(frozen=True, slots=True)
 class ConversationView:
@@ -83,10 +113,11 @@ class ConversationStorePort(Protocol):
         """Most recent PARKED draft on this channel (mid-intake pivot)."""
         ...
 
-    async def list_case_conversations(
+    async def list_open(
         self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, channel_key: str
     ) -> list[ConversationView]:
-        """Conversations owning a live case on this channel, focus-order."""
+        """Everything still unfinished on this channel — drafts (collecting/
+        confirming/parked) AND live cases — most recently focused first."""
         ...
 
     async def touch(self, *, conversation_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
@@ -171,7 +202,7 @@ class ConversationIntakeService:
     run_case: RunPreparationHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.3.0"
+    prompt_version: str = "1.4.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 
@@ -184,6 +215,13 @@ class ConversationIntakeService:
         context: AccessContext,
         display_name: str,
     ) -> TurnOutcome:
+        # Everything still unfinished on this channel — the model sees this
+        # list so it can tell "a new request" from "back to the laptop one".
+        open_convs = await self.store.list_open(
+            tenant_id=context.tenant_id,
+            workspace_id=context.workspace_id,
+            channel_key=channel_key,
+        )
         conversation = await self.store.find_active(
             tenant_id=context.tenant_id,
             workspace_id=context.workspace_id,
@@ -192,11 +230,7 @@ class ConversationIntakeService:
         if conversation is None:
             # No intake in flight — conversations on this channel may own live
             # cases; lifecycle chat targets the most recently focused one.
-            case_convs = await self.store.list_case_conversations(
-                tenant_id=context.tenant_id,
-                workspace_id=context.workspace_id,
-                channel_key=channel_key,
-            )
+            case_convs = [c for c in open_convs if c.state == "case_created" and c.case_id]
             if case_convs:
                 lifecycle = await self._try_lifecycle_turn(
                     case_convs[0],
@@ -204,6 +238,7 @@ class ConversationIntakeService:
                     context,
                     display_name,
                     siblings=case_convs[1:],
+                    open_convs=open_convs,
                 )
                 if lifecycle is not None:
                     return lifecycle
@@ -214,8 +249,17 @@ class ConversationIntakeService:
                 channel_key=channel_key,
                 subject=str(context.principal_id),
             )
+            open_convs = [conversation, *open_convs]
 
-        turn, model_thinking = await self._run_turn(conversation, text, context, display_name)
+        turn, model_thinking = await self._run_turn(
+            conversation, text, context, display_name, open_convs
+        )
+
+        # "Quay lại vụ laptop" / "đang dở những gì?" — resolve BEFORE any slot
+        # from this message is merged, so nothing leaks into the wrong request.
+        focus = await self._focus_from_turn(turn, conversation, open_convs, text, context)
+        if focus is not None:
+            return focus
 
         # Mid-intake pivot ("thôi, giờ cần mua X khác"): PARK the current draft
         # and open a fresh conversation so two requests never blend into one.
@@ -237,17 +281,37 @@ class ConversationIntakeService:
                 tenant_id=context.tenant_id,
                 state="parked",
             )
-            conversation = await self.store.create(
-                conversation_id=self.id_generator.new_uuid(),
-                tenant_id=context.tenant_id,
-                workspace_id=context.workspace_id,
-                channel_key=channel_key,
-                subject=str(context.principal_id),
+            # Safety net for when the model reads "giờ mua laptop tiếp" as a
+            # brand-new request: if the item matches a draft parked earlier,
+            # CONTINUE that one instead of starting from scratch.
+            resumed = self._match_conversation(
+                turn.slots.item_summary or "",
+                [c for c in open_convs if c.id != conversation.id and c.state == "parked"],
             )
-            park_note = (
-                f"⏸ Mình tạm treo hồ sơ đang khai «{parked_item}» — xong yêu cầu "
-                "mới này mình sẽ tự quay lại nó nhé."
-            )
+            if resumed is not None:
+                await self.store.update(
+                    conversation_id=resumed.id,
+                    tenant_id=context.tenant_id,
+                    state="collecting",
+                )
+                conversation = resumed
+                park_note = (
+                    f"⏸ Tạm treo «{parked_item}».\n"
+                    f"▶️ Quay lại hồ sơ đang khai dở «{self._conv_label(resumed)}» — "
+                    "mình giữ nguyên những gì đã khai."
+                )
+            else:
+                conversation = await self.store.create(
+                    conversation_id=self.id_generator.new_uuid(),
+                    tenant_id=context.tenant_id,
+                    workspace_id=context.workspace_id,
+                    channel_key=channel_key,
+                    subject=str(context.principal_id),
+                )
+                park_note = (
+                    f"⏸ Mình tạm treo hồ sơ đang khai «{parked_item}» — xong yêu cầu "
+                    "mới này mình sẽ tự quay lại nó nhé."
+                )
 
         merged = conversation.slots.merged_with(turn.slots)
 
@@ -404,6 +468,163 @@ class ConversationIntakeService:
             )
         )
 
+    # ------------------------------------------------- focus across cases ----
+    def _conv_label(self, conversation: ConversationView) -> str:
+        return (
+            conversation.slots.item_summary
+            or conversation.slots.title
+            or (str(conversation.case_id)[:8] if conversation.case_id else "yêu cầu chưa đặt tên")
+        )
+
+    def _has_content(self, conversation: ConversationView) -> bool:
+        return bool(
+            conversation.case_id
+            or (conversation.slots.item_summary or "").strip()
+            or (conversation.slots.title or "").strip()
+        )
+
+    def _conv_status(self, conversation: ConversationView) -> str:
+        if conversation.state == "case_created":
+            return "hồ sơ đã tạo, đang chạy"
+        missing = missing_required(conversation.slots, self.rules)
+        if conversation.state == "confirming":
+            return "chờ bạn xác nhận để tạo hồ sơ"
+        return f"đang khai dở, thiếu {len(missing)} mục" if missing else "đã đủ thông tin"
+
+    def _render_open_requests(
+        self, current: ConversationView, open_convs: list[ConversationView]
+    ) -> str:
+        """The unfinished-work list the model reads (current one first)."""
+        ordered = [c for c in open_convs if c.id == current.id] + [
+            c for c in open_convs if c.id != current.id and self._has_content(c)
+        ]
+        lines = [
+            f"- {self._conv_label(c)} ({self._conv_status(c)})"
+            + (" ← đang làm" if c.id == current.id else "")
+            for c in ordered[:6]
+            if self._has_content(c) or c.id == current.id
+        ]
+        return "\n".join(lines) or "(chưa có yêu cầu nào)"
+
+    def _match_conversation(
+        self, text: str, candidates: list[ConversationView]
+    ) -> ConversationView | None:
+        """Pick the conversation the message names, by label overlap.
+
+        Deterministic and accent-insensitive: "quay lai vu laptop" matches the
+        draft whose item summary is "laptop cho nhân viên". Returns None when
+        nothing matches — the caller then asks instead of guessing.
+        """
+        folded = _fold(text)
+        best: tuple[int, ConversationView] | None = None
+        for candidate in candidates:
+            tokens = _label_tokens(self._conv_label(candidate))
+            score = sum(1 for token in tokens if token in folded)
+            if score and (best is None or score > best[0]):
+                best = (score, candidate)
+        return best[1] if best else None
+
+    async def _focus_from_turn(
+        self,
+        turn: IntakeChatTurn,
+        current: ConversationView,
+        open_convs: list[ConversationView],
+        text: str,
+        context: AccessContext,
+    ) -> TurnOutcome | None:
+        """Act on the model's switch/list intent — code picks the target."""
+        if turn.intent == "list_requests":
+            return self._open_list_outcome(open_convs)
+        if turn.intent != "switch_request":
+            return None
+        candidates = [c for c in open_convs if c.id != current.id]
+        if not candidates:
+            return None  # nothing to switch to — handle as a normal message
+        target = self._match_conversation(turn.target_request or text, candidates)
+        if target is None:
+            # The model saw the intent but not which one — ask, never guess.
+            return self._open_list_outcome(open_convs)
+        return await self._focus(target, open_convs, context)
+
+    async def _focus(
+        self,
+        target: ConversationView,
+        open_convs: list[ConversationView],
+        context: AccessContext,
+    ) -> TurnOutcome:
+        """Make ``target`` the conversation this channel is working on."""
+        for conversation in open_convs:
+            if conversation.id == target.id or conversation.state not in (
+                "collecting",
+                "confirming",
+            ):
+                continue
+            # An empty draft (the turn that only said "quay lại …") is closed,
+            # not parked — otherwise the list fills up with nameless entries.
+            await self.store.update(
+                conversation_id=conversation.id,
+                tenant_id=context.tenant_id,
+                state="parked" if self._has_content(conversation) else "cancelled",
+            )
+        if target.state == "parked":
+            await self.store.update(
+                conversation_id=target.id, tenant_id=context.tenant_id, state="collecting"
+            )
+        else:
+            await self.store.touch(conversation_id=target.id, tenant_id=context.tenant_id)
+
+        label = self._conv_label(target)
+        if target.state == "case_created" and target.case_id is not None:
+            title = await self._case_title(target.case_id, context)
+            return TurnOutcome(
+                replies=(
+                    self._case_link(
+                        target.case_id,
+                        f"▶️ Đã chuyển sang hồ sơ «{title}». Bạn nhắn tiếp yêu cầu "
+                        "cho hồ sơ này nhé.",
+                    ),
+                )
+            )
+        missing = missing_required(target.slots, self.rules)
+        tail = (
+            "Còn thiếu: " + "; ".join(missing)
+            if missing
+            else "Thông tin đã đủ — bạn nhắn «đồng ý» là mình tạo hồ sơ."
+        )
+        return TurnOutcome(
+            replies=(
+                ChatReply(
+                    text=(
+                        f"▶️ Quay lại hồ sơ đang khai dở «{label}» "
+                        f"(giữ nguyên phần đã khai).\n{tail}"
+                    )
+                ),
+            )
+        )
+
+    def _open_list_outcome(self, open_convs: list[ConversationView]) -> TurnOutcome:
+        """List everything unfinished + let the user switch by number."""
+        if not open_convs:
+            return TurnOutcome(
+                replies=(ChatReply(text="Hiện bạn không có yêu cầu mua sắm nào đang dở cả."),)
+            )
+        named = [c for c in open_convs if self._has_content(c)]
+        if not named:
+            return TurnOutcome(
+                replies=(ChatReply(text="Hiện bạn không có yêu cầu mua sắm nào đang dở cả."),)
+            )
+        options = tuple(
+            (str(c.id), f"{self._conv_label(c)} — {self._conv_status(c)}") for c in named[:5]
+        )
+        return TurnOutcome(
+            replies=(
+                ChatReply(
+                    text=f"📋 Bạn đang có {len(options)} việc chưa xong:",
+                    case_options=options,
+                ),
+            )
+        )
+
     async def _resume_parked(self, channel_key: str, context: AccessContext) -> ChatReply | None:
         """Reactivate the most recent parked draft on this channel (if any)."""
         parked = await self.store.find_parked(
@@ -433,6 +654,7 @@ class ConversationIntakeService:
         context: AccessContext,
         display_name: str,
         siblings: list[ConversationView] | None = None,
+        open_convs: list[ConversationView] | None = None,
     ) -> TurnOutcome | None:
         """Route post-publication intents on an existing case.
 
@@ -451,7 +673,14 @@ class ConversationIntakeService:
             if view.state == "waiting_clarification":
                 return await self._clarify_flow(view, case_id, text, context, display_name)
 
-        turn, model_thinking = await self._run_turn(conversation, text, context, display_name)
+        turn, model_thinking = await self._run_turn(
+            conversation, text, context, display_name, open_convs
+        )
+        focus = await self._focus_from_turn(
+            turn, conversation, open_convs or [conversation], text, context
+        )
+        if focus is not None:
+            return focus
         outcome = await self._lifecycle_action(
             turn, model_thinking, conversation, case_id, text, context, display_name
         )
@@ -749,24 +978,22 @@ class ConversationIntakeService:
     async def handle_pick_case(
         self, *, conversation_id: uuid.UUID, context: AccessContext
     ) -> TurnOutcome:
-        """Case-picker button: switch chat focus to the chosen conversation."""
+        """Picker («chọn 2»): switch focus to the chosen conversation.
+
+        Works for a live case AND for a half-finished draft — picking a draft
+        parks whatever else was in flight and resumes it with its slots intact.
+        """
         conversation = await self.store.get(
             conversation_id=conversation_id, tenant_id=context.tenant_id
         )
-        if conversation is None or conversation.case_id is None:
+        if conversation is None:
             return TurnOutcome(replies=(ChatReply(text="Không tìm thấy hồ sơ này nữa."),))
-        await self.store.touch(conversation_id=conversation_id, tenant_id=context.tenant_id)
-        title = await self._case_title(conversation.case_id, context)
-        return TurnOutcome(
-            replies=(
-                ChatReply(
-                    text=(
-                        f"✅ Đã chuyển ngữ cảnh sang hồ sơ «{title}» — bạn nhắn lại "
-                        "yêu cầu giúp nhé."
-                    )
-                ),
-            )
+        open_convs = await self.store.list_open(
+            tenant_id=context.tenant_id,
+            workspace_id=context.workspace_id,
+            channel_key=conversation.channel_key,
         )
+        return await self._focus(conversation, open_convs, context)
 
     async def _clarify_flow(
         self,
@@ -996,6 +1223,7 @@ class ConversationIntakeService:
         text: str,
         context: AccessContext,
         display_name: str,
+        open_convs: list[ConversationView] | None = None,
     ) -> tuple[IntakeChatTurn, str]:
         missing = missing_required(conversation.slots, self.rules)
         request = ModelRequest(
@@ -1005,6 +1233,7 @@ class ConversationIntakeService:
             variables={
                 "known_slots": conversation.slots.model_dump_json(exclude_none=True),
                 "missing_fields": "; ".join(missing) or "(không còn)",
+                "open_requests": self._render_open_requests(conversation, open_convs or []),
                 "message": text,
                 "display_name": display_name,
                 "today": f"{self.clock.now().astimezone(UTC):%d/%m/%Y}",

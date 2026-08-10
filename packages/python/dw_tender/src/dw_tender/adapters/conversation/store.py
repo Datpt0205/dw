@@ -19,6 +19,8 @@ from dw_tender.application.conversation.service import ConversationView
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 
 _ACTIVE_STATES = ("collecting", "confirming")
+# Everything the user could still come back to (drafts + live cases).
+_OPEN_STATES = ("collecting", "confirming", "parked", "case_created")
 
 
 def _view(row: sa.Row[Any]) -> ConversationView:
@@ -109,10 +111,10 @@ class SqlConversationStore:
             ).one_or_none()
             return _view(row) if row else None
 
-    async def list_case_conversations(
+    async def list_open(
         self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, channel_key: str
     ) -> list[ConversationView]:
-        """Conversations on this channel that own a live case, newest focus first."""
+        """Unfinished work on this channel — drafts and live cases alike."""
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_TENANT, {"tenant_id": str(tenant_id)})
             rows = (
@@ -122,8 +124,7 @@ class SqlConversationStore:
                         chat_conversations.c.tenant_id == tenant_id,
                         chat_conversations.c.workspace_id == workspace_id,
                         chat_conversations.c.channel_key == channel_key,
-                        chat_conversations.c.state == "case_created",
-                        chat_conversations.c.case_id.is_not(None),
+                        chat_conversations.c.state.in_(_OPEN_STATES),
                     )
                     .order_by(chat_conversations.c.updated_at.desc())
                     .limit(8)

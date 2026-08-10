@@ -81,6 +81,9 @@ ChatIntent = Literal[
     "ask_status",
     "cancel",
     "other",
+    # Working on several requests at once (the user juggles them in one chat):
+    "switch_request",  # "quay lại vụ laptop", "làm nốt cái bàn ghế đi"
+    "list_requests",  # "đang dở những gì thế?"
     # Post-publication lifecycle (only meaningful when the case exists):
     "request_addendum",
     "record_submission",
@@ -144,6 +147,13 @@ class IntakeChatTurn(BaseModel):
     )
     submission: SubmissionInfo | None = Field(
         default=None, description="Khi intent=record_submission"
+    )
+    target_request: str = Field(
+        default="",
+        description=(
+            "Khi intent=switch_request: tên hàng hoá/hồ sơ người dùng muốn quay lại, "
+            "chép đúng nhãn trong danh sách việc đang dở"
+        ),
     )
     reply_vi: str = Field(description="Câu trả lời tiếng Việt gửi lại Slack")
     reasoning_summary: str = Field(default="", description="1-2 câu: đã hiểu gì / vì sao hỏi lại")

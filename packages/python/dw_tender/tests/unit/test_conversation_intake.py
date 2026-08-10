@@ -111,11 +111,12 @@ class FakeStore:
         ]
         return matches[-1] if matches else None
 
-    async def list_case_conversations(self, *, tenant_id, workspace_id, channel_key):
+    async def list_open(self, *, tenant_id, workspace_id, channel_key):
         return [
             c
             for c in self.conversations.values()
-            if c.channel_key == channel_key and c.state == "case_created" and c.case_id
+            if c.channel_key == channel_key
+            and c.state in ("collecting", "confirming", "parked", "case_created")
         ][::-1]
 
     async def touch(self, *, conversation_id, tenant_id):
@@ -500,6 +501,117 @@ async def test_new_request_mid_intake_parks_old_draft_and_opens_fresh() -> None:
     assert active.slots.item_summary == "ghế văn phòng"
     assert active.slots.quantity == 5
     assert any("tạm treo" in r.text for r in outcome.replies)
+
+
+async def _two_open_drafts() -> tuple[FakeStore, ConversationIntakeService]:
+    """laptop draft parked behind an active chairs draft (the pivot scenario)."""
+    store = FakeStore()
+    gw = SequenceGateway(turn=_laptop_partial(), turns=[_laptop_partial(), _pivot_to_chairs()])
+    service = make_service(store, _laptop_partial(), gateway=gw)
+    await service.handle_message(
+        channel_key="zalo:1", text="mua 500 laptop", context=CONTEXT, display_name="An"
+    )
+    await service.handle_message(
+        channel_key="zalo:1", text="thôi, giờ cần mua 5 ghế", context=CONTEXT, display_name="An"
+    )
+    return store, service
+
+
+def _by_item(store: FakeStore, needle: str) -> ConversationView:
+    return next(c for c in store.conversations.values() if needle in (c.slots.item_summary or ""))
+
+
+def _switch_turn(target: str) -> IntakeChatTurn:
+    """What the model returns for "quay lại vụ laptop" / "làm nốt cái ghế"."""
+    return IntakeChatTurn(
+        intent="switch_request",
+        slots=IntakeSlots(),
+        target_request=target,
+        reply_vi="",
+        reasoning_summary="",
+    )
+
+
+def _list_turn() -> IntakeChatTurn:
+    return IntakeChatTurn(
+        intent="list_requests", slots=IntakeSlots(), reply_vi="", reasoning_summary=""
+    )
+
+
+async def test_switch_to_named_draft_parks_the_other() -> None:
+    store, service = await _two_open_drafts()
+    service.gateway.turns.append(_switch_turn("laptop cho nhân viên"))  # type: ignore[attr-defined]
+    outcome = await service.handle_message(
+        channel_key="zalo:1", text="thôi quay lại vụ laptop đi", context=CONTEXT, display_name="An"
+    )
+    laptop = _by_item(store, "laptop")
+    chairs = _by_item(store, "ghế")
+    assert laptop.state == "collecting"  # resumed with its slots intact
+    assert laptop.slots.quantity == 500
+    assert chairs.state == "parked"  # the other one is put on hold, not lost
+    assert any("laptop" in reply.text for reply in outcome.replies)
+
+
+async def test_switch_matches_target_by_wording_not_exact_label() -> None:
+    """The model may name the item loosely — code still resolves it."""
+    store, service = await _two_open_drafts()
+    service.gateway.turns.append(_switch_turn("laptop"))  # type: ignore[attr-defined]
+    await service.handle_message(
+        channel_key="zalo:1", text="mở lại đơn máy tính hôm nãy", context=CONTEXT, display_name="An"
+    )
+    laptop = _by_item(store, "laptop")
+    assert laptop.state == "collecting"
+
+
+async def test_switch_without_a_target_asks_instead_of_guessing() -> None:
+    _store, service = await _two_open_drafts()
+    service.gateway.turns.append(_switch_turn(""))  # type: ignore[attr-defined]
+    outcome = await service.handle_message(
+        channel_key="zalo:1", text="quay lại cái kia đi", context=CONTEXT, display_name="An"
+    )
+    options = outcome.replies[0].case_options
+    assert len(options) == 2  # picker instead of a coin flip
+    assert any("laptop" in title for _cid, title in options)
+
+
+async def test_list_open_work_on_demand() -> None:
+    _store, service = await _two_open_drafts()
+    service.gateway.turns.append(_list_turn())  # type: ignore[attr-defined]
+    outcome = await service.handle_message(
+        channel_key="zalo:1", text="đang dở những gì thế?", context=CONTEXT, display_name="An"
+    )
+    assert "2 việc chưa xong" in outcome.replies[0].text
+
+
+async def test_pick_draft_by_number_resumes_it() -> None:
+    store, service = await _two_open_drafts()
+    laptop = _by_item(store, "laptop")
+    outcome = await service.handle_pick_case(conversation_id=laptop.id, context=CONTEXT)
+    assert store.conversations[laptop.id].state == "collecting"
+    assert any("laptop" in reply.text for reply in outcome.replies)
+
+
+async def test_pivot_back_to_a_parked_item_continues_it() -> None:
+    """Even read as a NEW request, a known item must not start from scratch."""
+    store, service = await _two_open_drafts()
+    back_to_laptop = IntakeChatTurn(
+        intent="create_request",
+        slots=IntakeSlots(item_summary="laptop cho nhân viên", estimated_value_vnd=7_500_000_000),
+        reply_vi="Mình ghi nhận ngân sách nhé.",
+        reasoning_summary="",
+    )
+    service.gateway.turns.append(back_to_laptop)  # type: ignore[attr-defined]
+    await service.handle_message(
+        channel_key="zalo:1",
+        text="giờ mua laptop tiếp, ngân sách 7,5 tỷ",
+        context=CONTEXT,
+        display_name="An",
+    )
+    laptop = _by_item(store, "laptop")
+    assert laptop.state in ("collecting", "confirming")
+    assert laptop.slots.quantity == 500  # earlier slots survived
+    assert laptop.slots.estimated_value_vnd == 7_500_000_000  # new one merged in
+    assert len([c for c in store.conversations.values() if c.state != "parked"]) == 1
 
 
 async def test_cancel_resumes_parked_draft() -> None:
