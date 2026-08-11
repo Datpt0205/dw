@@ -1291,12 +1291,17 @@ class CompletePreparationCp4Handler:
                     idempotency_key=f"dw01:{case.id.value}:progress:cp4_done",
                     payload={
                         "title": case.title,
-                        "heading": "CP4 hoàn tất — đã mở thầu và bàn giao DW02",
+                        "heading": "Đã mở thầu — hồ sơ niêm phong, chuyển sang bước đánh giá",
                         "lines": [
                             f"{len(submissions)} hồ sơ dự thầu đã mở; biên bản mở thầu "
                             "được hệ thống lập và lưu vào hồ sơ.",
                             "Gói bàn giao đánh giá (evaluation handoff) đã niêm phong.",
-                            "Quy trình DW01 kết thúc — cảm ơn bạn!",
+                            # The requester must not read "xong" as "đã mua": nothing is
+                            # bought yet — no supplier chosen, no contract, no delivery.
+                            "Lưu ý: đây mới là hết khâu chuẩn bị và tiếp nhận thầu — "
+                            "chưa chọn được nhà cung cấp và chưa có hợp đồng.",
+                            "Tiếp theo: đánh giá hồ sơ dự thầu, trình duyệt kết quả lựa "
+                            "chọn nhà thầu, rồi mới thương thảo và ký hợp đồng.",
                         ],
                     },
                 )
