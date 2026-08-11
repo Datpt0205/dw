@@ -15,7 +15,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from dw_agent_runtime.ports import ModelRequest
 from dw_platform.application.access_context import AccessContext
+from dw_tender.application.conversation.schemas import DecisionIntent
 from dw_tender.application.conversation.service import fold_text, label_tokens
 
 if TYPE_CHECKING:
@@ -34,9 +36,6 @@ PUBLISH = "dw01_publish"
 ADDENDUM_SUBMIT = "dw01_addendum_submit"
 ADDENDUM_DISMISS = "dw01_addendum_dismiss"
 OPEN_BIDS = "dw01_open_bids"
-
-_REJECT_WORDS = ("từ chối", "khong duyệt", "không duyệt", "reject", "bỏ qua")
-_APPROVE_WORDS = ("duyệt", "đồng ý", "approve", "xác minh", "xác nhận", "ok", "chốt")
 
 
 def _match_by_title(text: str, candidates: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -132,24 +131,28 @@ class DecisionEngine:
                 return "Đã bỏ qua đề nghị sửa đổi — HSMT giữ nguyên. (Người đề nghị sẽ được báo.)"
             if any(w in lowered for w in ("lập", "soạn", "đồng ý", "chốt")):
                 return await self._submit_addendum_from_text(text, context, display_name)
-        reject = any(w in lowered for w in _REJECT_WORDS)
-        approve = not reject and any(w in lowered for w in _APPROVE_WORDS)
-        if not (approve or reject):
-            return None
+        # Nothing pending -> nothing to decide, and no reason to spend a model
+        # call. Also the cheap guard that keeps ordinary intake chat at one call.
         candidates = await self.pending(context)
+        if not candidates:
+            return None
+        intent = await self._decision_intent(text, candidates, context)
+        if intent.decision == "none":
+            return None
+        approve = intent.decision == "approve"
         cp_match = re.search(r"cp\s*([1-4])", lowered)
         if cp_match:
             wanted = f"cp{cp_match.group(1)}"
             candidates = [c for c in candidates if c["cp"] == wanted]
         elif "xác minh" in lowered:
             candidates = [c for c in candidates if c["kind"] == "intake"]
-        if not candidates:
-            return "Hiện không có mục nào đang chờ bạn quyết định."
+        if not candidates:  # named a checkpoint that has nothing pending
+            return "Hiện không có mục nào như vậy đang chờ bạn quyết định."
         if len(candidates) > 1:
             # Several packages can sit on the same checkpoint, so the number
             # alone does not identify one. Narrow by the case title the message
             # names ("duyệt cp2 vụ laptop") before giving up and asking.
-            named = _match_by_title(text, candidates)
+            named = _match_by_title(f"{intent.target} {text}", candidates)
             if len(named) == 1:
                 candidates = named
         if len(candidates) > 1:
@@ -173,6 +176,33 @@ class DecisionEngine:
             return await self.execute(action, value, context, display_name)
         except Exception as exc:  # surfaced to the user, never crashes the loop
             return f"⚠️ Không thực hiện được: {str(exc)[:200]}"
+
+    async def _decision_intent(
+        self, text: str, candidates: list[dict[str, str]], context: AccessContext
+    ) -> DecisionIntent:
+        """Ask the model whether this sentence IS a decision, and about what.
+
+        A keyword table used to do this, and "ok" was in it — a bare "ok"
+        answering something else approved the only pending item. The model
+        reads the sentence; it is shown labels and titles only, never a case
+        id, and code still resolves and executes the row. Any model failure
+        degrades to "not a decision", which is the safe direction.
+        """
+        listing = "\n".join(f"- {c['label']} — {c['title']}" for c in candidates)
+        try:
+            return await self.conversation_service.gateway.generate_structured(
+                ModelRequest(
+                    task="conversation.decision_intent",
+                    prompt_id="conversation.decision_intent",
+                    prompt_version="1.0.0",
+                    variables={"pending_items": listing, "message": text},
+                    model_profile=self.conversation_service.model_profile,
+                ),
+                DecisionIntent,
+                run_context=self.conversation_service._agent_run_context(context, trace="decision"),
+            )
+        except Exception:
+            return DecisionIntent()
 
     # ------------------------------------------------------------ execute --
     async def execute(

@@ -168,6 +168,20 @@ class ComposedReply(BaseModel):
     reply_vi: str = Field(min_length=1, max_length=1200)
 
 
+class DecisionIntent(BaseModel):
+    """Is this message a checkpoint decision, and about which case?
+
+    The model reads the sentence; deterministic code still resolves WHICH
+    pending item that is and executes it. ``target`` is a name the person used,
+    never an id — the model is not shown case ids and cannot pick a row.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    decision: Literal["approve", "reject", "none"] = "none"
+    target: str = Field(default="", description="Tên hồ sơ/hàng hoá người dùng nhắc tới, nếu có")
+
+
 class CaseOverviewReply(BaseModel):
     """LLM-written portfolio answer. Every number it may use is supplied by
     code; the model only decides wording, grouping and what to point out."""
