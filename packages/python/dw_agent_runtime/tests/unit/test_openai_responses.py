@@ -104,8 +104,10 @@ def test_build_body_includes_effort_and_summary() -> None:
     assert fmt["type"] == "json_schema" and "strict" not in fmt
 
 
-def test_build_body_without_effort_omits_it() -> None:
-    route = ModelRoute(provider="openai_responses", model="gpt-5", timeout_seconds=60)
+def test_route_without_effort_sends_no_reasoning_block() -> None:
+    """A route that declares no effort is a non-reasoning model (gpt-4.1/4o):
+    sending `reasoning` at all gets the whole request rejected."""
+    route = ModelRoute(provider="openai_responses", model="gpt-4.1", timeout_seconds=60)
     body = _build_request_body(
         _prompt(),
         {"type": "object"},
@@ -114,7 +116,7 @@ def test_build_body_without_effort_omits_it() -> None:
         strict_schema=False,
         max_output_tokens=500,
     )
-    assert body["reasoning"] == {"summary": "auto"}
+    assert "reasoning" not in body
     assert body["max_output_tokens"] == 500
 
 

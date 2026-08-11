@@ -508,6 +508,14 @@ class PreparationNodes:
             unknowns = _dict_items(existing.content.get("unknowns", []))
             return {"requirements": requirements, "unknowns": unknowns}
 
+        await self._notify_working(
+            rc,
+            case_id,
+            stage="working_requirements",
+            dedupe=f"wr-{_hash({'c': str(case_id.value)})[:10]}",
+            heading="Đang đọc phiếu đề nghị và bóc yêu cầu…",
+            line="Mình rút các yêu cầu kỹ thuật/thương mại ra thành danh mục rồi báo bạn.",
+        )
         requirements, unknowns, source = await self._extract_requirements(rc, pr_text)
 
         content: dict[str, Any] = {
@@ -678,6 +686,14 @@ class PreparationNodes:
         rc = _run_context(config)
         case_id = _case_id(state)
         rules = self.services.rules
+        await self._notify_working(
+            rc,
+            case_id,
+            stage="working_approach",
+            dedupe=f"wa-{_hash({'c': str(case_id.value)})[:10]}",
+            heading="Đang đối chiếu quy chế công ty và Luật Đấu thầu…",
+            line="Truy căn cứ để chọn hình thức mua sắm và tính mốc thời gian tối thiểu.",
+        )
         value = state.get("estimated_value_minor", 0)
         method = rules.select_method(value)
         candidates = state.get("supplier_candidates", [])

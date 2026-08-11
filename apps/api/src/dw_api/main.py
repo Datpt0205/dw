@@ -49,13 +49,16 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
             )
         mailroom_task = None
         zalo_task = None
+        warmup_task = None
         if settings.profile != "test":
             from dw_api.bootstrap import REPO_ROOT
             from dw_api.channels.mailroom import start_mailroom
             from dw_api.channels.zalo import start_zalo_front_office
+            from dw_api.warmup import start_model_warmup
 
             mailroom_task = start_mailroom(container, REPO_ROOT)
             zalo_task = start_zalo_front_office(container, REPO_ROOT)
+            warmup_task = start_model_warmup(settings.embed_url, settings.rerank_url)
         try:
             yield
         finally:
@@ -67,6 +70,8 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
                 mailroom_task.cancel()
             if zalo_task is not None:
                 zalo_task.cancel()
+            if warmup_task is not None:
+                warmup_task.cancel()
             await container.shutdown()
 
     app = FastAPI(

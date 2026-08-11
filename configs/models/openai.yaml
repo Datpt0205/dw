@@ -9,29 +9,35 @@ routing_policy_version: "1.0.0"
 #   DW_API_MODEL_PROFILE=openai
 # Routes use the /v1/responses adapter (ADR-020): structured output plus the
 # model's own reasoning summary, which channels display as visible thinking.
-# reasoning_effort: slot extraction is ~70% of calls and needs no deep
-# thought (low = faster + fewer reasoning tokens); drafting gets the default
-# tier; the CP review advisory gets high.
+# Route latency measured on the gateway (2 lượt/model, prompt intake thật):
+#   gpt-5 low 11.1s · gpt-5-mini low 5.2s · gpt-4.1 2.2s · gpt-4o 2.9s
+# Gần như MỌI call đi qua structured_extraction (chỉ Review Agent dùng
+# deep_reasoning), nên route đó quyết định tốc độ cảm nhận của cả hệ thống —
+# kể cả từng tin nhắn chat. Bóc slot và soạn theo khuôn không cần reasoning
+# token, nên nó dùng model không-reasoning. Chỗ cần cân nhắc thật (thẩm định
+# checkpoint) vẫn giữ model có reasoning.
+# Visible thinking KHÔNG phụ thuộc route: nó là trường reasoning_summary trong
+# schema, model nào cũng điền được (ADR-020).
 structured_extraction:
   provider: openai_responses
-  model: gpt-5
+  model: gpt-4.1
   timeout_seconds: 60
-  reasoning_effort: low
+  # không khai reasoning_effort ⇒ adapter không gửi block `reasoning`
 reasoning:
   provider: openai_responses
-  model: gpt-5
+  model: gpt-5-mini
   timeout_seconds: 120
-  reasoning_effort: medium
+  reasoning_effort: low
 deep_reasoning:
   provider: openai_responses
-  model: gpt-5
-  timeout_seconds: 240
-  reasoning_effort: high
+  model: gpt-5-mini
+  timeout_seconds: 180
+  reasoning_effort: medium
 # Tried when the primary route fails twice (provider error/timeout or schema
-# mismatch) — a cheaper sibling model keeps the demo alive.
+# mismatch). Khác họ model để sống sót khi một họ lỗi ở gateway.
 fallback:
   provider: openai_responses
-  model: gpt-5-mini
+  model: gpt-4o
   timeout_seconds: 60
 budgets:
   max_input_tokens_per_run: 100000

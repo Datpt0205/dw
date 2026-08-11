@@ -159,12 +159,13 @@ def _build_request_body(
         "input": [{"role": "user", "content": prompt.user}],
         "text": {"format": text_format},
     }
-    reasoning: dict[str, object] = {}
-    if reasoning_summary:
-        reasoning["summary"] = reasoning_summary
+    # ``reasoning`` is only valid for reasoning models, and a route declares it
+    # is one by carrying reasoning_effort. Sending the block to gpt-4.1/4o gets
+    # the whole request rejected, so a route without an effort gets none.
     if route.reasoning_effort is not None:
-        reasoning["effort"] = route.reasoning_effort
-    if reasoning:
+        reasoning: dict[str, object] = {"effort": route.reasoning_effort}
+        if reasoning_summary:
+            reasoning["summary"] = reasoning_summary
         body["reasoning"] = reasoning
     if max_output_tokens:
         body["max_output_tokens"] = max_output_tokens
