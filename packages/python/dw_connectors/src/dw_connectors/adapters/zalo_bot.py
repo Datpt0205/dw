@@ -15,6 +15,39 @@ import httpx
 _BASE = "https://bot-api.zaloplatforms.com"
 
 
+# Zalo hard-caps one message at 2000 characters; stay under it with room to
+# spare so a multi-byte tail never trips the count.
+_MAX_CHARS = 1900
+
+
+def _split_for_zalo(text: str) -> list[str]:
+    """Whole message when it fits, else consecutive parts split on line breaks.
+
+    Splitting on lines keeps a card's bullets intact; a single line longer than
+    the cap is cut by length as a last resort.
+    """
+    if len(text) <= _MAX_CHARS:
+        return [text]
+    parts: list[str] = []
+    current = ""
+    for line in text.splitlines():
+        while len(line) > _MAX_CHARS:
+            if current:
+                parts.append(current)
+                current = ""
+            parts.append(line[:_MAX_CHARS])
+            line = line[_MAX_CHARS:]
+        candidate = current + "\n" + line if current else line
+        if len(candidate) > _MAX_CHARS:
+            parts.append(current)
+            current = line
+        else:
+            current = candidate
+    if current:
+        parts.append(current)
+    return parts
+
+
 @dataclass(frozen=True)
 class ZaloBotClient:
     bot_token: str
@@ -53,12 +86,23 @@ class ZaloBotClient:
             await client.post("/sendChatAction", json={"chat_id": chat_id, "action": action})
 
     async def send_message(self, chat_id: str, text: str) -> str:
-        """Send plain text; returns the message id (best effort)."""
+        """Send plain text, splitting to fit the platform cap.
+
+        Zalo rejects anything over 2000 characters outright — a checkpoint card
+        that quotes the retrieved legal basis blows past that, and the whole
+        approval silently never arrives. The cap is a property of this channel,
+        so it is handled here rather than by every caller. Returns the last
+        message id (best effort).
+        """
+        message_id = ""
         async with httpx.AsyncClient(base_url=f"{_BASE}/bot{self.bot_token}", timeout=15) as client:
-            response = await client.post("/sendMessage", json={"chat_id": chat_id, "text": text})
-            response.raise_for_status()
-            data = response.json()
-        if not data.get("ok"):
-            raise RuntimeError(f"zalo sendMessage failed: {data.get('description')}")
-        result = data.get("result") or {}
-        return str(result.get("message_id", ""))
+            for part in _split_for_zalo(text):
+                response = await client.post(
+                    "/sendMessage", json={"chat_id": chat_id, "text": part}
+                )
+                response.raise_for_status()
+                data = response.json()
+                if not data.get("ok"):
+                    raise RuntimeError(f"zalo sendMessage failed: {data.get('description')}")
+                message_id = str((data.get("result") or {}).get("message_id", ""))
+        return message_id
