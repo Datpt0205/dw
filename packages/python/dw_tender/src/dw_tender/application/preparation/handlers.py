@@ -430,8 +430,32 @@ class AnswerPreparationClarificationsHandler:
                     content_hash=_content_hash(content),
                 )
             )
-            case.reopen_after_clarification()
-            await uow.cases.save(case)
+            # Only leave WAITING_CLARIFICATION once every blocking question is
+            # covered. Reopening on a PARTIAL answer stranded the case: the
+            # chat clarification loop only runs while the case is waiting, and
+            # nothing restarts the run until the last answer arrives — so the
+            # case sat in intake_ready with an unanswered question and no way
+            # back in.
+            blocking_ids: set[str] = set()
+            listing = await uow.artifacts.latest(case.id, ArtifactType.CLARIFICATION_LIST)
+            if listing is not None:
+                blocking_ids = {
+                    str(item.get("id"))
+                    for item in _dicts(listing.content.get("items"))
+                    if item.get("blocking")
+                }
+            answered_ids = {item.clarification_id for item in answers}
+            for artifact in await uow.artifacts.list_for_case(case.id):
+                if artifact.artifact_type is not ArtifactType.CLARIFICATION_RESPONSE:
+                    continue
+                answered_ids.update(
+                    str(item.get("id"))
+                    for item in _dicts(artifact.content.get("items"))
+                    if str(item.get("answer", "")).strip()
+                )
+            if blocking_ids <= answered_ids:
+                case.reopen_after_clarification()
+                await uow.cases.save(case)
             await uow.commit()
 
 
@@ -1449,6 +1473,11 @@ class RunPreparationHandler:
             run_context=run_context, input_payload={"case_id": str(case_id)}
         )
         return run_id
+
+
+def _dicts(raw: object) -> list[dict[str, Any]]:
+    """Artifact content is free-form JSON; keep only the dict items."""
+    return [item for item in raw if isinstance(item, dict)] if isinstance(raw, list) else []
 
 
 def _content_hash(content: dict[str, Any]) -> str:
