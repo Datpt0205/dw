@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from dw_platform.application.access_context import AccessContext
+from dw_tender.application.conversation.service import fold_text, label_tokens
 
 if TYPE_CHECKING:
     from dw_api.bootstrap import ApiContainer
@@ -36,6 +37,19 @@ OPEN_BIDS = "dw01_open_bids"
 
 _REJECT_WORDS = ("từ chối", "khong duyệt", "không duyệt", "reject", "bỏ qua")
 _APPROVE_WORDS = ("duyệt", "đồng ý", "approve", "xác minh", "xác nhận", "ok", "chốt")
+
+
+def _match_by_title(text: str, candidates: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Candidates whose case title the message actually names.
+
+    Same split as the conversation service: the person says it however they
+    like, deterministic code decides which case that refers to. Returns the
+    original list when nothing matches, so the caller still asks rather than
+    picking at random.
+    """
+    folded = fold_text(text)
+    hits = [c for c in candidates if label_tokens(c.get("title", "")) & set(folded.split())]
+    return hits or candidates
 
 
 @dataclass
@@ -132,8 +146,18 @@ class DecisionEngine:
         if not candidates:
             return "Hiện không có mục nào đang chờ bạn quyết định."
         if len(candidates) > 1:
-            listing = "; ".join(f"{c['label']} ({c['title']})" for c in candidates)
-            return f"Đang chờ nhiều mục: {listing}. Bạn ghi rõ giúp mình (vd: duyệt CP1)."
+            # Several packages can sit on the same checkpoint, so the number
+            # alone does not identify one. Narrow by the case title the message
+            # names ("duyệt cp2 vụ laptop") before giving up and asking.
+            named = _match_by_title(text, candidates)
+            if len(named) == 1:
+                candidates = named
+        if len(candidates) > 1:
+            listing = "\n".join(f"  • {c['label']} — {c['title']}" for c in candidates)
+            return (
+                f"Đang chờ {len(candidates)} mục:\n{listing}\n"
+                "👉 Bạn nói rõ hồ sơ nào giúp mình — vd «duyệt cp2 vụ laptop»."
+            )
         target = candidates[0]
         if target["kind"] == "intake":
             action = INTAKE_APPROVE if approve else INTAKE_REJECT

@@ -65,17 +65,20 @@ _LABEL_STOPWORDS = frozenset(
 )  # fmt: skip
 
 
-def _fold(text: str) -> str:
-    """Accent- and case-insensitive form for matching Vietnamese labels."""
+def fold_text(text: str) -> str:
+    """Accent- and case-insensitive form for matching Vietnamese labels.
+
+    Public: the chat decision engine matches case titles the same way."""
     lowered = text.casefold().replace("đ", "d")
     decomposed = unicodedata.normalize("NFD", lowered)
     return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
 
 
-def _label_tokens(label: str) -> set[str]:
+def label_tokens(label: str) -> set[str]:
+    """Identity-carrying tokens of a label ("mua 5 ghế" → {"ghe"})."""
     return {
         token
-        for token in re.split(r"[^0-9a-z]+", _fold(label))
+        for token in re.split(r"[^0-9a-z]+", fold_text(label))
         if len(token) >= 3 and token not in _LABEL_STOPWORDS
     }
 
@@ -524,10 +527,10 @@ class ConversationIntakeService:
         draft whose item summary is "laptop cho nhân viên". Returns None when
         nothing matches — the caller then asks instead of guessing.
         """
-        folded = _fold(text)
+        folded = fold_text(text)
         best: tuple[int, ConversationView] | None = None
         for candidate in candidates:
-            tokens = _label_tokens(self._conv_label(candidate))
+            tokens = label_tokens(self._conv_label(candidate))
             score = sum(1 for token in tokens if token in folded)
             if score and (best is None or score > best[0]):
                 best = (score, candidate)
