@@ -281,30 +281,28 @@ async def test_incomplete_message_asks_question_and_keeps_collecting() -> None:
     replies = outcome.replies
     assert len(replies) == 1 and replies[0].kind == "message"
     assert "ngân sách" in replies[0].text
-    # Thinking is SYSTEM-BUILT from the validated slot diff + completeness.
-    assert "Ghi nhận từ tin nhắn" in outcome.thinking
-    assert "số lượng: 100" in outcome.thinking
-    assert "Còn thiếu" in outcome.thinking
+    assert outcome.thinking.startswith("Đã nhận yêu cầu mua 100 laptop.")
     conv = next(iter(store.conversations.values()))
     assert conv.state == "collecting"
     assert conv.slots.quantity == 100
 
 
-async def test_thinking_prefers_model_reasoning_trace() -> None:
-    # ADR-020: the routed adapter's reasoning trace (OpenAI Responses summary /
-    # DeepSeek reasoning_content) IS the displayed thinking when present.
+async def test_thinking_is_the_models_own_vietnamese_summary() -> None:
+    # ADR-020: what the user sees is the summary the MODEL writes into the turn
+    # schema (Vietnamese, bounded, meant to be read) — never the provider's raw
+    # reasoning trace, which is internal deliberation in English.
     store = FakeStore()
     turn = IntakeChatTurn(
         intent="provide_info",
         slots=FULL_SLOTS,
         reply_vi="ok",
-        reasoning_summary="trường schema — không phải nguồn hiển thị",
+        reasoning_summary="Ngân sách 7,5 tỷ vượt ngưỡng nên cần đấu thầu.",
     )
     outcome = await make_service(
-        store, turn, thinking="Ngân sách 7,5 tỷ vượt ngưỡng nên cần đấu thầu."
+        store, turn, thinking="**Parsing Vietnamese responses** I need to analyze..."
     ).handle_message(channel_key="slack:D1", text="đủ", context=CONTEXT, display_name="An")
     assert outcome.thinking.startswith("Ngân sách 7,5 tỷ")
-    assert "trường schema" not in outcome.thinking
+    assert "Parsing Vietnamese" not in outcome.thinking
 
 
 async def test_thinking_falls_back_to_system_trace_when_model_silent() -> None:

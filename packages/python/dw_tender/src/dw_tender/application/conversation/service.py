@@ -171,9 +171,11 @@ class ChatReply:
 class TurnOutcome:
     """One handled inbound turn: the model's visible thinking + the replies.
 
-    ``thinking`` is the model's own reasoning trace (OpenAI Responses reasoning
-    summary / DeepSeek reasoning_content) when the routed adapter surfaces one,
-    else the system-built trace (ADR-020) — shown BEFORE the replies.
+    ``thinking`` is the model's OWN summary of its reasoning — the Vietnamese
+    ``reasoning_summary`` it writes into the turn schema — falling back to the
+    system-built trace (ADR-020). The provider's raw reasoning trace is traced
+    for observability but never shown: it is internal deliberation, in English,
+    and not written to be read by the requester.
     """
 
     replies: tuple[ChatReply, ...]
@@ -1137,6 +1139,10 @@ class ConversationIntakeService:
     ) -> TurnOutcome:
         """Map a natural reply onto the pending clarification questions."""
         items: list[dict[str, Any]] = []
+        # Answering does NOT edit the clarification list — each turn appends a
+        # new clarification_response artifact. Subtract every id answered so
+        # far, or a partial answer re-asks the whole list on the next turn.
+        answered_ids: set[str] = set()
         for artifact in view.artifacts:
             if artifact.artifact_type == "clarification_list":
                 items = [
@@ -1144,7 +1150,17 @@ class ConversationIntakeService:
                     for item in artifact.content.get("items", [])
                     if isinstance(item, dict)
                 ]
-        pending = [item for item in items if item.get("blocking")]
+            elif artifact.artifact_type == "clarification_response":
+                answered_ids.update(
+                    str(item.get("id"))
+                    for item in artifact.content.get("items", [])
+                    if isinstance(item, dict) and str(item.get("answer", "")).strip()
+                )
+        pending = [
+            item
+            for item in items
+            if item.get("blocking") and str(item.get("id")) not in answered_ids
+        ]
         if not pending:
             return TurnOutcome(
                 replies=(
@@ -1165,7 +1181,7 @@ class ConversationIntakeService:
             for item in pending
         )
         run_context = self._agent_run_context(context, trace=f"clarify-{str(case_id)[:8]}")
-        turn, model_thinking = await self.gateway.generate_structured_traced(
+        turn, _provider_trace = await self.gateway.generate_structured_traced(
             ModelRequest(
                 task="conversation.clarify_answers",
                 prompt_id="conversation.clarify_answers",
@@ -1180,7 +1196,6 @@ class ConversationIntakeService:
             ClarifyTurn,
             run_context=run_context,
         )
-        model_thinking = model_thinking.strip()
         valid_ids = {str(item.get("id")) for item in pending}
         answers = tuple(
             ClarificationAnswer(
@@ -1202,15 +1217,14 @@ class ConversationIntakeService:
         if not answers:
             return TurnOutcome(
                 replies=(ChatReply(text=turn.reply_vi),),
-                thinking=model_thinking
-                or (
+                thinking=(
                     f"• {len(pending)} câu hỏi làm rõ đang chờ; tin nhắn chưa trả lời "
                     "được câu nào → hỏi lại."
                 ),
             )
         await self.answer_clarifications.handle(case_id, answers, context)  # type: ignore[union-attr]
         remaining = len(pending) - len(answers)
-        thinking = model_thinking or (
+        thinking = (
             f"• Ghi nhận {len(answers)}/{len(pending)} câu trả lời làm rõ (lưu "
             "CLARIFICATION_RESPONSE).\n"
             + (
@@ -1375,10 +1389,15 @@ class ConversationIntakeService:
         run_context = self._agent_run_context(context, trace=f"chat-{str(conversation.id)[:12]}")
         # Traced call: the second element is the model's own reasoning trace
         # ("" when the routed provider surfaces none — mock, chat/completions).
-        turn, reasoning = await self.gateway.generate_structured_traced(
+        # The traced call still records the provider's own reasoning for
+        # Langfuse. What the USER sees is turn.reasoning_summary — the model
+        # writes it in Vietnamese, bounded, meant to be read (ADR-020). The raw
+        # provider trace is internal deliberation in English and must not be
+        # pushed into the chat verbatim.
+        turn, _provider_trace = await self.gateway.generate_structured_traced(
             request, IntakeChatTurn, run_context=run_context
         )
-        return turn, reasoning.strip()
+        return turn, turn.reasoning_summary.strip()
 
     _SLOT_LABELS: ClassVar[tuple[tuple[str, str], ...]] = (
         ("title", "tên gói"),
@@ -1473,5 +1492,6 @@ class ConversationIntakeService:
         )
 
     def _case_link(self, case_id: uuid.UUID, text: str) -> ChatReply:
-        url = f"{self.web_base_url.rstrip('/')}/procurement/dw01/cases/{case_id}"
-        return ChatReply(text=f"{text}\nXem chi tiết: {url}", kind="case_link", case_id=case_id)
+        """Reply that refers to a case. ``case_id`` lets a channel decorate it
+        if it wants; the text carries no URL — chat is where the work happens."""
+        return ChatReply(text=text, kind="case_link", case_id=case_id)

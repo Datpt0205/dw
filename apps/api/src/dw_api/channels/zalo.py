@@ -67,7 +67,6 @@ class ZaloFrontOfficeService:
     conversation_service: ConversationIntakeService
     bot_token: str
     repo_root: Path
-    web_base_url: str = "http://localhost:3000"
     # Visible thinking is produced and traced regardless; this only decides
     # whether the card is pushed to the chat (DW_ZALO_SHOW_THINKING).
     show_thinking: bool = False
@@ -263,8 +262,6 @@ class ZaloFrontOfficeService:
         if reply.kind == "confirm_card":
             parts.append("")
             parts.append("👉 Nhắn «đồng ý» để tạo hồ sơ, hoặc nhắn nội dung muốn sửa.")
-        if reply.kind == "case_link" and reply.case_id:
-            parts.append(f"🔗 {self.web_base_url}/procurement/dw01/cases/{reply.case_id}")
         if reply.case_options:
             self._picker_options[chat_id] = [(cid, title) for cid, title in reply.case_options]
             parts.append("")
@@ -284,7 +281,6 @@ def start_zalo_front_office(container: ApiContainer, repo_root: Path) -> asyncio
         conversation_service=container.conversation_service,
         bot_token=token,
         repo_root=repo_root,
-        web_base_url=container.settings.public_web_url,
         show_thinking=container.settings.zalo_show_thinking,
     )
     return asyncio.get_running_loop().create_task(service.run_forever(), name="dw-zalo")

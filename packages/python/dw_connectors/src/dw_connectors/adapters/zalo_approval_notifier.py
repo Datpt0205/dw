@@ -58,7 +58,6 @@ def render_text(message: SlackApprovalMessage) -> str:
     if hint:
         parts.append("")
         parts.append(hint)
-    parts.append(f"🔗 {message.web_url}")
     return "\n".join(parts)
 
 
