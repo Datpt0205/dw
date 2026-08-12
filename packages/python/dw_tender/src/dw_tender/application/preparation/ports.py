@@ -47,7 +47,12 @@ class PreparationArtifactRepositoryPort(Protocol):
 
 
 class IntakeNotificationRepositoryPort(Protocol):
-    async def find_recipient_for_role(self, role_key: str) -> UserId | None: ...
+    async def find_recipient_for_role(
+        self, role_key: str, *, exclude: UserId | None = None
+    ) -> UserId | None:
+        """Holder of ``role_key``, skipping ``exclude`` (SoD: never route a
+        decision to the person whose own case it is)."""
+        ...
 
     async def enqueue(self, job: IntakeNotificationJob) -> None: ...
 

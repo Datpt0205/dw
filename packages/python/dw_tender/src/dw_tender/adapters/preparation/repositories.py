@@ -319,15 +319,18 @@ def _notification_from_row(row: sa.Row[Any]) -> IntakeNotificationJob:
 class SqlIntakeNotificationRepository:
     session: AsyncSession
 
-    async def find_recipient_for_role(self, role_key: str) -> UserId | None:
-        row = (
-            await self.session.execute(
-                sa.select(platform_tables.memberships.c.user_id)
-                .where(platform_tables.memberships.c.role_keys.op("@>")(sa.cast([role_key], JSONB)))
-                .order_by(platform_tables.memberships.c.created_at.asc())
-                .limit(1)
-            )
-        ).first()
+    async def find_recipient_for_role(
+        self, role_key: str, *, exclude: UserId | None = None
+    ) -> UserId | None:
+        query = (
+            sa.select(platform_tables.memberships.c.user_id)
+            .where(platform_tables.memberships.c.role_keys.op("@>")(sa.cast([role_key], JSONB)))
+            .order_by(platform_tables.memberships.c.created_at.asc())
+            .limit(1)
+        )
+        if exclude is not None:
+            query = query.where(platform_tables.memberships.c.user_id != exclude.value)
+        row = (await self.session.execute(query)).first()
         return UserId(row.user_id) if row is not None else None
 
     async def enqueue(self, job: IntakeNotificationJob) -> None:

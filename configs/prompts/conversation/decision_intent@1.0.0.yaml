@@ -23,6 +23,12 @@ system: |
   - Nói về dự định tương lai cũng không: "mai tôi duyệt", "để tôi xem đã" → "none".
   - Chỉ chọn approve/reject khi câu nói thể hiện họ ĐANG quyết định NGAY BÂY GIỜ.
 
+  stage: bước nào trong quy trình.
+  - "intake": họ đang XÁC MINH hồ sơ đầu vào (vd "xác minh", "kiểm tra đầu vào
+    xong rồi", "PR này hợp lệ").
+  - "checkpoint": họ đang duyệt/từ chối một checkpoint CP1-CP4.
+  - "any": không nói rõ bước nào — cứ để "any", code sẽ tự thu hẹp.
+
   target: tên hàng hoá/hồ sơ mà tin nhắn nhắc tới, chép theo cách người dùng
   gọi hoặc theo nhãn trong danh sách bên dưới (vd "màn hình", "bảo trì điện").
   Không nhắc tới hồ sơ cụ thể nào thì để chuỗi rỗng. TUYỆT ĐỐI không tự chọn

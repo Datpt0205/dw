@@ -179,6 +179,7 @@ class DecisionIntent(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     decision: Literal["approve", "reject", "none"] = "none"
+    stage: Literal["intake", "checkpoint", "any"] = "any"
     target: str = Field(default="", description="Tên hồ sơ/hàng hoá người dùng nhắc tới, nếu có")
 
 

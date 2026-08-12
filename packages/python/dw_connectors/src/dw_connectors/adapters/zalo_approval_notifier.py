@@ -44,8 +44,6 @@ def render_text(message: SlackApprovalMessage) -> str:
     if message.heading:
         parts.append(message.heading)
     parts.append(f"📁 {message.case_title}")
-    if message.source_pr_ref:
-        parts.append(f"PR: {message.source_pr_ref}")
     if message.owner_name:
         parts.append(f"Người yêu cầu: {message.owner_name}")
     if message.estimated_value_minor:

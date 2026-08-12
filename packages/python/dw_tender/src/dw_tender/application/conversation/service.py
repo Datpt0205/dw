@@ -444,7 +444,9 @@ class ConversationIntakeService:
             )
 
         slots = conversation.slots
-        pr_ref = f"SLACK-{self.clock.now().astimezone(UTC):%Y%m%d}-{str(conversation.id)[:8]}"
+        # Channel-neutral: this reference lands in the case record and every
+        # export, and the intake channel is no longer Slack.
+        pr_ref = f"CHAT-{self.clock.now().astimezone(UTC):%Y%m%d}-{str(conversation.id)[:8]}"
         command = CreatePreparationCaseCommand(
             title=slots.title or f"Mua {slots.item_summary or 'hàng hoá'}",
             description=slots.purpose or (slots.item_summary or ""),
@@ -456,7 +458,7 @@ class ConversationIntakeService:
             procurement_type=ProcurementType.GOODS,
             business_domain=BusinessDomain.GENERAL,
             pr_text=render_pr_markdown(slots, requester=display_name, pr_ref=pr_ref),
-            pr_filename="slack-intake.md",
+            pr_filename="chat-intake.md",
             pr_content_type="text/markdown; charset=utf-8",
             supplier_names=tuple(slots.supplier_names),
         )

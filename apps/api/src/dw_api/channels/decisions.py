@@ -144,8 +144,10 @@ class DecisionEngine:
         if cp_match:
             wanted = f"cp{cp_match.group(1)}"
             candidates = [c for c in candidates if c["cp"] == wanted]
-        elif "xác minh" in lowered:
+        elif intent.stage == "intake":
             candidates = [c for c in candidates if c["kind"] == "intake"]
+        elif intent.stage == "checkpoint":
+            candidates = [c for c in candidates if c["kind"] != "intake"]
         if not candidates:  # named a checkpoint that has nothing pending
             return "Hiện không có mục nào như vậy đang chờ bạn quyết định."
         if len(candidates) > 1:

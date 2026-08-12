@@ -176,7 +176,16 @@ class CreatePreparationCaseHandler:
             content_hash=_content_hash(supplier_content),
         )
         async with self.uow_factory(TenantId(context.tenant_id)) as uow:
-            approver = await uow.notifications.find_recipient_for_role("approver")
+            # Intake verification goes to someone OTHER than the person who
+            # filed it. A requester creating a case lands on the procurement
+            # specialist; the specialist filing one himself goes up to the head
+            # of procurement rather than back down to the requester.
+            creator = UserId(context.principal_id)
+            approver = await uow.notifications.find_recipient_for_role("approver", exclude=creator)
+            if approver is None:
+                approver = await uow.notifications.find_recipient_for_role(
+                    "procurement_head", exclude=creator
+                )
             escalation_owner = await uow.notifications.find_recipient_for_role("platform_admin")
             if approver is None:
                 raise DomainError("DW01 intake requires an approver membership")
@@ -255,6 +264,8 @@ class VerifyPreparationIntakeHandler:
             case = await uow.cases.get(PreparationCaseId(case_id))
             if case is None:
                 raise NotFoundError("preparation case not found")
+            if case.created_by.value == context.principal_id:
+                raise ConflictError("case creator cannot verify their own intake")
             documents = await uow.documents.list_for_case(case.id)
             if not documents:
                 raise DomainError("intake has no source document")
