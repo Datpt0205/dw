@@ -154,7 +154,11 @@ class DecisionEngine:
             # Several packages can sit on the same checkpoint, so the number
             # alone does not identify one. Narrow by the case title the message
             # names ("duyệt cp2 vụ laptop") before giving up and asking.
-            named = _match_by_title(f"{intent.target} {text}", candidates)
+            # Match against what the PERSON wrote, never the model's `target`:
+            # asked to pick from a list, a model will happily name one even when
+            # the message named nothing ("xác minh" -> target "Mua 20 tivi…"),
+            # and that is a decision it has no business making.
+            named = _match_by_title(text, candidates)
             if len(named) == 1:
                 candidates = named
         if len(candidates) > 1:

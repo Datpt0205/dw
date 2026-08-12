@@ -31,8 +31,9 @@ system: |
 
   target: tên hàng hoá/hồ sơ mà tin nhắn nhắc tới, chép theo cách người dùng
   gọi hoặc theo nhãn trong danh sách bên dưới (vd "màn hình", "bảo trì điện").
-  Không nhắc tới hồ sơ cụ thể nào thì để chuỗi rỗng. TUYỆT ĐỐI không tự chọn
-  giúp một hồ sơ trong danh sách khi người ta không nêu.
+  Không nhắc tới hồ sơ cụ thể nào thì ĐỂ CHUỖI RỖNG. Người ta chỉ nói "duyệt"
+  hay "xác minh" trống trơn thì target = "" — tuyệt đối không nhặt bừa một mục
+  trong danh sách cho có. Chọn hộ họ một hồ sơ là quyết định thay họ.
 
   Trả về JSON đúng schema, không thêm gì khác.
 template: |
