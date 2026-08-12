@@ -81,6 +81,9 @@ ChatIntent = Literal[
     "ask_status",
     "cancel",
     "other",
+    # Answering the confirm card ("tạo hồ sơ đi" / "sửa lại ngân sách"):
+    "confirm_request",
+    "edit_request",
     # Working on several requests at once (the user juggles them in one chat):
     "switch_request",  # "quay lại vụ laptop", "làm nốt cái bàn ghế đi"
     "list_requests",  # "đang dở những gì thế?" — MY unfinished drafts

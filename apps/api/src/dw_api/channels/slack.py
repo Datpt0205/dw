@@ -331,7 +331,7 @@ class SlackFrontOfficeService:
         for case in cases:
             state = str(case.state)
             line = (
-                f"• *{case.title}* — {labels.get(state, state)}\n"
+                f"*{case.title}* — {labels.get(state, state)}\n"
                 f"  <{self.chat.conversation_service.web_base_url}/procurement/dw01/cases/"
                 f"{case.id}|Mở hồ sơ>"
             )

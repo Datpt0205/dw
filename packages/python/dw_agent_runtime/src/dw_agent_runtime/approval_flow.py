@@ -66,6 +66,21 @@ class ApproveAndResumeService:
                         "approval_type": request.approval_type,
                     },
                 )
+            # Authority, not just routing: a checkpoint may name the role that
+            # is allowed to decide it (stamped from the versioned approval
+            # matrix when the request was raised). Holding approvals.decide is
+            # not enough — a specialist must not sign off a package that the
+            # rule pack sends to the head of procurement.
+            required_role = str(request.payload.get("required_role", "") or "")
+            if required_role and required_role not in context.roles:
+                raise ConflictError(
+                    "this checkpoint is reserved for another role",
+                    details={
+                        "approval_id": str(approval_id),
+                        "approval_type": request.approval_type,
+                        "required_role": required_role,
+                    },
+                )
             if request.approval_type.startswith("preparation.") and not comment.strip():
                 raise ConflictError(
                     "DW01 checkpoint decisions require a review comment",

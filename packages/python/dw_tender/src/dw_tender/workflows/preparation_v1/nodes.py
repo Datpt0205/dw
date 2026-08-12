@@ -864,6 +864,10 @@ class PreparationNodes:
             "approval_type": "preparation.cp1",
             "reason": f"CP1 — Duyệt phương án mua sắm ({state.get('method_label', method.label)})",
             "checkpoint": "CP1",
+            # Stamped from the versioned approval matrix so the decision is
+            # refused for anyone without the authority, not merely routed away
+            # from them. Travels with the request, so the web path is covered too.
+            "required_role": rules.approver_role_for(state.get("estimated_value_minor", 0), "CP1"),
             "case_id": state["case_id"],
             "case_title": state.get("case_title", ""),
             "source_pr_ref": state.get("source_pr_ref", ""),
@@ -1326,6 +1330,9 @@ class PreparationNodes:
             "approval_type": "preparation.cp2",
             "reason": "CP2 — Duyệt bộ hồ sơ mời thầu chính thức",
             "checkpoint": "CP2",
+            "required_role": self.services.rules.approver_role_for(
+                state.get("estimated_value_minor", 0), "CP2"
+            ),
             "case_id": state["case_id"],
             "case_title": state.get("case_title", ""),
             "source_pr_ref": state.get("source_pr_ref", ""),

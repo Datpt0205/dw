@@ -123,14 +123,6 @@ class DecisionEngine:
         """Natural-language decision ("duyệt cp1 đi") → reply text; None if
         the message is not a decision at all (let intake chat handle it)."""
         lowered = text.casefold()
-        # Addendum in words (buttonless channels): "lập addendum gia hạn 7 ngày"
-        # / "bỏ qua đề nghị sửa đổi" — checked BEFORE generic approve/reject so
-        # "bỏ qua" does not fall through to a checkpoint rejection.
-        if "addendum" in lowered or "sửa đổi hsmt" in lowered:
-            if any(w in lowered for w in ("bỏ qua", "không lập", "thôi")):
-                return "Đã bỏ qua đề nghị sửa đổi — HSMT giữ nguyên. (Người đề nghị sẽ được báo.)"
-            if any(w in lowered for w in ("lập", "soạn", "đồng ý", "chốt")):
-                return await self._submit_addendum_from_text(text, context, display_name)
         # Nothing pending -> nothing to decide, and no reason to spend a model
         # call. Also the cheap guard that keeps ordinary intake chat at one call.
         candidates = await self.pending(context)
@@ -162,7 +154,7 @@ class DecisionEngine:
             if len(named) == 1:
                 candidates = named
         if len(candidates) > 1:
-            listing = "\n".join(f"  • {c['label']} — {c['title']}" for c in candidates)
+            listing = "\n".join(f"  {c['label']} — {c['title']}" for c in candidates)
             return (
                 f"Đang chờ {len(candidates)} mục:\n{listing}\n"
                 "👉 Bạn nói rõ hồ sơ nào giúp mình — vd «duyệt cp2 vụ laptop»."
@@ -389,43 +381,6 @@ class DecisionEngine:
             return f"Đã phát hành RFQ qua email{suffix} và ghi nhận phát hành vào hồ sơ."
 
         raise ValueError(f"unknown action {action_id}")
-
-    async def _submit_addendum_from_text(
-        self, text: str, context: AccessContext, display_name: str
-    ) -> str:
-        """Buttonless addendum filing: the procurement user types the change.
-
-        Targets the (single) case currently PUBLISHED — the only state that
-        accepts an addendum; asks to disambiguate when several are.
-        """
-        preparation = self.container.preparation
-        assert preparation is not None
-        published = [
-            c for c in await preparation.list_cases.handle(context) if c.state == "published"
-        ]
-        if not published:
-            return "Hiện không có hồ sơ nào đang phát hành để lập addendum."
-        if len(published) > 1:
-            listing = "; ".join(c.title for c in published)
-            return f"Có nhiều hồ sơ đang phát hành ({listing}) — bạn nêu rõ tên hồ sơ giúp mình."
-        lowered = text.casefold()
-        marker = lowered.find("addendum")
-        change = text[marker + len("addendum") :].strip(" :,-—.") if marker >= 0 else ""
-        if len(change) < 10:
-            return (
-                "Bạn nhắn kèm nội dung sửa đổi giúp mình nhé — ví dụ: "
-                "«lập addendum gia hạn nộp thầu thêm 7 ngày»."
-            )
-        value = json.dumps(
-            {
-                "case_id": str(published[0].id),
-                "change": change[:600],
-                "impact": "",
-                "proposer": display_name,
-            },
-            ensure_ascii=False,
-        )
-        return await self.execute(ADDENDUM_SUBMIT, value, context, display_name)
 
     async def _find_pending_approval(
         self, cp: str, case_id: UUID, context: AccessContext

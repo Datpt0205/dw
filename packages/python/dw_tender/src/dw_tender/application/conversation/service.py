@@ -45,6 +45,8 @@ from dw_tender.application.preparation.handlers import (
     RecordSubmissionCommand,
     RequestCp4Handler,
     RunPreparationHandler,
+    SubmitAddendumCommand,
+    SubmitPreparationAddendumHandler,
 )
 from dw_tender.application.preparation.rules import ProcurementRules
 from dw_tender.domain.preparation.entities import BusinessDomain, ProcurementType
@@ -201,6 +203,10 @@ class ConversationIntakeService:
     # conversation — no manual uploads). Optional so intake-only wiring works.
     # Requester-side addendum is a PROPOSAL only — procurement drafts (role fix).
     propose_addendum: ProposePreparationAddendumHandler | None = None
+    # Procurement drafts and files the addendum; a requester may only propose.
+    # Which of the two happens is decided by the SCOPE the speaker holds, not
+    # by whether they happened to type the word "addendum".
+    submit_addendum: SubmitPreparationAddendumHandler | None = None
     record_submission: RecordPreparationSubmissionHandler | None = None
     request_cp4: RequestCp4Handler | None = None
     # Clarification loop over chat (the web form is read-only now).
@@ -212,7 +218,7 @@ class ConversationIntakeService:
     run_case: RunPreparationHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.5.0"
+    prompt_version: str = "1.6.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 
@@ -264,6 +270,20 @@ class ConversationIntakeService:
         turn, model_thinking = await self._run_turn(
             conversation, text, context, display_name, open_convs
         )
+
+        # Answering the confirm card in words. The channel used to keyword-match
+        # this, so "ừ tạo đi" or "chuẩn rồi" left the person stuck looking at
+        # the same card; the model reads the sentence instead.
+        if conversation.state == "confirming" and turn.intent in (
+            "confirm_request",
+            "edit_request",
+        ):
+            return await self.handle_action(
+                action="confirm" if turn.intent == "confirm_request" else "edit",
+                conversation_id=conversation.id,
+                context=context,
+                display_name=display_name,
+            )
 
         # "Quay lại vụ laptop" / "đang dở những gì?" — resolve BEFORE any slot
         # from this message is merged, so nothing leaks into the wrong request.
@@ -838,10 +858,13 @@ class ConversationIntakeService:
         display_name: str,
     ) -> TurnOutcome | None:
         if turn.intent == "request_addendum" and self.propose_addendum is not None:
-            # Role fix: the requester only PROPOSES a change — procurement
-            # (Bình) decides whether to draft the addendum and file CP3.
+            # Role split: a requester PROPOSES; procurement DRAFTS and files CP3.
             change = (turn.addendum.change_summary if turn.addendum else "").strip() or text
             impact = (turn.addendum.impact_summary if turn.addendum else "").strip()
+            if context.has_scope("approvals.decide") and self.submit_addendum is not None:
+                return await self._draft_addendum(
+                    case_id, change, impact, text, context, display_name
+                )
             try:
                 await self.propose_addendum.handle(
                     case_id,
@@ -1080,6 +1103,55 @@ class ConversationIntakeService:
         if turn.intent == "create_request":
             return None  # new purchase → caller opens a fresh intake conversation
         return TurnOutcome(replies=(ChatReply(text=turn.reply_vi),))
+
+    async def _draft_addendum(
+        self,
+        case_id: uuid.UUID,
+        change: str,
+        impact: str,
+        raw_text: str,
+        context: AccessContext,
+        display_name: str,
+    ) -> TurnOutcome:
+        """Procurement files the addendum itself and sends it to CP3."""
+        assert self.submit_addendum is not None
+        markdown = await self._addendum_markdown(
+            case_id=case_id,
+            channel_key=f"case:{case_id}",
+            change=change,
+            impact=impact,
+            raw_text=raw_text,
+            display_name=display_name,
+            context=context,
+        )
+        try:
+            await self.submit_addendum.handle(
+                case_id,
+                SubmitAddendumCommand(
+                    filename="addendum.md",
+                    content_type="text/markdown; charset=utf-8",
+                    content=markdown.encode("utf-8"),
+                    change_summary=change,
+                    impact_summary=impact,
+                ),
+                context,
+            )
+        except (ConflictError, DomainError) as exc:
+            return TurnOutcome(replies=(ChatReply(text=f"Chưa lập được addendum: {exc}"),))
+        return TurnOutcome(
+            replies=(
+                ChatReply(
+                    text=(
+                        "📝 Đã lập văn bản sửa đổi và trình CP3 — thẻ quyết định "
+                        "sẽ tới người có thẩm quyền."
+                    )
+                ),
+            ),
+            thinking=(
+                f"• Người lập có thẩm quyền mua sắm → tự lập addendum: {change[:120]}\n"
+                "• Trình CP3; phê duyệt cũ không tái sử dụng."
+            ),
+        )
 
     async def _case_title(self, case_id: uuid.UUID, context: AccessContext) -> str:
         if self.get_case is None:
@@ -1466,18 +1538,20 @@ class ConversationIntakeService:
             if slots.estimated_value_vnd
             else None
         )
+        # Plain lines: the CHANNEL owns bullets and layout. Prefixing them here
+        # too produced "• • Hàng hoá…" on Zalo.
         lines = [
-            f"• Hàng hoá/dịch vụ: {slots.item_summary or slots.title or '—'}",
-            f"• Số lượng: {slots.quantity or '—'}",
-            f"• Ngân sách: {_fmt_vnd(slots.estimated_value_vnd)}",
-            f"• Thời hạn: {slots.deadline_days or '—'} ngày",
-            f"• Giao tại: {slots.delivery_location or '—'}",
-            f"• NCC dự kiến: {', '.join(slots.supplier_names) or '—'}",
+            f"Hàng hoá/dịch vụ: {slots.item_summary or slots.title or '—'}",
+            f"Số lượng: {slots.quantity or '—'}",
+            f"Ngân sách: {_fmt_vnd(slots.estimated_value_vnd)}",
+            f"Thời hạn: {slots.deadline_days or '—'} ngày",
+            f"Giao tại: {slots.delivery_location or '—'}",
+            f"NCC dự kiến: {', '.join(slots.supplier_names) or '—'}",
         ]
         if slots.purpose:
-            lines.insert(1, f"• Mục đích: {slots.purpose}")
+            lines.insert(1, f"Mục đích: {slots.purpose}")
         if method is not None:
-            lines.append(f"• Phương án dự kiến theo quy định: {method.label}")
+            lines.append(f"Phương án dự kiến theo quy định: {method.label}")
         optional_missing = [
             label
             for label, value in (
@@ -1488,7 +1562,7 @@ class ConversationIntakeService:
             if value in (None, "")
         ]
         if optional_missing:
-            lines.append("• Chưa nêu (DW sẽ hỏi làm rõ sau): " + ", ".join(optional_missing))
+            lines.append("Chưa nêu (DW sẽ hỏi làm rõ sau): " + ", ".join(optional_missing))
         return ChatReply(
             text="Tôi hiểu yêu cầu như sau — bạn xác nhận để tạo hồ sơ nhé?",
             kind="confirm_card",

@@ -730,6 +730,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     clock=clock,
                     id_generator=id_generator,
                     propose_addendum=preparation.propose_addendum,
+                    submit_addendum=preparation.submit_addendum,
                     record_submission=preparation.record_submission,
                     request_cp4=preparation.request_cp4,
                     get_case=preparation.get_case,

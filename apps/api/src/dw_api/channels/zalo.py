@@ -7,7 +7,7 @@ authorization). NO buttons exist on this channel — everything runs on plain
 Vietnamese:
 
 - intake: chat như thường (ConversationIntakeService, channel-agnostic);
-- confirm card → "đồng ý" tạo hồ sơ / "sửa ..." chỉnh lại;
+- confirm card → trả lời bằng lời, model hiểu ý (không dò từ khoá);
 - approvals → "duyệt cp1", "từ chối cp2", "xác minh", "lập addendum ..."
   (shared ``DecisionEngine`` — same handlers the Slack buttons call);
 - case picker → "chọn 2".
@@ -40,8 +40,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("dw_api.channels.zalo")
 
-_CONFIRM_PHRASES = ("đồng ý", "dong y", "xác nhận", "xac nhan", "ok", "oke", "chốt", "chot")
-_EDIT_PHRASES = ("sửa", "sua", "chỉnh", "chinh")
 _PICK_RE = re.compile(r"^\s*chọn\s+(\d)\s*$", re.IGNORECASE)
 _THINKING_MAX = 1200
 
@@ -183,29 +181,6 @@ class ZaloFrontOfficeService:
             workspace_id=context.workspace_id,
             channel_key=channel_key,
         )
-        lowered = text.casefold().strip(" .!")
-
-        # 2) Confirm-before-commit in words (the confirm card has no buttons).
-        if active is not None and active.state == "confirming":
-            if any(lowered == p or lowered.startswith(p + " ") for p in _CONFIRM_PHRASES):
-                outcome = await self.conversation_service.handle_action(
-                    action="confirm",
-                    conversation_id=active.id,
-                    context=context,
-                    display_name=display_name,
-                )
-                await self._send_outcome(chat_id, outcome)
-                return
-            if lowered in _EDIT_PHRASES:
-                outcome = await self.conversation_service.handle_action(
-                    action="edit",
-                    conversation_id=active.id,
-                    context=context,
-                    display_name=display_name,
-                )
-                await self._send_outcome(chat_id, outcome)
-                return
-
         # 3) Decisions in words ("duyệt cp1", "xác minh", "lập addendum …") —
         #    only when no intake is mid-flight in this chat (mirrors Slack).
         if active is None:

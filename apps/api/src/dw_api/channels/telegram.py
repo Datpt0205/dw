@@ -208,13 +208,13 @@ class TelegramBotService:
             lines.append(f"⭐ Chất lượng họp: <b>{score}/10</b>")
         if went_well:
             lines.append("✅ <b>Điểm tốt:</b>")
-            lines += [f"  • {html.escape(str(p.get('point', '')))}" for p in went_well[:3]]
+            lines += [f"{html.escape(str(p.get('point', '')))}" for p in went_well[:3]]
         if needs:
             lines.append("⚠️ <b>Cần cải thiện:</b>")
-            lines += [f"  • {html.escape(str(p.get('point', '')))}" for p in needs[:3]]
+            lines += [f"{html.escape(str(p.get('point', '')))}" for p in needs[:3]]
         if recommendations:
             lines.append("💡 <b>Lần sau nên:</b>")
-            lines += [f"  • {html.escape(str(r))}" for r in recommendations[:3]]
+            lines += [f"{html.escape(str(r))}" for r in recommendations[:3]]
         lines.append("")
         lines.append(
             f"🗒 {len(meeting.decisions)} quyết định · {len(meeting.actions)} việc cần giao"
