@@ -25,6 +25,8 @@ class ApprovalTier:
     max_value: int | None
     cp1_role: str
     cp2_role: str
+    cp3_role: str = "approver"
+    cp4_role: str = "approver"
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +75,12 @@ class ProcurementRules:
         """
         for tier in self.approval_tiers:
             if tier.max_value is None or value_minor <= tier.max_value:
-                return tier.cp2_role if checkpoint.upper() == "CP2" else tier.cp1_role
+                return {
+                    "CP1": tier.cp1_role,
+                    "CP2": tier.cp2_role,
+                    "CP3": tier.cp3_role,
+                    "CP4": tier.cp4_role,
+                }.get(checkpoint.upper(), tier.cp1_role)
         return self.default_approver_role
 
     def select_method(self, value_minor: int) -> Method:

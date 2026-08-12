@@ -23,6 +23,7 @@ from dw_platform.domain.audit import AuditEvent
 from dw_tender.application.ports import DocumentStoragePort, EmailPublisherPort
 from dw_tender.application.preparation.dto import PreparationCaseView
 from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
+from dw_tender.application.preparation.rules import ProcurementRules
 from dw_tender.domain.preparation.entities import (
     ArtifactStatus,
     ArtifactType,
@@ -1058,6 +1059,7 @@ class RecordPreparationSubmissionHandler:
     authorization: ScopeAuthorizationService
     clock: UtcClock
     id_generator: IdGenerator
+    rules: ProcurementRules
 
     async def handle(
         self,
@@ -1124,6 +1126,39 @@ class RecordPreparationSubmissionHandler:
                 status=ArtifactStatus.SUBMITTED,
             )
             case.record_submission()
+            # A bid landing used to tell nobody: the supplier got an ack email
+            # and everyone on our side had to go look at the web to find out.
+            # Tell the person whose case it is, and whoever will run the
+            # opening — a 500 tỷ package receiving a bid is news.
+            heading = f"Đã nhận hồ sơ dự thầu từ {command.supplier_name.strip()}"
+            lines = [
+                f"Sổ tiếp nhận hiện có {len(items)} hồ sơ.",
+                f"Tệp: {document.filename} · niêm phong bằng mã băm nội dung.",
+                "Biên nhận đã lập; nhà cung cấp đã được xác nhận qua email.",
+            ]
+            recipients: list[UserId] = [case.created_by]
+            opener = await uow.notifications.find_recipient_for_role(
+                self.rules.approver_role_for(case.estimated_value_minor, "CP4")
+            )
+            if opener is not None and opener.value != case.created_by.value:
+                recipients.append(opener)
+            for recipient in recipients:
+                await uow.notifications.enqueue(
+                    IntakeNotificationJob(
+                        id=self.id_generator.new_uuid(),
+                        tenant_id=case.tenant_id,
+                        workspace_id=case.workspace_id,
+                        case_id=case.id,
+                        event_type=IntakeNotificationType.RUN_PROGRESS,
+                        recipient_user_id=recipient,
+                        due_at=self.clock.now().astimezone(UTC),
+                        idempotency_key=(
+                            f"dw01:{case.id.value}:progress:bid:"
+                            f"{document.content_hash[:12]}:{recipient.value}"
+                        ),
+                        payload={"title": case.title, "heading": heading, "lines": lines},
+                    )
+                )
             await uow.cases.save(case)
             await uow.commit()
 
@@ -1138,6 +1173,7 @@ class RequestCp4Handler:
     authorization: ScopeAuthorizationService
     clock: UtcClock
     id_generator: IdGenerator
+    rules: ProcurementRules
 
     async def handle(self, case_id: uuid.UUID, context: AccessContext) -> int:
         await self.authorization.require(
@@ -1158,7 +1194,9 @@ class RequestCp4Handler:
             submissions = [d for d in documents if d.kind is DocumentKind.SUPPLIER_SUBMISSION]
             if not submissions:
                 raise DomainError("chưa có hồ sơ dự thầu nào — không thể mở thầu")
-            approver = await uow.notifications.find_recipient_for_role("approver")
+            approver = await uow.notifications.find_recipient_for_role(
+                self.rules.approver_role_for(case.estimated_value_minor, "CP4")
+            )
             if approver is not None:
                 await uow.notifications.enqueue(
                     IntakeNotificationJob(

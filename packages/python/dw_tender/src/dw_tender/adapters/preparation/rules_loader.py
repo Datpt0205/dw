@@ -32,6 +32,8 @@ def load_procurement_rules(path: Path) -> ProcurementRules:
             max_value=(None if t.get("max_value") is None else int(t["max_value"])),
             cp1_role=str(t["cp1_role"]),
             cp2_role=str(t["cp2_role"]),
+            cp3_role=str(t.get("cp3_role", t["cp1_role"])),
+            cp4_role=str(t.get("cp4_role", t["cp1_role"])),
         )
         for t in data.get("approval_tiers", [])
     )

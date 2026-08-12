@@ -674,12 +674,14 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     authorization=authorization,
                     clock=clock,
                     id_generator=id_generator,
+                    rules=procurement_rules,
                 ),
                 request_cp4=RequestCp4Handler(
                     uow_factory=preparation_uow_factory,
                     authorization=authorization,
                     clock=clock,
                     id_generator=id_generator,
+                    rules=procurement_rules,
                 ),
                 complete_cp4=CompletePreparationCp4Handler(
                     uow_factory=preparation_uow_factory,

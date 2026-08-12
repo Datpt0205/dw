@@ -37,12 +37,19 @@ methods:
 # CP1 = duyệt phương án (chuyên gia mua sắm thẩm định).
 # CP2 = duyệt bộ hồ sơ mời thầu chính thức — gói lớn phải lên Trưởng ban.
 approval_tiers:
+  # CP3 (addendum) và CP4 (mở thầu) thuộc bên mời thầu: mở thầu là hành vi thủ
+  # tục có người chứng kiến, không phải chữ ký lãnh đạo. Đổi ở đây nếu quy chế
+  # công ty quy định khác — không phải sửa code.
   - max_value: 500000000          # ≤ 500 triệu: chuyên gia quyết cả hai
     cp1_role: approver
     cp2_role: approver
+    cp3_role: approver
+    cp4_role: approver
   - max_value: null               # > 500 triệu: CP2 lên Trưởng ban mua sắm
     cp1_role: approver
     cp2_role: procurement_head
+    cp3_role: approver
+    cp4_role: approver
 
 # Mọi role trong approval_tiers đều phải có scope này thì quyết định mới hợp lệ.
 checkpoint_scope: approvals.decide
