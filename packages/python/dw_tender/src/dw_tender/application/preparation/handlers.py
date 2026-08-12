@@ -1126,23 +1126,14 @@ class RecordPreparationSubmissionHandler:
                 status=ArtifactStatus.SUBMITTED,
             )
             case.record_submission()
-            # A bid landing used to tell nobody: the supplier got an ack email
-            # and everyone on our side had to go look at the web to find out.
-            # Tell the person whose case it is, and whoever will run the
-            # opening — a 500 tỷ package receiving a bid is news.
-            heading = f"Đã nhận hồ sơ dự thầu từ {command.supplier_name.strip()}"
-            lines = [
-                f"Sổ tiếp nhận hiện có {len(items)} hồ sơ.",
-                f"Tệp: {document.filename} · niêm phong bằng mã băm nội dung.",
-                "Biên nhận đã lập; nhà cung cấp đã được xác nhận qua email.",
-            ]
-            recipients: list[UserId] = [case.created_by]
+            # A bid landing used to tell nobody on our side — only the supplier
+            # got an acknowledgement. It goes to whoever will run the opening;
+            # the requester has nothing to do with a bid arriving and gets told
+            # at the stages that actually concern them.
             opener = await uow.notifications.find_recipient_for_role(
                 self.rules.approver_role_for(case.estimated_value_minor, "CP4")
             )
-            if opener is not None and opener.value != case.created_by.value:
-                recipients.append(opener)
-            for recipient in recipients:
+            if opener is not None:
                 await uow.notifications.enqueue(
                     IntakeNotificationJob(
                         id=self.id_generator.new_uuid(),
@@ -1150,13 +1141,22 @@ class RecordPreparationSubmissionHandler:
                         workspace_id=case.workspace_id,
                         case_id=case.id,
                         event_type=IntakeNotificationType.RUN_PROGRESS,
-                        recipient_user_id=recipient,
+                        recipient_user_id=opener,
                         due_at=self.clock.now().astimezone(UTC),
                         idempotency_key=(
-                            f"dw01:{case.id.value}:progress:bid:"
-                            f"{document.content_hash[:12]}:{recipient.value}"
+                            f"dw01:{case.id.value}:progress:bid:{document.content_hash[:12]}"
                         ),
-                        payload={"title": case.title, "heading": heading, "lines": lines},
+                        payload={
+                            "title": case.title,
+                            "heading": (
+                                f"Đã nhận hồ sơ dự thầu từ {command.supplier_name.strip()}"
+                            ),
+                            "lines": [
+                                f"Sổ tiếp nhận hiện có {len(items)} hồ sơ.",
+                                f"Tệp: {document.filename} · niêm phong bằng mã băm nội dung.",
+                                "Biên nhận đã lập; nhà cung cấp đã được xác nhận qua email.",
+                            ],
+                        },
                     )
                 )
             await uow.cases.save(case)
