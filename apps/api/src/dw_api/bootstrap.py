@@ -95,6 +95,8 @@ from dw_tender.application.preparation.handlers import (
     SubmitPreparationAddendumHandler,
     VerifyPreparationIntakeHandler,
 )
+from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
+from dw_tender.application.preparation.rules import ProcurementRules
 from dw_tender.domain.services.scoring_engine import ScoringEngine
 from dw_tender.workflows.preparation_v1.registry import register_preparation_graphs
 from dw_tender.workflows.preparation_v1.services import PreparationServices
@@ -165,6 +167,9 @@ class PreparationHandlers:
     propose_addendum: ProposePreparationAddendumHandler
     decide_cp3: DecidePreparationCp3Handler
     audit_recorder: PreparationAuditRecorder
+    # Needed by the bid-closing scanner (deadline-driven CP4).
+    uow_factory: PreparationUnitOfWorkFactory
+    rules: ProcurementRules
 
 
 @dataclass
@@ -709,6 +714,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     clock=clock,
                     id_generator=id_generator,
                 ),
+                uow_factory=preparation_uow_factory,
+                rules=procurement_rules,
                 audit_recorder=PreparationAuditRecorder(
                     uow_factory=uow_factory,
                     clock=clock,

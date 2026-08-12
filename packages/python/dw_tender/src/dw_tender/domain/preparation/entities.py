@@ -174,6 +174,10 @@ class PreparationCase:
     export_ref: str | None = None
     intake_verified_by: UserId | None = None
     intake_verified_at: datetime | None = None
+    # Moment the register closes. Set when the RFQ goes out, from the
+    # solicitation window the approach step derived (and code verified against
+    # the retrieved legal minimum). Opening is driven by this, not by a count.
+    bids_close_at: datetime | None = None
     version: int = 1
 
     def __post_init__(self) -> None:
@@ -230,11 +234,12 @@ class PreparationCase:
         self.current_step = "completed"
         self.version += 1
 
-    def record_publication(self) -> None:
+    def record_publication(self, bids_close_at: datetime | None = None) -> None:
         if self.state is not CaseState.PACKAGE_OFFICIAL:
             raise TenderDomainError("only an official package can be published")
         self.state = CaseState.PUBLISHED
         self.current_step = "publication"
+        self.bids_close_at = bids_close_at
         self.version += 1
 
     def record_submission(self) -> None:

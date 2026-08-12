@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from types import TracebackType
 from typing import Protocol
 
@@ -22,6 +23,10 @@ class PreparationCaseRepositoryPort(Protocol):
     async def get(self, case_id: PreparationCaseId) -> PreparationCase | None: ...
 
     async def save(self, case: PreparationCase) -> None: ...
+
+    async def list_due_for_closing(self, now: datetime) -> list[PreparationCase]:
+        """Open cases whose bid register is past its closing moment."""
+        ...
 
     async def list_recent(self, limit: int = 50) -> list[PreparationCase]: ...
 

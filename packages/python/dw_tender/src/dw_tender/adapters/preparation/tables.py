@@ -33,6 +33,7 @@ preparation_cases = sa.Table(
     sa.Column("export_ref", sa.Text, nullable=True),
     sa.Column("intake_verified_by", UUID(as_uuid=True), nullable=True),
     sa.Column("intake_verified_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.Column("bids_close_at", sa.DateTime(timezone=True), nullable=True),
     sa.Column("created_by", UUID(as_uuid=True), nullable=False),
     sa.Column("version", sa.Integer, nullable=False, server_default="1"),
     sa.Column(

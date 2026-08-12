@@ -77,6 +77,7 @@ def _case_from_row(row: sa.Row[Any]) -> PreparationCase:
             UserId(row.intake_verified_by) if row.intake_verified_by is not None else None
         ),
         intake_verified_at=row.intake_verified_at,
+        bids_close_at=row.bids_close_at,
         version=row.version,
     )
 
@@ -154,6 +155,7 @@ class SqlPreparationCaseRepository:
                     case.intake_verified_by.value if case.intake_verified_by is not None else None
                 ),
                 intake_verified_at=case.intake_verified_at,
+                bids_close_at=case.bids_close_at,
                 version=case.version,
                 updated_at=_now(),
             )
@@ -164,6 +166,21 @@ class SqlPreparationCaseRepository:
                 "preparation case was modified concurrently",
                 details={"case_id": str(case.id.value)},
             )
+
+    async def list_due_for_closing(self, now: datetime) -> list[PreparationCase]:
+        rows = (
+            await self.session.execute(
+                sa.select(tables.preparation_cases)
+                .where(
+                    tables.preparation_cases.c.bids_close_at.is_not(None),
+                    tables.preparation_cases.c.bids_close_at <= now,
+                    tables.preparation_cases.c.state.in_(("published", "receiving_bids")),
+                )
+                .order_by(tables.preparation_cases.c.bids_close_at.asc())
+                .limit(20)
+            )
+        ).all()
+        return [_case_from_row(row) for row in rows]
 
     async def list_recent(self, limit: int = 50) -> list[PreparationCase]:
         rows = (

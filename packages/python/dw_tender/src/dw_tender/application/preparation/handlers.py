@@ -546,7 +546,19 @@ class RecordPreparationPublicationHandler:
                 content=artifact_content,
                 status=ArtifactStatus.OFFICIAL,
             )
-            case.record_publication()
+            # Closing moment = publication + the solicitation window the
+            # approach step derived, which the CP2 gate already checked against
+            # the legal minimum. Missing window (older cases) leaves it unset
+            # and the case simply keeps the old "close when enough arrive".
+            approach = await uow.artifacts.latest(case.id, ArtifactType.PROCUREMENT_APPROACH)
+            window_days = 0
+            if approach is not None:
+                raw_window = approach.content.get("solicitation_window_days")
+                if isinstance(raw_window, int | str):
+                    with contextlib.suppress(TypeError, ValueError):
+                        window_days = int(raw_window)
+            closes_at = recorded_at + timedelta(days=window_days) if window_days > 0 else None
+            case.record_publication(closes_at)
             await uow.cases.save(case)
             await uow.commit()
 

@@ -23,6 +23,7 @@ from uuid import UUID
 import yaml
 
 from dw_platform.application.identity import VerifiedClaims
+from dw_tender.application.preparation.bid_closing import BidClosingScanner
 from dw_tender.application.preparation.email_ingest import EmailSubmissionIngestor
 
 if TYPE_CHECKING:
@@ -81,6 +82,14 @@ def start_mailroom(container: ApiContainer, repo_root: Path) -> asyncio.Task[Non
         ack_sender=_build_email_publisher(),  # type: ignore[arg-type]
         min_submissions_for_cp4=int(os.environ.get("DW_SUBMISSIONS_MIN_TO_CLOSE", "1")),
     )
+    # Same loop, same identity: bids arriving and the register closing are two
+    # halves of one window, and this poll already holds a proper AccessContext.
+    closing = BidClosingScanner(
+        uow_factory=container.preparation.uow_factory,
+        request_cp4=container.preparation.request_cp4,
+        rules=container.preparation.rules,
+        clock=container.preparation.audit_recorder.clock,
+    )
     interval = int(os.environ.get("DW_MAILROOM_POLL_SECONDS", str(_POLL_SECONDS_DEFAULT)))
 
     async def _loop() -> None:
@@ -95,6 +104,9 @@ def start_mailroom(container: ApiContainer, repo_root: Path) -> asyncio.Task[Non
                     UUID(str(entry["workspace_id"])),
                 )
                 report = await ingestor.poll_once(context)
+                closing_report = await closing.poll_once(context)
+                for line in (*closing_report.closed, *closing_report.skipped):
+                    logger.info("bid closing: %s", line)
                 if report.recorded or report.skipped:
                     logger.info(
                         "mailroom: recorded=%s cp4_requested=%s skipped=%s",
