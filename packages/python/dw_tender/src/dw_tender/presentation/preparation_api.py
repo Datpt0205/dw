@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -35,6 +36,8 @@ from dw_tender.application.preparation.handlers import (
     VerifyPreparationIntakeHandler,
 )
 from dw_tender.domain.preparation.entities import BusinessDomain, ProcurementType
+
+logger = logging.getLogger(__name__)
 
 
 class CreatePreparationCaseRequest(BaseModel):
@@ -118,6 +121,10 @@ def build_preparation_router(
     decide_cp3: DecidePreparationCp3Handler,
     audit_recorder: PreparationAuditRecorder,
     access_context_dependency: Callable[..., Any],
+    # Carrying the sealed package to evaluation must not depend on which
+    # surface confirmed CP4. Optional so a router built without DW02 wiring
+    # (tests, trimmed deployments) still serves every other route.
+    handoff_to_evaluation: Any | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/procurement/preparation", tags=["preparation"])
     require_context = Depends(access_context_dependency)
@@ -458,6 +465,15 @@ def build_preparation_router(
             case_id=case_id,
             details={"approval_reference": approval_reference},
         )
+        if handoff_to_evaluation is not None:
+            # Best effort: the opening already happened and is recorded. A
+            # failed hand-over is re-runnable; rolling CP4 back is not. It is
+            # logged rather than swallowed — a silent no-op here would read as
+            # "handed over" to everyone downstream.
+            try:
+                await handoff_to_evaluation.handle(case_id, context)
+            except Exception:
+                logger.exception("evaluation handoff failed for case %s", case_id)
         return ActionResponse()
 
     return router

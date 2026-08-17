@@ -94,6 +94,8 @@ async def client(urls: RuntimeUrls):
         s3_secret_key=urls.minio_secret_key,
         s3_bucket=env.get("S3_BUCKET_ARTIFACTS", "dw-artifacts"),
         qdrant_url=urls.qdrant_url,
+        # Never the demo's collection: a dimension change rebuilds it.
+        qdrant_collection="dw_knowledge_test",
         model_provider="mock",
     )
     container = build_container(settings)

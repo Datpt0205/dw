@@ -903,7 +903,15 @@ class PreparationNodes:
             approach = await uow.artifacts.latest(case_id, ArtifactType.PROCUREMENT_APPROACH)
             if approach is not None:
                 merged = {**approach.content, "gate": gate}
-                await self._add_artifact(uow, case, ArtifactType.PROCUREMENT_APPROACH, merged)
+                approach = await self._add_artifact(
+                    uow, case, ArtifactType.PROCUREMENT_APPROACH, merged
+                )
+                payload["approved_artifact"] = {
+                    "artifact_id": str(approach.id.value),
+                    "artifact_type": approach.artifact_type.value,
+                    "artifact_version": approach.artifact_version,
+                    "content_hash": approach.content_hash,
+                }
             case.advance(
                 CaseState.CP1_PENDING if result.passed else CaseState.WAITING_CLARIFICATION,
                 "cp1",
@@ -1379,7 +1387,18 @@ class PreparationNodes:
             package = await uow.artifacts.latest(case_id, ArtifactType.SOLICITATION_PACKAGE)
             if package is not None:
                 merged = {**package.content, "gate": gate}
-                await self._add_artifact(uow, case, ArtifactType.SOLICITATION_PACKAGE, merged)
+                package = await self._add_artifact(
+                    uow, case, ArtifactType.SOLICITATION_PACKAGE, merged
+                )
+                # WHICH package this approval covers. An addendum after CP2
+                # produces a newer version, and an approval of v6 must not be
+                # spent publishing v7 — the readiness check compares these two.
+                payload["approved_artifact"] = {
+                    "artifact_id": str(package.id.value),
+                    "artifact_type": package.artifact_type.value,
+                    "artifact_version": package.artifact_version,
+                    "content_hash": package.content_hash,
+                }
             case.advance(CaseState.CP2_PENDING if result.passed else CaseState.PACKAGE_READY, "cp2")
             if result.passed:
                 await self._notify_progress(

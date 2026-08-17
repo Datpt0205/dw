@@ -91,6 +91,9 @@ ChatIntent = Literal[
     # Asking the corpus itself ("Điều 20 Luật Đấu thầu nói gì?"). Answered from
     # retrieved passages only — never from what the model happens to recall.
     "ask_knowledge",
+    # "Hồ sơ này phát hành được chưa?" — a check across the whole package as it
+    # stands now, not the gate that passed at some earlier step.
+    "check_readiness",
     # Post-publication lifecycle (only meaningful when the case exists):
     "request_addendum",
     "record_submission",

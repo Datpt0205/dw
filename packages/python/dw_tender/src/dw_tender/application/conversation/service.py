@@ -260,6 +260,8 @@ class ConversationIntakeService:
     # The corpus DW01 already reads inside the workflow, now reachable from
     # chat. Same gateway, same trusted filters — a question from Zalo can only
     # retrieve what that person is cleared to read.
+    # "Phát hành được chưa?" — read-only sweep over the package as it stands.
+    assess_readiness: Any | None = None
     knowledge: KnowledgeGatewayPort | None = None
     # "shared" tells the gateway not to add a domain predicate: a person asking
     # "how many days must we give bidders?" does not know the corpus is split
@@ -271,7 +273,7 @@ class ConversationIntakeService:
     run_case: RunPreparationHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.7.0"
+    prompt_version: str = "1.8.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 
@@ -632,6 +634,8 @@ class ConversationIntakeService:
     ) -> TurnOutcome | None:
         """Act on the model's switch/list intent — code picks the target."""
         channel = self.channel_of(current.channel_key)
+        if turn.intent == "check_readiness":
+            return await self._readiness_outcome(current, text, context)
         if turn.intent == "ask_knowledge":
             return await self._knowledge_outcome(
                 turn.knowledge_query or text, context, display_name, model_thinking, channel
@@ -739,6 +743,73 @@ class ConversationIntakeService:
     _DECIDE_STATES: ClassVar[frozenset[str]] = frozenset(
         {"draft", "cp1_pending", "cp2_pending", "cp3_pending", "cp4_ready"}
     )
+
+    async def _readiness_outcome(
+        self,
+        current: ConversationView,
+        text: str,
+        context: AccessContext,
+    ) -> TurnOutcome:
+        """ "Phát hành được chưa?" — sweep the package, never move it."""
+        if self.assess_readiness is None:
+            return TurnOutcome(
+                replies=(ChatReply(text="Mình chưa kiểm tra được hồ sơ ở kênh này."),)
+            )
+        case_id, title = await self._readiness_target(current, text, context)
+        if case_id is None:
+            return TurnOutcome(replies=(ChatReply(text=title),))
+        report = await self.assess_readiness.handle(case_id, context)
+        verdict = "SẴN SÀNG PHÁT HÀNH" if report.ready else "CHƯA PHÁT HÀNH ĐƯỢC"
+        lines = [
+            f"{'✅' if report.ready else '🛑'} {verdict} — {title}",
+            f"Điểm: {report.score}/100",
+        ]
+        for label, severity in (("CHẶN", "blocker"), ("RỦI RO", "risk"), ("LƯU Ý", "warning")):
+            group = report.of(severity)
+            if not group:
+                continue
+            lines.append("")
+            lines.append(f"{label} ({len(group)}):")
+            lines += [f"{i}. {f.title}\n   {f.detail}" for i, f in enumerate(group, start=1)]
+        if not report.findings:
+            lines.append("Không tìm thấy vấn đề nào trong phạm vi kiểm tra được.")
+        return TurnOutcome(
+            replies=(ChatReply(text="\n".join(lines)),),
+            thinking=(
+                f"• Rà toàn bộ hồ sơ «{title}» ở trạng thái hiện tại, không chỉ cổng đã qua.\n"
+                f"• {len(report.of('blocker'))} chặn, {len(report.of('risk'))} rủi ro, "
+                f"{len(report.of('warning'))} lưu ý."
+            ),
+        )
+
+    async def _readiness_target(
+        self, current: ConversationView, text: str, context: AccessContext
+    ) -> tuple[uuid.UUID | None, str]:
+        """Which case is "this one"? Returns (case_id, title) or (None, reason).
+
+        The person asking is usually NOT the person who filed it — an approver
+        reviews other people's packages — so looking only at their own chat
+        finds nothing. Resolve against the cases they may see, by title or by
+        who requested it, exactly as a decision command resolves.
+        """
+        if current.case_id is not None:
+            return current.case_id, await self._case_title(current.case_id, context)
+        if self.list_cases is None:
+            return None, "Mình chưa tra được danh sách hồ sơ ở kênh này."
+        cases = await self.list_cases.handle(context)
+        if not context.has_scope("approvals.decide"):
+            cases = [case for case in cases if case.created_by == context.principal_id]
+        if not cases:
+            return None, "Mình không thấy hồ sơ nào trong phạm vi bạn xem được."
+        scores = rank_by_label(text, [f"{c.title} {c.owner_name}" for c in cases])
+        best = max(scores, default=0.0)
+        if best > 0 and scores.count(best) == 1:
+            chosen = cases[scores.index(best)]
+            return chosen.id, chosen.title
+        if len(cases) == 1:
+            return cases[0].id, cases[0].title
+        listing = "\n".join(f"  • {c.title} — {c.owner_name}" for c in cases[:6])
+        return None, f"Bạn muốn mình rà soát hồ sơ nào?\n{listing}"
 
     async def _knowledge_outcome(
         self,

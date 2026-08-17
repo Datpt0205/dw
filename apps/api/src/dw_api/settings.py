@@ -76,6 +76,14 @@ class ApiSettings(BaseSettings):
     qdrant_url: str | None = Field(
         default=None, validation_alias=AliasChoices("DW_API_QDRANT_URL", "QDRANT_URL")
     )
+    # A collection is rebuilt from scratch when the embedding dimension changes,
+    # so anything sharing this name shares that fate: an integration run with
+    # the offline hash embeddings silently re-created the demo's collection at
+    # 64 dimensions, turning retrieval into noise. Tests point elsewhere.
+    qdrant_collection: str = Field(
+        default="dw_knowledge",
+        validation_alias=AliasChoices("DW_API_QDRANT_COLLECTION", "QDRANT_COLLECTION"),
+    )
 
     # --- RAG embeddings / rerank (self-hosted TEI; hash is the offline default) ---
     embedding_provider: str = Field(

@@ -380,10 +380,28 @@ class DecisionEngine:
                 ),
                 context,
             )
-            return (
-                "CP4 hoàn tất — biên bản mở thầu đã lập, gói bàn giao DW02 đã "
-                "niêm phong. Quy trình DW01 kết thúc."
-            )
+            lines = [
+                "✅ CP4 hoàn tất — biên bản mở thầu đã lập, gói bàn giao đã niêm phong.",
+            ]
+            # The sealed package is everything DW02 needs, so nobody should have
+            # to carry it across by hand. A failure here does not undo CP4: the
+            # opening happened, the evaluation can be started again.
+            try:
+                handoff = await preparation.handoff_to_evaluation.handle(case_id, context)
+            except Exception as exc:
+                lines.append(f"⚠️ Chưa chuyển được sang đánh giá: {str(exc)[:160]}")
+            else:
+                lines.append(
+                    f"➡️ DW02 đã nhận {handoff.supplier_count} hồ sơ dự thầu cùng HSMT "
+                    "chính thức và bắt đầu chấm theo tiêu chí đã duyệt."
+                )
+                if handoff.unreadable:
+                    lines.append(
+                        "Lưu ý: "
+                        + ", ".join(handoff.unreadable)
+                        + " không đọc được dạng văn bản — người đánh giá cần mở tệp gốc."
+                    )
+            return "\n".join(lines)
 
         if action_id == OPEN_BIDS:
             from dw_kernel.errors import ConflictError, DomainError

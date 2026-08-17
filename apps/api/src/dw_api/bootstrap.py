@@ -96,7 +96,9 @@ from dw_tender.application.preparation.handlers import (
     SubmitPreparationAddendumHandler,
     VerifyPreparationIntakeHandler,
 )
+from dw_tender.application.preparation.handoff import HandoffToEvaluationHandler
 from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
+from dw_tender.application.preparation.readiness import AssessTenderReadinessHandler
 from dw_tender.application.preparation.rules import ProcurementRules
 from dw_tender.domain.services.scoring_engine import ScoringEngine
 from dw_tender.workflows.preparation_v1.registry import register_preparation_graphs
@@ -168,6 +170,8 @@ class PreparationHandlers:
     propose_addendum: ProposePreparationAddendumHandler
     decide_cp3: DecidePreparationCp3Handler
     audit_recorder: PreparationAuditRecorder
+    assess_readiness: AssessTenderReadinessHandler
+    handoff_to_evaluation: HandoffToEvaluationHandler
     # Needed by the bid-closing scanner (deadline-driven CP4).
     uow_factory: PreparationUnitOfWorkFactory
     rules: ProcurementRules
@@ -475,7 +479,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 from dw_knowledge.adapters.qdrant_index import QdrantVectorIndexAdapter
 
                 vector_index = QdrantVectorIndexAdapter(
-                    client=AsyncQdrantClient(url=settings.qdrant_url)
+                    client=AsyncQdrantClient(url=settings.qdrant_url),
+                    collection=settings.qdrant_collection,
                 )
             else:
                 # Working in-memory fallback (never production — no durability).
@@ -722,6 +727,22 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     clock=clock,
                     id_generator=id_generator,
                 ),
+                handoff_to_evaluation=HandoffToEvaluationHandler(
+                    uow_factory=preparation_uow_factory,
+                    storage=storage,  # type: ignore[arg-type]
+                    authorization=authorization,
+                    id_generator=id_generator,
+                    create_evaluation_case=tender.create_case,
+                    analyze_case=tender.analyze_case,
+                ),
+                assess_readiness=AssessTenderReadinessHandler(
+                    uow_factory=preparation_uow_factory,
+                    authorization=authorization,
+                    rules=procurement_rules,
+                    id_generator=id_generator,
+                    gateway=gateway,
+                    model_profile=settings.model_profile,
+                ),
             )
 
             # ---- Chat front office (conversation-first P1) ---------------
@@ -749,6 +770,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                         uow_factory=uow_factory, session_factory=session_factory
                     ),
                     knowledge=knowledge_gateway,
+                    assess_readiness=preparation.assess_readiness,
                     answer_clarifications=preparation.answer_clarifications,
                     run_case=preparation.run_case,
                     model_profile=settings.model_profile,

@@ -243,6 +243,19 @@ async def main() -> None:
     after_cp2 = await state_of(filed)
     check(after_cp2 in {"package_official", "published"}, "CP2 duyet duoc", after_cp2)
 
+    # --------------------------------------------------------------- 10 ----
+    print("\n[10] Ra soat truoc phat hanh — cau hoi ve CHAT LUONG bo ho so")
+    # From An's thread, which is bound to the filed case. Scenario [4] created a
+    # second case with the same name, so from Chi's thread the right answer is
+    # to ask which — that ambiguity is checked below.
+    reply = await an2.say("hồ sơ này phát hành được chưa?")
+    swept = "SẴN SÀNG" in reply or "CHƯA PHÁT HÀNH" in reply
+    check(swept and "/100" in reply, "hoi 'phat hanh duoc chua' ra bao cao ra soat", reply[:200])
+
+    reply = await chi2.say("rà soát lại bộ hồ sơ trước khi gửi nhà thầu")
+    named_or_asked = "/100" in reply or "hồ sơ nào" in reply.lower()
+    check(named_or_asked, "hai ho so trung ten -> hoi lai chu khong ra soat nham", reply[:160])
+
     print("\n" + "=" * 66)
     failed = [name for ok, name, _ in results if not ok]
     print(f"{len(results) - len(failed)}/{len(results)} PASS")

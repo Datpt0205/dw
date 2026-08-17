@@ -86,6 +86,8 @@ async def preparation_client(preparation_urls: RuntimeUrls):
         s3_secret_key=preparation_urls.minio_secret_key,
         s3_bucket=env.get("S3_BUCKET_ARTIFACTS", "dw-artifacts"),
         qdrant_url=preparation_urls.qdrant_url,
+        # Never the demo's collection: a dimension change rebuilds it.
+        qdrant_collection="dw_knowledge_test",
         model_provider="mock",
     )
     container = build_container(settings)
@@ -288,13 +290,51 @@ async def test_dw01_upload_only_cp1_to_cp4(
     assert cp4.status_code == 200, cp4.text
     case = await _case(preparation_client, case_id, member)
     assert case["state"] == "completed"
-    handoff = next(
-        artifact
-        for artifact in case["artifacts"]
-        if artifact["artifact_type"] == "evaluation_handoff"
+    # The hand-over appends a new version, so read the latest one.
+    handoff = max(
+        (a for a in case["artifacts"] if a["artifact_type"] == "evaluation_handoff"),
+        key=lambda a: a["artifact_version"],
     )
     assert handoff["content"]["submission_count"] == 2
     assert handoff["content"]["handoff_ref"].startswith("s3://")
+
+    # The sealed package crosses to DW02 by itself — nobody re-uploads it.
+    evaluation_case_id = handoff["content"]["evaluation_case_id"]
+    assert evaluation_case_id, "CP4 must hand the sealed package to evaluation"
+    assert handoff["content"]["handed_over_documents"] == 3, "one RFQ + two submissions"
+    assert handoff["content"]["unreadable_submissions"] == []
+
+    response = await preparation_client.get(
+        f"/api/v1/procurement/cases/{evaluation_case_id}", headers=member
+    )
+    assert response.status_code == 200, response.text
+    evaluation = response.json()
+    assert evaluation["title"] == "Mua 100 laptop"
+    # Requirements only exist if DW02 actually parsed the RFQ it was handed —
+    # this is the seam being proven, not just a row being created.
+    assert evaluation["requirements"], "DW02 must read the handed-over package"
+
+    # Confirming CP4 twice must not open a second evaluation of one tender.
+    again = await preparation_client.post(
+        f"/api/v1/procurement/preparation/cases/{case_id}/cp4",
+        headers=approver,
+        data={
+            "opening_at": "2026-08-12T09:00:00+07:00",
+            "witnesses": "Trần Thị Bình",
+            "approval_reference": "CP4-2026-0042",
+            "comment": "Lặp lại",
+        },
+        files={"file": ("opening.md", b"# Bid opening minutes", "text/markdown")},
+    )
+    assert again.status_code in {200, 409}
+    case = await _case(preparation_client, case_id, member)
+    handoffs = {
+        artifact["content"].get("evaluation_case_id")
+        for artifact in case["artifacts"]
+        if artifact["artifact_type"] == "evaluation_handoff"
+        and artifact["content"].get("evaluation_case_id")
+    }
+    assert handoffs == {evaluation_case_id}
 
     audit = (
         await preparation_client.get("/api/v1/audit/events?limit=100", headers=approver)

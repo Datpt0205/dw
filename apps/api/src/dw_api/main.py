@@ -200,6 +200,7 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
                 decide_cp3=container.preparation.decide_cp3,
                 audit_recorder=container.preparation.audit_recorder,
                 access_context_dependency=get_prep_ctx,
+                handoff_to_evaluation=container.preparation.handoff_to_evaluation,
             ),
             prefix="/api/v1",
         )
