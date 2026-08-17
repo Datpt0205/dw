@@ -9,6 +9,7 @@ map onto them. Channels only render the returned strings.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ from typing import TYPE_CHECKING
 from dw_agent_runtime.ports import ModelRequest
 from dw_platform.application.access_context import AccessContext
 from dw_tender.application.conversation.schemas import DecisionIntent
-from dw_tender.application.conversation.service import fold_text, label_tokens
+from dw_tender.application.conversation.service import rank_by_label
 
 if TYPE_CHECKING:
     from dw_api.bootstrap import ApiContainer
@@ -46,9 +47,17 @@ def _match_by_title(text: str, candidates: list[dict[str, str]]) -> list[dict[st
     original list when nothing matches, so the caller still asks rather than
     picking at random.
     """
-    folded = fold_text(text)
-    hits = [c for c in candidates if label_tokens(c.get("title", "")) & set(folded.split())]
-    return hits or candidates
+    # People point at a case however it was shown to them — by what it is
+    # ("vụ laptop") or by who asked for it ("hồ sơ do Lê Thu Hà yêu cầu"). The
+    # listing prints both, so both have to be matchable; leaving the name out
+    # made the message miss entirely and fall through to intake chat, whose
+    # guardrail then answered as if authority had been refused.
+    labels = [f"{c.get('title', '')} {c.get('owner_name', '')}".strip() for c in candidates]
+    scores = rank_by_label(text, labels)
+    best = max(scores, default=0.0)
+    if best <= 0 or scores.count(best) > 1:  # nothing named, or named ambiguously
+        return candidates
+    return [candidates[scores.index(best)]]
 
 
 @dataclass
@@ -67,6 +76,10 @@ class DecisionEngine:
         cases = await preparation.list_cases.handle(context)
         for case in cases:
             if case.state == "draft":
+                # Separation of duties: the intake handler refuses whoever
+                # filed the case, so never offer it back to them either.
+                if case.created_by == context.principal_id:
+                    continue
                 out.append(
                     {
                         "kind": "intake",
@@ -74,6 +87,7 @@ class DecisionEngine:
                         "case_id": str(case.id),
                         "label": "Xác minh hồ sơ đầu vào",
                         "title": case.title,
+                        "owner_name": case.owner_name,
                     }
                 )
             elif case.state == "cp3_pending":
@@ -84,6 +98,7 @@ class DecisionEngine:
                         "case_id": str(case.id),
                         "label": "CP3 — duyệt sửa đổi",
                         "title": case.title,
+                        "owner_name": case.owner_name,
                     }
                 )
             elif case.state == "cp4_ready":
@@ -94,14 +109,23 @@ class DecisionEngine:
                         "case_id": str(case.id),
                         "label": "CP4 — xác nhận mở thầu",
                         "title": case.title,
+                        "owner_name": case.owner_name,
                     }
                 )
         uow_factory = self.container.uow_factory
         if uow_factory is not None:
             titles = {str(case.id): case.title for case in cases}
+            owners = {str(case.id): case.owner_name for case in cases}
             async with uow_factory(context) as uow:
                 for request in await uow.approvals.list_pending():
                     if not request.approval_type.startswith("preparation.cp"):
+                        continue
+                    # Authority rides on the request itself, stamped from the
+                    # versioned matrix. Offering a checkpoint the write path
+                    # will refuse is worse than not offering it: the person
+                    # says "duyệt" and gets an error instead of an answer.
+                    required_role = str(request.payload.get("required_role", "") or "")
+                    if required_role and required_role not in context.roles:
                         continue
                     cp = request.approval_type.rsplit(".", 1)[-1]
                     case_id = str(request.payload.get("case_id", ""))
@@ -114,6 +138,7 @@ class DecisionEngine:
                             "title": titles.get(
                                 case_id, str(request.payload.get("case_title", ""))
                             ),
+                            "owner_name": owners.get(case_id, ""),
                         }
                     )
         return out
@@ -154,7 +179,9 @@ class DecisionEngine:
             if len(named) == 1:
                 candidates = named
         if len(candidates) > 1:
-            listing = "\n".join(f"  {c['label']} — {c['title']}" for c in candidates)
+            listing = "\n".join(
+                f"  {c['label']} — {c['title']} (do {c['owner_name']} đề nghị)" for c in candidates
+            )
             return (
                 f"Đang chờ {len(candidates)} mục:\n{listing}\n"
                 "👉 Bạn nói rõ hồ sơ nào giúp mình — vd «duyệt cp2 vụ laptop»."
@@ -186,7 +213,9 @@ class DecisionEngine:
         id, and code still resolves and executes the row. Any model failure
         degrades to "not a decision", which is the safe direction.
         """
-        listing = "\n".join(f"- {c['label']} — {c['title']}" for c in candidates)
+        listing = "\n".join(
+            f"- {c['label']} — {c['title']} — do {c['owner_name']} đề nghị" for c in candidates
+        )
         try:
             return await self.conversation_service.gateway.generate_structured(
                 ModelRequest(
@@ -197,7 +226,9 @@ class DecisionEngine:
                     model_profile=self.conversation_service.model_profile,
                 ),
                 DecisionIntent,
-                run_context=self.conversation_service._agent_run_context(context, trace="decision"),
+                run_context=self.conversation_service._agent_run_context(
+                    context, trace="decision", channel=self.channel_label.lower()
+                ),
             )
         except Exception:
             return DecisionIntent()
@@ -297,6 +328,9 @@ class DecisionEngine:
                 comment=f"Quyết định {via}",
                 context=context,
                 authorization=self.container.authorization,
+                # channel_label is prose ("qua Zalo bởi …"); the trace dimension
+                # is lowercase everywhere else. Same fact, one spelling.
+                channel=self.channel_label.lower(),
             )
             label = cp.upper()
             if not approve:
@@ -329,16 +363,10 @@ class DecisionEngine:
             from dw_tender.application.preparation.handlers import CompleteCp4Command
 
             case_id = UUID(value)
-            # Biên bản do hệ thống lập từ hồ sơ (danh mục HSDT nằm trong sổ
-            # tiếp nhận đã niêm phong) — không ai phải upload file.
-            minutes_md = (
-                f"# Biên bản mở thầu\n\n"
-                f"- Thời điểm mở: {now:%d/%m/%Y %H:%M} (UTC)\n"
-                f"- Người xác nhận: {display_name} (qua {self.channel_label})\n"
-                f"- Danh mục hồ sơ dự thầu: theo sổ tiếp nhận (SUBMISSION_REGISTER) "
-                f"đã niêm phong trong hồ sơ.\n"
-                f"- Ghi chú: biên bản do hệ thống lập tự động trong môi trường mô phỏng.\n"
-            )
+            # Biên bản do hệ thống lập từ sổ tiếp nhận đã niêm phong — không ai
+            # upload file, và nội dung không do model viết: một biên bản mở thầu
+            # phải khớp từng dòng với thứ đã nhận, kể cả mã băm.
+            minutes_md = await self._bid_opening_minutes(case_id, context, display_name, now)
             await preparation.complete_cp4.handle(
                 case_id,
                 CompleteCp4Command(
@@ -381,6 +409,49 @@ class DecisionEngine:
             return f"Đã phát hành RFQ qua email{suffix} và ghi nhận phát hành vào hồ sơ."
 
         raise ValueError(f"unknown action {action_id}")
+
+    async def _bid_opening_minutes(
+        self, case_id: UUID, context: AccessContext, display_name: str, now: datetime
+    ) -> str:
+        """Minutes that read like minutes: every bid received, named and hashed.
+
+        The old version pointed at "the register" instead of reproducing it,
+        which is the one thing a bid-opening record exists to do — state
+        publicly what was in the box at the moment it was opened.
+        """
+        preparation = self.container.preparation
+        assert preparation is not None
+        rows: list[str] = []
+        with contextlib.suppress(Exception):
+            view = await preparation.get_case.handle(case_id, context)
+            for artifact in view.artifacts:
+                if artifact.artifact_type != "submission_register":
+                    continue
+                rows = [
+                    f"| {i} | {item.get('supplier_name', '—')} "
+                    f"| {item.get('received_at', '—')} "
+                    f"| {item.get('filename', '—')} "
+                    f"| `{str(item.get('content_hash', ''))[:16]}…` "
+                    f"| {item.get('receipt_status', '—')} |"
+                    for i, item in enumerate(artifact.content.get("items", []), start=1)
+                    if isinstance(item, dict)
+                ]
+        table = (
+            "| # | Nhà cung cấp | Thời điểm tiếp nhận | Tệp | Mã băm | Tình trạng |\n"
+            "| --- | --- | --- | --- | --- | --- |\n" + "\n".join(rows) + "\n"
+            if rows
+            else "_Không có hồ sơ dự thầu nào trong sổ tiếp nhận._\n"
+        )
+        return (
+            f"# Biên bản mở thầu\n\n"
+            f"- Thời điểm mở: {now:%d/%m/%Y %H:%M} (UTC)\n"
+            f"- Người xác nhận: {display_name} (qua {self.channel_label})\n"
+            f"- Số hồ sơ dự thầu đã mở: {len(rows)}\n\n"
+            f"## Danh mục hồ sơ dự thầu\n\n{table}\n"
+            "Mã băm được ghi lúc tiếp nhận; sửa tệp sau thời điểm đó là mã băm "
+            "lệch ngay.\n\n"
+            "- Ghi chú: biên bản do hệ thống lập tự động trong môi trường mô phỏng.\n"
+        )
 
     async def _find_pending_approval(
         self, cp: str, case_id: UUID, context: AccessContext

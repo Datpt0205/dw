@@ -105,6 +105,7 @@ async def decide(
         comment=body.comment,
         context=context,
         authorization=container.authorization,
+        channel="web",
         approved_action_ids=body.approved_action_ids,
     )
     return ApprovalView(

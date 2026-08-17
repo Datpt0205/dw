@@ -43,3 +43,6 @@ release-manifest.local.json
 docs/LLM_BUDGET_*
 docs/architecture/AI_AGENT_BACKBONE.md
 docs/architecture/DW01_System_Design_*
+
+# Local probe scripts (may hold endpoint keys) — never commit
+test.py

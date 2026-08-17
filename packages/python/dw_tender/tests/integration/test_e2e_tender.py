@@ -150,7 +150,7 @@ async def _create_and_analyze(client: httpx.AsyncClient, member: dict[str, str])
 
 async def test_tender_end_to_end(client: httpx.AsyncClient) -> None:
     member = headers("dev|an.nguyen")
-    approver = headers("dev|binh.tran")
+    approver = headers("dev|chi.le")
 
     case_id, run_id = await _create_and_analyze(client, member)
 
@@ -226,7 +226,7 @@ async def test_tender_end_to_end(client: httpx.AsyncClient) -> None:
 
 async def test_scoring_is_deterministic_across_runs(client: httpx.AsyncClient) -> None:
     member = headers("dev|an.nguyen")
-    approver = headers("dev|binh.tran")
+    approver = headers("dev|chi.le")
     totals: list[dict[str, str]] = []
     for _ in range(2):
         case_id, run_id = await _create_and_analyze(client, member)

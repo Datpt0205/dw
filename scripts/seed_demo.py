@@ -134,9 +134,12 @@ USERS = [
         "binh.tran@alpha.local",
         "Trần Thị Bình",
         "tenant-alpha",
-        # Approver ONLY — separation of duties: the person who prepares/runs a
-        # case (member) must not also be the one who approves it.
-        ["approver"],
+        # Ordinary employee — no approval authority. DW02 assigns meeting
+        # actions from this same directory, so the person has to exist; it is
+        # only the `approver` role that moved to Chi, and deliberately: the
+        # intake/CP1 recipient lookup takes the OLDEST membership holding a
+        # role, so a second approver here would silently capture every card.
+        ["member"],
         "mua-hang",
     ),
     (
@@ -144,7 +147,11 @@ USERS = [
         "chi.le@alpha.local",
         "Lê Thị Chi",
         "tenant-alpha",
-        ["platform_admin", "procurement_head", "member"],
+        # Sole holder of BOTH procurement roles. `find_recipient_for_role`
+        # returns the oldest membership carrying a role, so a second `approver`
+        # in this workspace would silently capture every intake and CP1 card —
+        # keep it that way unless you also give that person a channel identity.
+        ["platform_admin", "procurement_head", "approver", "member"],
         "dieu-hanh",
     ),
     (
@@ -173,7 +180,6 @@ KEYCLOAK_ISSUER = os.environ.get("DW_KEYCLOAK_ISSUER", "http://localhost:8686/re
 KEYCLOAK_IDENTITIES = [
     # (keycloak_user_id, platform_subject)
     ("a0000000-0000-4000-8000-0000000000a1", "dev|an.nguyen"),
-    ("b0000000-0000-4000-8000-0000000000b2", "dev|binh.tran"),
     ("c0000000-0000-4000-8000-0000000000c3", "dev|chi.le"),
 ]
 

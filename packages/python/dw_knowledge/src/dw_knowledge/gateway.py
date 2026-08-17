@@ -35,12 +35,20 @@ from dw_platform.application.access_context import AccessContext
 
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 
-# Clearance → classifications the caller may read (§15.6, fail closed).
-_CLEARANCE_ALLOWS: dict[str, tuple[str, ...]] = {
-    "internal": ("internal",),
-    "confidential": ("internal", "confidential"),
-    "restricted": ("internal", "confidential", "restricted"),
-}
+# Classifications from least to most sensitive (§15.6). A clearance grants its
+# own level and everything below it, so the ladder IS the rule — enumerating
+# every clearance→classifications pair would just be this list written out n²
+# times, with n² chances to get one row wrong. Adding a level means adding it
+# here, in order, and nothing else.
+_CLASSIFICATION_LADDER: tuple[str, ...] = ("internal", "confidential", "restricted")
+
+
+def clearance_allows(clearance: str) -> tuple[str, ...]:
+    """Classifications this clearance may read — fail closed on anything unknown."""
+    if clearance not in _CLASSIFICATION_LADDER:
+        return _CLASSIFICATION_LADDER[:1]
+    return _CLASSIFICATION_LADDER[: _CLASSIFICATION_LADDER.index(clearance) + 1]
+
 
 # Bumped for structure-aware chunking + contextual embedding (Phase A).
 INDEX_VERSION = "2026-07-25.structure-1"
@@ -82,7 +90,7 @@ class DocumentInfo:
 
 def build_trusted_filter(context: AccessContext, domain: str) -> TrustedSearchFilter:
     """Derive mandatory constraints from the verified context ONLY."""
-    allowed = _CLEARANCE_ALLOWS.get(context.clearance, ("internal",))
+    allowed = clearance_allows(context.clearance)
     principals = [f"user:{context.principal_id}", "tenant:*"]
     principals.extend(f"role:{role}" for role in sorted(context.roles))
     return TrustedSearchFilter(

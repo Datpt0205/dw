@@ -40,6 +40,11 @@ class ApproveAndResumeService:
         comment: str,
         context: AccessContext,
         authorization: ScopeAuthorizationService,
+        # Where the human actually decided. Required on purpose: it used to be
+        # hardcoded "web", so every checkpoint approved from chat was filed as
+        # a web decision — and "who decided, from where" is precisely what an
+        # audit trail is for. Only the boundary knows this; make it say so.
+        channel: str,
         approved_action_ids: list[str] | None = None,
     ) -> ApprovalRequest:
         await authorization.require(
@@ -99,7 +104,7 @@ class ApproveAndResumeService:
 
         if request.run_id is not None:
             record = await self.run_store.get(
-                self._run_context_for(context, request.run_id), request.run_id
+                self._run_context_for(context, request.run_id, channel), request.run_id
             )
             resume_payload: dict[str, Any] = {"approved": approve, "comment": comment}
             if approved_action_ids is not None:
@@ -116,7 +121,7 @@ class ApproveAndResumeService:
                     actor_id=record.requested_by,
                     worker_id=record.worker_id,
                     worker_version=record.worker_version,
-                    channel="web",
+                    channel=channel,
                     plan_id=context.plan_id,
                     roles=context.roles,
                     scopes=context.scopes,
@@ -127,7 +132,18 @@ class ApproveAndResumeService:
             )
         return request
 
-    def _run_context_for(self, context: AccessContext, run_id: uuid.UUID) -> RunContext:
+    def _run_context_for(
+        self, context: AccessContext, run_id: uuid.UUID, channel: str
+    ) -> RunContext:
+        """A context solely to read the run row back.
+
+        Which worker owns this run is stored ON the row we are about to read,
+        so there is nothing truthful to put here yet — hence the placeholders.
+        ``RunStore`` uses only ``tenant_id`` from this (RLS scoping) and never
+        persists any of it, so nothing downstream is stamped "unknown"; the
+        resume above re-reads the real worker id and version off the record.
+        Narrowing ``RunStore.get`` to take a tenant would delete this shim.
+        """
         return RunContext(
             run_id=run_id,
             tenant_id=context.tenant_id,
@@ -135,7 +151,7 @@ class ApproveAndResumeService:
             actor_id=context.principal_id,
             worker_id="unknown",
             worker_version="0.0.0",
-            channel="web",
+            channel=channel,
             plan_id=context.plan_id,
             roles=context.roles,
             scopes=context.scopes,

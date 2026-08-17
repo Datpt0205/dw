@@ -88,6 +88,9 @@ ChatIntent = Literal[
     "switch_request",  # "quay lại vụ laptop", "làm nốt cái bàn ghế đi"
     "list_requests",  # "đang dở những gì thế?" — MY unfinished drafts
     "list_cases",  # "có bao nhiêu hồ sơ rồi?" — filed cases and where they stand
+    # Asking the corpus itself ("Điều 20 Luật Đấu thầu nói gì?"). Answered from
+    # retrieved passages only — never from what the model happens to recall.
+    "ask_knowledge",
     # Post-publication lifecycle (only meaningful when the case exists):
     "request_addendum",
     "record_submission",
@@ -159,8 +162,26 @@ class IntakeChatTurn(BaseModel):
             "chép đúng nhãn trong danh sách việc đang dở"
         ),
     )
+    knowledge_query: str = Field(
+        default="",
+        description=(
+            "Khi intent=ask_knowledge: câu hỏi viết lại thành truy vấn tra cứu, "
+            "giữ nguyên số điều/khoản và thuật ngữ người dùng nêu"
+        ),
+    )
     reply_vi: str = Field(description="Câu trả lời tiếng Việt gửi lại Slack")
     reasoning_summary: str = Field(default="", description="1-2 câu: đã hiểu gì / vì sao hỏi lại")
+
+
+class GroundedAnswer(BaseModel):
+    """An answer the system will only send if it came from retrieved passages."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    # False when the passages do not actually answer the question — the channel
+    # then says so instead of letting a fluent paragraph stand in for evidence.
+    answered: bool = True
+    reply_vi: str = Field(min_length=1, max_length=1800)
 
 
 class ComposedReply(BaseModel):

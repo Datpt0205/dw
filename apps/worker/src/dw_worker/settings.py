@@ -135,8 +135,11 @@ class WorkerSettings(BaseSettings):
         if self.approval_channel == "zalo":
             if not self.zalo_bot_token:
                 raise RuntimeError("Zalo approvals require ZALO_BOT_TOKEN")
-            if "dev|binh.tran" not in self.zalo_user_map():
-                raise RuntimeError("Zalo approvals require ZALO_USER_BINH_ID (approver)")
+            if not self.zalo_user_map():
+                raise RuntimeError(
+                    "Zalo approvals require at least one ZALO_USER_*_ID "
+                    "(or ZALO_USER_MAP_JSON) so cards have somewhere to go"
+                )
             return
         if not self.slack_bot_token or not self.slack_bot_token.startswith("xoxb-"):
             raise RuntimeError("Slack approvals require a Bot User OAuth Token (xoxb-...)")

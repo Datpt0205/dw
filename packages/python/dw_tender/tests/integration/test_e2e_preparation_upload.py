@@ -121,7 +121,11 @@ async def test_dw01_upload_only_cp1_to_cp4(
     preparation_client: httpx.AsyncClient,
 ) -> None:
     member = headers("dev|an.nguyen")
-    approver = headers("dev|binh.tran")
+    # Chi holds both procurement roles, so one account carries every checkpoint.
+    # The rule pack still routes CP2 to procurement_head at this value; that the
+    # role is REQUIRED, not merely preferred, is covered by the approval_flow
+    # unit tests, which need no seeded persona to prove it.
+    approver = headers("dev|chi.le")
     created = await preparation_client.post(
         "/api/v1/procurement/preparation/cases/upload",
         headers=member,
@@ -308,7 +312,7 @@ async def test_rejected_intake_queues_real_requester_notification(
     preparation_client: httpx.AsyncClient,
 ) -> None:
     member = headers("dev|an.nguyen")
-    approver = headers("dev|binh.tran")
+    approver = headers("dev|chi.le")
     created = await preparation_client.post(
         "/api/v1/procurement/preparation/cases/upload",
         headers=member,

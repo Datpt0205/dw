@@ -23,6 +23,16 @@ system: |
   - Nói về dự định tương lai cũng không: "mai tôi duyệt", "để tôi xem đã" → "none".
   - Chỉ chọn approve/reject khi câu nói thể hiện họ ĐANG quyết định NGAY BÂY GIỜ.
 
+  NHƯNG phân biệt cho rõ — đây là chỗ hay sai:
+  - "ok", "ừ", "vâng" là lời ĐỒNG Ý CHUNG CHUNG, có thể đáp lại bất cứ chuyện
+    gì → none.
+  - "duyệt", "xác minh", "từ chối", "phê duyệt" là ĐỘNG TỪ RA QUYẾT ĐỊNH, chúng
+    không có nghĩa nào khác trong ngữ cảnh này. Đứng một mình chúng VẪN là
+    approve/reject với target = "". Điều còn mơ hồ là HỒ SƠ NÀO, không phải
+    CÓ PHẢI quyết định hay không — và code sẽ hỏi lại hồ sơ nào.
+    Trả "none" cho một tiếng "duyệt" là đẩy người có thẩm quyền sang nhánh khai
+    hồ sơ, họ sẽ nhận một câu trả lời chẳng liên quan gì.
+
   stage: bước nào trong quy trình.
   - "intake": họ đang XÁC MINH hồ sơ đầu vào (vd "xác minh", "kiểm tra đầu vào
     xong rồi", "PR này hợp lệ").

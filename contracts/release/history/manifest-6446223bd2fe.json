@@ -12,7 +12,6 @@
       "version": "1.0.0"
     }
   ],
-  "git_sha": "0e027bdccf8835c1fb27bc6cdf2841ff0343966a",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "1.0.0",
   "platform_version": "0.1.0",
@@ -25,11 +24,6 @@
   ],
   "prompt_bundles": [
     {
-      "checksum": "95573ae06171d2f335de9a015e9c595ffd40d8e8da01f386d1cb8baa2e228f2b",
-      "prompt_id": "conversation.answer_from_evidence",
-      "version": "1.0.0"
-    },
-    {
       "checksum": "970fa582933db9e317c4b3088841a1086983a53b3797869f5011a14943614d30",
       "prompt_id": "conversation.clarify_answers",
       "version": "1.0.0"
@@ -40,7 +34,7 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "535e360085f2e827e9ea7cce8fa1cf90dcb7145d90dfefb0f6436abcb004c412",
+      "checksum": "6438c48dfb36a32fec9b110a38b2d1a2592c879bdc3a9b4b451b946e6309b022",
       "prompt_id": "conversation.decision_intent",
       "version": "1.0.0"
     },
@@ -68,11 +62,6 @@
       "checksum": "2755f9ebefc01b3173822e8af0ec41afdb940edd0ec6970b1b93789bf044b6f7",
       "prompt_id": "conversation.intake_chat",
       "version": "1.6.0"
-    },
-    {
-      "checksum": "ddc2bdeef4af9ad165d44bf3e9f9f0020ae0ee345a5accadea42fc35d06ffba5",
-      "prompt_id": "conversation.intake_chat",
-      "version": "1.7.0"
     },
     {
       "checksum": "2bc72c1bb967a9ccde9b0bfa263b99b0face627174648aa0b27431d87c1409f5",

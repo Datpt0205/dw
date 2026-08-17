@@ -1,6 +1,6 @@
 schema_version: "1.0"
 profile_id: openai
-routing_policy_version: "1.0.0"
+routing_policy_version: "2.0.0"
 # OpenAI GPT-5. Enable with:
 #   DW_MODEL_PROVIDER=openai_compatible
 #   OPENAI_BASE_URL=https://api.openai.com/v1
@@ -9,35 +9,41 @@ routing_policy_version: "1.0.0"
 #   DW_API_MODEL_PROFILE=openai
 # Routes use the /v1/responses adapter (ADR-020): structured output plus the
 # model's own reasoning summary, which channels display as visible thinking.
-# Route latency measured on the gateway (2 lượt/model, prompt intake thật):
-#   gpt-5 low 11.1s · gpt-5-mini low 5.2s · gpt-4.1 2.2s · gpt-4o 2.9s
-# Gần như MỌI call đi qua structured_extraction (chỉ Review Agent dùng
-# deep_reasoning), nên route đó quyết định tốc độ cảm nhận của cả hệ thống —
-# kể cả từng tin nhắn chat. Bóc slot và soạn theo khuôn không cần reasoning
-# token, nên nó dùng model không-reasoning. Chỗ cần cân nhắc thật (thẩm định
-# checkpoint) vẫn giữ model có reasoning.
+# v2: mọi route dùng gpt-5.6-luna. Ở bảng giá 2026-08, luna ($0.20 in /$1.20
+# out) rẻ hơn CẢ gpt-4.1 ($2.00/$8.00) lẫn gpt-5-mini ($0.25/$2.00), nên lý do
+# cũ để chia model theo giá không còn. Route vẫn tách vì chúng khác nhau ở
+# reasoning effort và timeout, không phải ở model.
+# Latency đo trên gateway (2 lượt/model, prompt intake thật, json_schema):
+#   gpt-5.6-luna 3.3s · gpt-4.1 2.2s · gpt-4o 2.9s · gpt-5-mini low 5.2s · gpt-5 low 11.1s
+# Gần như MỌI call đi qua structured_extraction, nên route đó là thứ người dùng
+# cảm nhận: luna chậm hơn gpt-4.1 ~1.1s nhưng nhanh hơn hẳn gpt-5-mini mà nó
+# thay ở hai route reasoning, và rẻ hơn cả hai.
 # Visible thinking KHÔNG phụ thuộc route: nó là trường reasoning_summary trong
 # schema, model nào cũng điền được (ADR-020).
 structured_extraction:
   provider: openai_responses
-  model: gpt-4.1
+  model: gpt-5.6-luna
   timeout_seconds: 60
-  # không khai reasoning_effort ⇒ adapter không gửi block `reasoning`
+  # Không khai reasoning_effort ⇒ adapter không gửi block `reasoning`. Giữ
+  # nguyên cho route nóng: bóc slot và soạn theo khuôn không cần reasoning
+  # token, và cách này chạy được dù luna có phải reasoning model hay không.
 reasoning:
   provider: openai_responses
-  model: gpt-5-mini
+  model: gpt-5.6-luna
   timeout_seconds: 120
   reasoning_effort: low
 deep_reasoning:
   provider: openai_responses
-  model: gpt-5-mini
+  model: gpt-5.6-luna
   timeout_seconds: 180
   reasoning_effort: medium
 # Tried when the primary route fails twice (provider error/timeout or schema
-# mismatch). Khác họ model để sống sót khi một họ lỗi ở gateway.
+# mismatch). Cùng model với route chính theo yêu cầu: không quay về model cũ.
+# Đánh đổi đã biết: một sự cố ở mức họ model sẽ hạ cả hai, thứ mà fallback
+# khác họ trước đây che được. Nó vẫn cứu được lỗi lẻ và schema mismatch.
 fallback:
   provider: openai_responses
-  model: gpt-4o
+  model: gpt-5.6-luna
   timeout_seconds: 60
 budgets:
   max_input_tokens_per_run: 100000

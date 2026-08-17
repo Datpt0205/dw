@@ -12,7 +12,6 @@
       "version": "1.0.0"
     }
   ],
-  "git_sha": "0e027bdccf8835c1fb27bc6cdf2841ff0343966a",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "1.0.0",
   "platform_version": "0.1.0",
@@ -25,7 +24,7 @@
   ],
   "prompt_bundles": [
     {
-      "checksum": "95573ae06171d2f335de9a015e9c595ffd40d8e8da01f386d1cb8baa2e228f2b",
+      "checksum": "956c428d78f506d6511c72d597db13870938ad86df4910fec5e6e1640e87ca0a",
       "prompt_id": "conversation.answer_from_evidence",
       "version": "1.0.0"
     },
@@ -40,7 +39,7 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "535e360085f2e827e9ea7cce8fa1cf90dcb7145d90dfefb0f6436abcb004c412",
+      "checksum": "6438c48dfb36a32fec9b110a38b2d1a2592c879bdc3a9b4b451b946e6309b022",
       "prompt_id": "conversation.decision_intent",
       "version": "1.0.0"
     },

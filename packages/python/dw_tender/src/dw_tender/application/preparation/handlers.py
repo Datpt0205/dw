@@ -1464,22 +1464,26 @@ class RunPreparationHandler:
     worker_id: str = "preparation"
     worker_version: str = "1.0.0"
 
-    async def handle(self, case_id: uuid.UUID, context: AccessContext) -> uuid.UUID:
+    async def handle(
+        self, case_id: uuid.UUID, context: AccessContext, *, channel: str = "web"
+    ) -> uuid.UUID:
+        # One handler serves the web button and a chat reply, so the caller has
+        # to say which — this used to file every run as a web run.
         await self.authorization.require(
             context=context,
             action="tender.write",
             resource_type="preparation_case",
             resource_id=str(case_id),
         )
-        return await self._start(case_id, context, on_behalf_of_owner=False)
+        return await self._start(case_id, context, on_behalf_of_owner=False, channel=channel)
 
     async def handle_auto(self, case_id: uuid.UUID, context: AccessContext) -> uuid.UUID:
         """Auto-run triggered by a verified intake. The approver need not hold
         ``tender.write``; the run is attributed to the case owner instead."""
-        return await self._start(case_id, context, on_behalf_of_owner=True)
+        return await self._start(case_id, context, on_behalf_of_owner=True, channel="auto_intake")
 
     async def _start(
-        self, case_id: uuid.UUID, context: AccessContext, *, on_behalf_of_owner: bool
+        self, case_id: uuid.UUID, context: AccessContext, *, on_behalf_of_owner: bool, channel: str
     ) -> uuid.UUID:
         await self.entitlement.require_feature(context, TENDER_FEATURE)
 
@@ -1524,7 +1528,7 @@ class RunPreparationHandler:
             actor_id=actor_id,
             worker_id=self.worker_id,
             worker_version=self.worker_version,
-            channel="auto_intake" if on_behalf_of_owner else "web",
+            channel=channel,
             plan_id=context.plan_id,
             roles=context.roles,
             scopes=context.scopes,

@@ -9,10 +9,11 @@
 # HAI hồ sơ cùng nằm ở CP2 là cố ý: đó là ca thử "Chi chỉ nói «duyệt»" — hệ
 # thống phải hỏi lại chứ không được tự chọn.
 #
-# created_by = Bình (không phải An) nên:
-#   - Chi và Bình (có approvals.decide) thấy cả 5 hồ sơ;
-#   - An chỉ thấy đúng hồ sơ của mình — giữ nguyên đối chứng về phạm vi xem;
-#   - Chi duyệt được, vì SoD chỉ chặn chính người tạo.
+# Hai cột khác nhau, cố ý:
+#   preparation_cases.created_by = Chi  -> An KHÔNG thấy các hồ sơ này, giữ
+#     nguyên đối chứng "người đề nghị chỉ thấy hồ sơ của mình".
+#   approval_requests.requested_by = An -> Chi duyệt được; nếu để Chi thì
+#     approval_flow chặn vì SoD (người đề nghị không tự duyệt).
 #
 # Idempotent: id cố định, chạy lại bao nhiêu lần cũng ra đúng 4 hồ sơ đó.
 # Xoá: bash scripts/demo_reset.sh (dọn sạch mọi hồ sơ).
@@ -28,10 +29,12 @@ COMPOSE="docker compose --env-file .env -f infra/compose/docker-compose.yml"
 $COMPOSE exec -T postgres psql -U "$PGU" -d dw -v ON_ERROR_STOP=1 <<'SQL'
 BEGIN;
 
--- Alpha tenant/workspace + Bình là người tạo (xem đầu file).
+-- Alpha tenant/workspace + An là người đề nghị (xem đầu file). Tra An theo
+-- subject thay vì dán uuid: seed đổi thì cái này vẫn đúng.
 \set tenant   '''d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d'''
 \set ws       '''64764894-718d-5558-ba17-9a2949214063'''
-\set binh     '''d03b556c-dd77-5fd8-ba37-58d0b50d42d3'''
+\set an       '(SELECT id FROM platform.users WHERE subject = ''dev|an.nguyen'')'
+\set chi      '(SELECT id FROM platform.users WHERE subject = ''dev|chi.le'')'
 
 DELETE FROM platform.approval_requests
  WHERE id IN ('a0000000-0000-4000-8000-000000000001',
@@ -53,7 +56,7 @@ VALUES
    'Mua 300 màn hình 27 inch cho khối văn phòng',
    'Thay thế màn hình đã hết khấu hao tại 3 chi nhánh.',
    'PR-2026-0311', 12000000000, 'VND', '60 ngày', 'Phạm Minh Đức',
-   'open_tender', 'cp2_pending', 'cp2_review', :binh, 6,
+   'open_tender', 'cp2_pending', 'cp2_review', :chi, 6,
    now() - interval '9 days', now() - interval '1 day', 'goods', 'general'),
 
   -- (2) cũng chờ Chi quyết — CP2. Trùng checkpoint với (1) là CỐ Ý.
@@ -61,7 +64,7 @@ VALUES
    'Thuê dịch vụ bảo trì hệ thống điện năm 2026',
    'Bảo trì định kỳ hệ thống điện toàn nhà máy.',
    'PR-2026-0298', 8400000000, 'VND', '45 ngày', 'Lê Thu Hà',
-   'open_tender', 'cp2_pending', 'cp2_review', :binh, 6,
+   'open_tender', 'cp2_pending', 'cp2_review', :chi, 6,
    now() - interval '7 days', now() - interval '2 days', 'non_consulting', 'operations'),
 
   -- (3) đang chạy — đã phát hành, chờ nhà cung cấp nộp
@@ -69,7 +72,7 @@ VALUES
    'Mua 50 máy in đa năng cho các phòng ban',
    'Bổ sung máy in cho khối kinh doanh và kế toán.',
    'PR-2026-0275', 2500000000, 'VND', '30 ngày', 'Vũ Quốc Toản',
-   'rfq', 'published', 'published', :binh, 11,
+   'rfq', 'published', 'published', :chi, 11,
    now() - interval '14 days', now() - interval '3 days', 'goods', 'information_technology'),
 
   -- (4) hoàn tất
@@ -77,21 +80,21 @@ VALUES
    'Mua vật tư văn phòng quý 2/2026',
    'Giấy, mực in, văn phòng phẩm dùng chung.',
    'PR-2026-0190', 780000000, 'VND', '20 ngày', 'Ngô Thanh Tùng',
-   'rfq', 'completed', 'completed', :binh, 17,
+   'rfq', 'completed', 'completed', :chi, 17,
    now() - interval '38 days', now() - interval '11 days', 'goods', 'general');
 
 -- Hai hồ sơ CP2 phải có approval_request thì mới nằm trong danh sách "chờ
--- quyết định" mà lệnh «duyệt» đọc. requested_by = Bình để Chi duyệt được.
+-- quyết định" mà lệnh «duyệt» đọc. requested_by = An để Chi duyệt được.
 INSERT INTO platform.approval_requests
   (id, tenant_id, workspace_id, approval_type, requested_by, reason, payload,
    run_id, status, created_at, version)
 VALUES
   ('a0000000-0000-4000-8000-000000000001', :tenant, :ws,
-   'preparation.cp2', :binh, 'Duyệt bộ hồ sơ mời thầu chính thức',
+   'preparation.cp2', :an, 'Duyệt bộ hồ sơ mời thầu chính thức',
    '{"case_id":"c0000000-0000-4000-8000-000000000001","case_title":"Mua 300 màn hình 27 inch cho khối văn phòng"}'::jsonb,
    NULL, 'pending', now() - interval '1 day', 1),
   ('a0000000-0000-4000-8000-000000000002', :tenant, :ws,
-   'preparation.cp2', :binh, 'Duyệt bộ hồ sơ mời thầu chính thức',
+   'preparation.cp2', :an, 'Duyệt bộ hồ sơ mời thầu chính thức',
    '{"case_id":"c0000000-0000-4000-8000-000000000002","case_title":"Thuê dịch vụ bảo trì hệ thống điện năm 2026"}'::jsonb,
    NULL, 'pending', now() - interval '2 days', 1);
 

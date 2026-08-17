@@ -38,6 +38,7 @@ from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_api.health import HealthService, database_probe
+from dw_api.pending_authority import SqlPendingAuthority
 from dw_api.settings import ApiSettings
 from dw_connectors.adapters.mock_task_connector import MockTaskConnectorAdapter
 from dw_connectors.adapters.slack_chat import SlackChatClient
@@ -744,6 +745,10 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     request_cp4=preparation.request_cp4,
                     get_case=preparation.get_case,
                     list_cases=preparation.list_cases,
+                    pending_authority=SqlPendingAuthority(
+                        uow_factory=uow_factory, session_factory=session_factory
+                    ),
+                    knowledge=knowledge_gateway,
                     answer_clarifications=preparation.answer_clarifications,
                     run_case=preparation.run_case,
                     model_profile=settings.model_profile,

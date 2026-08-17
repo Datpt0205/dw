@@ -182,8 +182,11 @@ class ZaloFrontOfficeService:
             channel_key=channel_key,
         )
         # 3) Decisions in words ("duyệt cp1", "xác minh", "lập addendum …") —
-        #    only when no intake is mid-flight in this chat (mirrors Slack).
-        if active is None:
+        #    suppressed only while a request is genuinely half-typed here, so
+        #    answering a slot question can't be read as a decision. Asking the
+        #    corpus or the portfolio leaves an empty draft behind; that must
+        #    not swallow the decision typed right after it.
+        if not self.conversation_service.is_mid_intake(active):
             decision_reply = await self.engine.try_text(text, context, display_name)
             if decision_reply is not None:
                 await self._client.send_message(chat_id, decision_reply)

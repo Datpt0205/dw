@@ -116,7 +116,8 @@ def headers(subject: str, tenant_slug: str = "tenant-alpha") -> dict[str, str]:
 
 async def test_meeting_to_action_end_to_end(client: httpx.AsyncClient) -> None:
     member = headers("dev|an.nguyen")
-    approver = headers("dev|binh.tran")
+    # Bình is a directory person now, not an approver — Chi holds that role.
+    approver = headers("dev|chi.le")
 
     # 1. upload transcript / create meeting
     created = await client.post(
@@ -211,7 +212,8 @@ async def test_meeting_to_action_end_to_end(client: httpx.AsyncClient) -> None:
 
 async def test_rejected_approval_dispatches_nothing(client: httpx.AsyncClient) -> None:
     member = headers("dev|an.nguyen")
-    approver = headers("dev|binh.tran")
+    # Bình is a directory person now, not an approver — Chi holds that role.
+    approver = headers("dev|chi.le")
 
     meeting_id = (
         await client.post(

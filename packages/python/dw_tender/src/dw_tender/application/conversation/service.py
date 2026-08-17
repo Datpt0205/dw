@@ -12,6 +12,8 @@ import json
 import re
 import unicodedata
 import uuid
+from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC
 from typing import Any, ClassVar, Literal, Protocol
@@ -20,12 +22,15 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.ports import ModelRequest, TracedModelGateway
 from dw_kernel.errors import ConflictError, DomainError
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_knowledge.contracts import SearchQuery
+from dw_knowledge.ports import KnowledgeGatewayPort
 from dw_platform.application.access_context import AccessContext
 from dw_tender.application.conversation.schemas import (
     AddendumDraftText,
     CaseOverviewReply,
     ClarifyTurn,
     ComposedReply,
+    GroundedAnswer,
     IntakeChatTurn,
     IntakeSlots,
     missing_required,
@@ -57,14 +62,6 @@ ConversationState = Literal["collecting", "confirming", "case_created", "cancell
 # (intent=switch_request, however they phrase it) and names the target; the
 # code below decides WHICH conversation that name refers to and moves the
 # state. Same split as everywhere else — LLM understands, code decides.
-# Words that carry no identity ("mua 5 ghế" → "ghe" is the discriminator).
-_LABEL_STOPWORDS = frozenset(
-    {
-        "mua","cho","cua","cai","bo","cac","moi","voi","va","ho","so","hoso","yeu","cau",
-        "them","tai","tren","duoc","nhan","vien","phong","ban","cong","ty","don","vi",
-        "sam","dung","can","the","nay","kia","do","lai","tiep","quay","ve",
-    }
-)  # fmt: skip
 
 
 def fold_text(text: str) -> str:
@@ -76,13 +73,56 @@ def fold_text(text: str) -> str:
     return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
 
 
-def label_tokens(label: str) -> set[str]:
-    """Identity-carrying tokens of a label ("mua 5 ghế" → {"ghe"})."""
-    return {
-        token
-        for token in re.split(r"[^0-9a-z]+", fold_text(label))
-        if len(token) >= 3 and token not in _LABEL_STOPWORDS
-    }
+def _tokens(text: str) -> set[str]:
+    return {token for token in re.split(r"[^0-9a-z]+", fold_text(text)) if len(token) >= 3}
+
+
+def rank_by_label(text: str, labels: Sequence[str]) -> list[float]:
+    """Score how specifically the message names each label.
+
+    A hand-written stopword list used to strip the words that carry no
+    identity, which only ever knew the words someone thought of. But whether a
+    word discriminates is a property of THIS candidate set, not of Vietnamese:
+    when every pending case begins with "Mua", "mua" identifies nothing; when
+    exactly one is a rental, "thuê" identifies it outright. Weighting each
+    matched token by how many candidates share it says both, needs no list to
+    maintain, and behaves the same in any language.
+
+    Callers require a clear winner, so a vague message scores several labels
+    alike and they ask instead of guessing.
+    """
+    folded = _tokens(text)
+    per_label = [_tokens(label) for label in labels]
+    if len(per_label) <= 1:  # nothing to tell apart: any overlap is a match
+        return [float(len(tokens & folded)) for tokens in per_label]
+    shared_by = Counter(token for tokens in per_label for token in tokens)
+    total = len(per_label)
+    return [
+        sum(1.0 - shared_by[token] / total for token in tokens & folded) for tokens in per_label
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class PendingAuthority:
+    """The role a pending checkpoint is reserved for, with its display name."""
+
+    role_key: str
+    role_name: str
+
+
+class PendingAuthorityPort(Protocol):
+    """Reads back the authority stamped on each pending approval request.
+
+    Holding ``approvals.decide`` is workspace-wide; authority is per
+    checkpoint. The rule pack decides it once, the workflow stamps it onto the
+    request, and ``approval_flow`` refuses anyone without it — so the listing
+    must read that same stamp rather than recompute it, or chat will invite a
+    decision the write path then rejects.
+    """
+
+    async def by_case(self, context: AccessContext) -> dict[uuid.UUID, PendingAuthority]:
+        """case_id → who may decide it; absent when nothing is stamped."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,11 +254,24 @@ class ConversationIntakeService:
     # Portfolio question ("hồ sơ tới đâu rồi?"). Visibility is decided here,
     # not by the model: approvers see the workspace, requesters see their own.
     list_cases: ListPreparationCasesHandler | None = None
+    # …and which of those the reader may actually decide. Without it the list
+    # falls back to naming no owner rather than guessing one.
+    pending_authority: PendingAuthorityPort | None = None
+    # The corpus DW01 already reads inside the workflow, now reachable from
+    # chat. Same gateway, same trusted filters — a question from Zalo can only
+    # retrieve what that person is cleared to read.
+    knowledge: KnowledgeGatewayPort | None = None
+    # "shared" tells the gateway not to add a domain predicate: a person asking
+    # "how many days must we give bidders?" does not know the corpus is split
+    # into legal/policy/tender, and getting silence because they guessed the
+    # wrong shelf is indistinguishable from the rule not existing. Tenant,
+    # workspace, clearance and ACL still constrain the search.
+    knowledge_domain: str = "shared"
     answer_clarifications: AnswerPreparationClarificationsHandler | None = None
     run_case: RunPreparationHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.6.0"
+    prompt_version: str = "1.7.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 
@@ -510,6 +563,18 @@ class ConversationIntakeService:
             or (str(conversation.case_id)[:8] if conversation.case_id else "yêu cầu chưa đặt tên")
         )
 
+    def is_mid_intake(self, conversation: ConversationView | None) -> bool:
+        """Is a request actually half-typed in this chat right now?
+
+        Channels suppress the decision engine while an intake is in flight, so
+        that answering "36 tháng" can never be read as a checkpoint decision.
+        But a conversation row also exists after turns that have nothing to do
+        with intake — asking the corpus, asking the portfolio — and treating
+        those as mid-intake swallowed the "xác minh" typed straight afterwards.
+        An empty draft is not a request in progress.
+        """
+        return conversation is not None and self._has_content(conversation)
+
     def _has_content(self, conversation: ConversationView) -> bool:
         return bool(
             conversation.case_id
@@ -549,14 +614,11 @@ class ConversationIntakeService:
         draft whose item summary is "laptop cho nhân viên". Returns None when
         nothing matches — the caller then asks instead of guessing.
         """
-        folded = fold_text(text)
-        best: tuple[int, ConversationView] | None = None
-        for candidate in candidates:
-            tokens = label_tokens(self._conv_label(candidate))
-            score = sum(1 for token in tokens if token in folded)
-            if score and (best is None or score > best[0]):
-                best = (score, candidate)
-        return best[1] if best else None
+        scores = rank_by_label(text, [self._conv_label(c) for c in candidates])
+        best = max(scores, default=0.0)
+        if best <= 0 or scores.count(best) > 1:  # nothing named, or a tie
+            return None
+        return candidates[scores.index(best)]
 
     async def _focus_from_turn(
         self,
@@ -569,8 +631,15 @@ class ConversationIntakeService:
         model_thinking: str = "",
     ) -> TurnOutcome | None:
         """Act on the model's switch/list intent — code picks the target."""
+        channel = self.channel_of(current.channel_key)
+        if turn.intent == "ask_knowledge":
+            return await self._knowledge_outcome(
+                turn.knowledge_query or text, context, display_name, model_thinking, channel
+            )
         if turn.intent == "list_cases":
-            return await self._case_overview_outcome(text, context, display_name, model_thinking)
+            return await self._case_overview_outcome(
+                text, context, display_name, model_thinking, channel
+            )
         if turn.intent == "list_requests":
             return self._open_list_outcome(open_convs)
         if turn.intent != "switch_request":
@@ -663,10 +732,110 @@ class ConversationIntakeService:
         "cp4_ready": "chờ xác nhận mở thầu (CP4)",
         "completed": "hoàn tất",
     }
-    # States where the ball is in an approver's court.
+    # States where the ball is in a human's court at all. Whether it is in
+    # THIS human's court is a separate question, answered from the authority
+    # stamped on the approval request. ``receiving_bids`` is not here: it waits
+    # on suppliers and the clock, not on anyone's signature.
     _DECIDE_STATES: ClassVar[frozenset[str]] = frozenset(
-        {"draft", "cp1_pending", "cp2_pending", "cp3_pending", "cp4_ready", "receiving_bids"}
+        {"draft", "cp1_pending", "cp2_pending", "cp3_pending", "cp4_ready"}
     )
+
+    async def _knowledge_outcome(
+        self,
+        question: str,
+        context: AccessContext,
+        display_name: str,
+        model_thinking: str = "",
+        channel: str = "chat",
+    ) -> TurnOutcome:
+        """ "Điều 20 Luật Đấu thầu nói gì?" — answered from the corpus, or not at all.
+
+        The gateway builds its tenant/workspace/ACL filter from the caller's
+        verified context, so this cannot become a way to read someone else's
+        documents by asking nicely. Retrieval returning nothing is an answer:
+        the model is never given the chance to fall back on what it recalls
+        about Vietnamese procurement law.
+        """
+        if self.knowledge is None:
+            return TurnOutcome(
+                replies=(ChatReply(text="Mình chưa tra cứu được tài liệu ở kênh này."),)
+            )
+        try:
+            chunks = await self.knowledge.search(
+                SearchQuery(text=question, domain=self.knowledge_domain, top_k=5), context
+            )
+        except Exception:
+            chunks = []
+
+        if not chunks:
+            return TurnOutcome(
+                replies=(
+                    ChatReply(
+                        text=(
+                            "Mình không tìm thấy đoạn nào trong kho tài liệu trả lời được "
+                            "câu này, nên mình không trả lời để tránh nói sai. Nếu tài liệu "
+                            "đã có thì có thể chưa được nạp vào kho."
+                        )
+                    ),
+                ),
+                thinking=model_thinking or f"• Truy kho tài liệu «{question}» — không có đoạn nào.",
+            )
+
+        titles = await self._document_titles(context)
+        passages = "\n\n".join(
+            f"[{i}] {titles.get(c.evidence.source_document_id, 'tài liệu')} "
+            f"(phiên bản {c.evidence.source_version}, liên quan "
+            f"{round(c.evidence.relevance_score * 100)}%)\n{c.content.strip()}"
+            for i, c in enumerate(chunks, start=1)
+        )
+        try:
+            answer = await self.gateway.generate_structured(
+                ModelRequest(
+                    task="conversation.answer_from_evidence",
+                    prompt_id="conversation.answer_from_evidence",
+                    prompt_version="1.0.0",
+                    variables={
+                        "display_name": display_name or "bạn",
+                        "question": question,
+                        "passages": passages,
+                        "found": str(len(chunks)),
+                    },
+                    model_profile=self.model_profile,
+                ),
+                GroundedAnswer,
+                run_context=self._agent_run_context(context, trace="knowledge", channel=channel),
+            )
+        except Exception:
+            return TurnOutcome(
+                replies=(
+                    ChatReply(text="Mình tra được tài liệu nhưng chưa soạn được câu trả lời."),
+                )
+            )
+
+        reply = answer.reply_vi.strip()
+        if not answer.answered or not reply:
+            reply = (
+                "Mình tra được vài đoạn liên quan nhưng không đoạn nào trả lời đúng câu "
+                "này, nên mình không suy diễn thêm."
+            )
+        return TurnOutcome(
+            replies=(ChatReply(text=reply),),
+            thinking=model_thinking
+            or (
+                f"• Truy kho tài liệu «{question}» — {len(chunks)} đoạn trong phạm vi "
+                "bạn được đọc.\n• Chỉ trả lời từ các đoạn đó, không dùng trí nhớ mô hình."
+            ),
+        )
+
+    async def _document_titles(self, context: AccessContext) -> dict[uuid.UUID, str]:
+        """document_id → title, so a citation names a file instead of a uuid."""
+        if self.knowledge is None or not hasattr(self.knowledge, "list_documents"):
+            return {}
+        try:
+            docs = await self.knowledge.list_documents(context)
+        except Exception:
+            return {}
+        return {doc.document_id: doc.title for doc in docs}
 
     async def _case_overview_outcome(
         self,
@@ -674,6 +843,7 @@ class ConversationIntakeService:
         context: AccessContext,
         display_name: str,
         model_thinking: str = "",
+        channel: str = "chat",
     ) -> TurnOutcome:
         """ "Hồ sơ tới đâu rồi?" — code fetches and filters, the model writes.
 
@@ -690,15 +860,40 @@ class ConversationIntakeService:
         if not can_decide:
             cases = [case for case in cases if case.created_by == context.principal_id]
 
+        # Who each pending checkpoint is reserved for, straight from the stamp
+        # the approval request carries — the same value the write path checks.
+        authority: dict[uuid.UUID, PendingAuthority] = {}
+        if can_decide and self.pending_authority is not None:
+            authority = await self.pending_authority.by_case(context)
+
+        def waits_on_reader(case: Any) -> bool:
+            if not can_decide or case.state not in self._DECIDE_STATES:
+                return False
+            if case.state == "draft":
+                # Intake verification: anyone with the scope but the filer.
+                return bool(case.created_by != context.principal_id)
+            reserved = authority.get(case.id)
+            # Nothing stamped means the checkpoint is open to anyone holding
+            # the scope, which is exactly what approval_flow allows.
+            return reserved is None or reserved.role_key in context.roles
+
         completed = [c for c in cases if c.state == "completed"]
-        awaiting = [c for c in cases if can_decide and c.state in self._DECIDE_STATES]
+        awaiting = [c for c in cases if waits_on_reader(c)]
         awaiting_ids = {c.id for c in awaiting}
         in_flight = [c for c in cases if c.state != "completed" and c.id not in awaiting_ids]
 
         def line(case: Any) -> str:
             label = self._STATE_LABELS.get(case.state, case.state)
             owner = f" — người đề nghị: {case.owner_name}" if case.owner_name else ""
-            return f"- {case.title} — {label}{owner}"
+            reserved = authority.get(case.id)
+            # Say whose desk it sits on, so a checkpoint reserved for someone
+            # else can never read as an item the reader is holding up.
+            held = (
+                f" (chờ {reserved.role_name} duyệt)"
+                if reserved is not None and case.id not in awaiting_ids
+                else ""
+            )
+            return f"- {case.title} — {label}{held}{owner}"
 
         case_lines = "\n".join(line(c) for c in (*awaiting, *in_flight, *completed)) or "(trống)"
         scope_note = (
@@ -720,7 +915,7 @@ class ConversationIntakeService:
                     ModelRequest(
                         task="conversation.summarize_cases",
                         prompt_id="conversation.summarize_cases",
-                        prompt_version="1.0.0",
+                        prompt_version="1.1.0",
                         variables={
                             "display_name": display_name or "bạn",
                             "viewer_role": (
@@ -739,7 +934,7 @@ class ConversationIntakeService:
                         model_profile=self.model_profile,
                     ),
                     CaseOverviewReply,
-                    run_context=self._agent_run_context(context, trace="overview"),
+                    run_context=self._agent_run_context(context, trace="overview", channel=channel),
                 )
                 reply = composed.reply_vi.strip() or fallback
             except Exception:
@@ -824,7 +1019,14 @@ class ConversationIntakeService:
         if self.get_case is not None and self.answer_clarifications is not None:
             view = await self.get_case.handle(case_id, context)
             if view.state == "waiting_clarification":
-                return await self._clarify_flow(view, case_id, text, context, display_name)
+                return await self._clarify_flow(
+                    view,
+                    case_id,
+                    text,
+                    context,
+                    display_name,
+                    self.channel_of(conversation.channel_key),
+                )
 
         turn, model_thinking = await self._run_turn(
             conversation, text, context, display_name, open_convs
@@ -1213,6 +1415,7 @@ class ConversationIntakeService:
         text: str,
         context: AccessContext,
         display_name: str,
+        channel: str = "chat",
     ) -> TurnOutcome:
         """Map a natural reply onto the pending clarification questions."""
         items: list[dict[str, Any]] = []
@@ -1311,7 +1514,7 @@ class ConversationIntakeService:
             )
         )
         if remaining <= 0 and self.run_case is not None:
-            await self.run_case.handle(case_id, context)
+            await self.run_case.handle(case_id, context, channel=channel)
             reply_text = await self._compose_reply(
                 event="clarifications_complete",
                 facts={
@@ -1425,7 +1628,15 @@ class ConversationIntakeService:
             f"## Nguyên văn yêu cầu (Slack)\n\n> {raw_text.strip()[:600]}\n"
         )
 
-    def _agent_run_context(self, context: AccessContext, *, trace: str) -> RunContext:
+    @staticmethod
+    def channel_of(channel_key: str) -> str:
+        """ "zalo:123" → "zalo". One service serves every channel, so the turn
+        has to say which one — it used to answer "slack" no matter what."""
+        return channel_key.split(":", 1)[0] or "chat"
+
+    def _agent_run_context(
+        self, context: AccessContext, *, trace: str, channel: str = "chat"
+    ) -> RunContext:
         return RunContext(
             run_id=self.id_generator.new_uuid(),
             tenant_id=context.tenant_id,
@@ -1433,7 +1644,7 @@ class ConversationIntakeService:
             actor_id=context.principal_id,
             worker_id=self.worker_id,
             worker_version=self.worker_version,
-            channel="slack",
+            channel=channel,
             plan_id=context.plan_id,
             roles=context.roles,
             scopes=context.scopes,
@@ -1463,7 +1674,11 @@ class ConversationIntakeService:
             },
             model_profile=self.model_profile,
         )
-        run_context = self._agent_run_context(context, trace=f"chat-{str(conversation.id)[:12]}")
+        run_context = self._agent_run_context(
+            context,
+            trace=f"chat-{str(conversation.id)[:12]}",
+            channel=self.channel_of(conversation.channel_key),
+        )
         # Traced call: the second element is the model's own reasoning trace
         # ("" when the routed provider surfaces none — mock, chat/completions).
         # The traced call still records the provider's own reasoning for
