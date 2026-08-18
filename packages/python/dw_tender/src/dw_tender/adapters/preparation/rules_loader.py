@@ -40,6 +40,7 @@ def load_procurement_rules(path: Path) -> ProcurementRules:
     evaluation = data.get("evaluation", {})
     solicitation = data.get("solicitation_template", {})
     intake = data.get("intake", {})
+    repeat = data.get("repeat_purchase", {})
     return ProcurementRules(
         version=str(data["version"]),
         currency=str(data.get("currency", "VND")),
@@ -65,4 +66,7 @@ def load_procurement_rules(path: Path) -> ProcurementRules:
         tax_term_template=str(solicitation.get("tax_term", "")),
         response_structure=tuple(str(item) for item in solicitation.get("response_structure", [])),
         approval_tiers=tiers,
+        repeat_lookback_days=int(repeat.get("lookback_days", 0)),
+        repeat_similarity=float(repeat.get("similarity", 0.0)),
+        repeat_min_value=int(repeat.get("min_value", 0)),
     )

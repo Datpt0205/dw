@@ -78,6 +78,7 @@ from dw_tender.application.handlers import (
     GetTenderCaseHandler,
     ListTenderCasesHandler,
 )
+from dw_tender.application.preparation.amend import AmendPreparationCaseHandler
 from dw_tender.application.preparation.handlers import (
     AnswerPreparationClarificationsHandler,
     AutoPublishPreparationHandler,
@@ -171,6 +172,7 @@ class PreparationHandlers:
     decide_cp3: DecidePreparationCp3Handler
     audit_recorder: PreparationAuditRecorder
     assess_readiness: AssessTenderReadinessHandler
+    amend_case: AmendPreparationCaseHandler
     handoff_to_evaluation: HandoffToEvaluationHandler
     # Needed by the bid-closing scanner (deadline-driven CP4).
     uow_factory: PreparationUnitOfWorkFactory
@@ -727,6 +729,20 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     clock=clock,
                     id_generator=id_generator,
                 ),
+                amend_case=AmendPreparationCaseHandler(
+                    uow_factory=preparation_uow_factory,
+                    platform_uow_factory=uow_factory,
+                    authorization=authorization,
+                    clock=clock,
+                    id_generator=id_generator,
+                    run_case=RunPreparationHandler(
+                        uow_factory=preparation_uow_factory,
+                        workflow_runner=runner,
+                        authorization=authorization,
+                        entitlement=entitlement,
+                        id_generator=id_generator,
+                    ),
+                ),
                 handoff_to_evaluation=HandoffToEvaluationHandler(
                     uow_factory=preparation_uow_factory,
                     storage=storage,  # type: ignore[arg-type]
@@ -771,6 +787,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     ),
                     knowledge=knowledge_gateway,
                     assess_readiness=preparation.assess_readiness,
+                    amend_case=preparation.amend_case,
                     answer_clarifications=preparation.answer_clarifications,
                     run_case=preparation.run_case,
                     model_profile=settings.model_profile,

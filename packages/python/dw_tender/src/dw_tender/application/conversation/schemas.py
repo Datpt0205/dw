@@ -94,6 +94,9 @@ ChatIntent = Literal[
     # "Hồ sơ này phát hành được chưa?" — a check across the whole package as it
     # stands now, not the gate that passed at some earlier step.
     "check_readiness",
+    # Correcting a filed case BEFORE CP2 is signed — while the package is still
+    # internal and a change costs only a re-check. After CP2 it is an addendum.
+    "amend_request",
     # Post-publication lifecycle (only meaningful when the case exists):
     "request_addendum",
     "record_submission",

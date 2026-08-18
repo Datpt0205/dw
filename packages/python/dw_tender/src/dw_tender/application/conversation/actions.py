@@ -78,6 +78,13 @@ ACTIONS: dict[str, ActionSpec] = {
         risk="mutate",
         handler="CreatePreparationCaseHandler",
     ),
+    "amend_request": _spec(
+        "amend_request",
+        "sửa hồ sơ",
+        mutates=True,
+        risk="mutate",
+        handler="AmendPreparationCaseHandler",
+    ),
     "request_addendum": _spec(
         "request_addendum",
         "ghi nhận đề nghị sửa đổi",

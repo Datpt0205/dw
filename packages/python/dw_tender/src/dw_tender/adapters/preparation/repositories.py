@@ -145,6 +145,12 @@ class SqlPreparationCaseRepository:
                 tables.preparation_cases.c.version == case.version - 1,
             )
             .values(
+                # The demand itself is writable: an amendment before CP2 moves
+                # these, and an UPDATE that omitted them would report a change
+                # the database never took.
+                title=case.title,
+                estimated_value_minor=case.estimated_value_minor,
+                deadline=case.deadline,
                 state=case.state.value,
                 current_step=case.current_step,
                 method_key=case.method_key,

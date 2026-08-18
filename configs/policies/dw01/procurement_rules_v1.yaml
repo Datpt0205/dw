@@ -100,6 +100,25 @@ solicitation_template:
     - "Bảng giá chi tiết (giá tốt nhất, đã trừ chiết khấu/hoa hồng)"
     - "Điều khoản bảo hành và giao hàng"
 
+# --- Mua lặp (G3): cùng đơn vị mua thứ tương tự trong thời gian ngắn --------
+# Không phải dấu hiệu sai phạm và tuyệt đối không được nói như vậy — phần lớn
+# các trường hợp có lý do chính đáng (đợt trước cho nhóm A, đợt này nhóm B mới
+# thành lập). Đây thuần tuý là yêu cầu HỒ SƠ: phải có giải trình kèm theo
+# trước khi trình duyệt. Đặt ngưỡng ở đây để procurement chỉnh được mà không
+# đụng code; báo nhầm nhiều thì nới similarity lên, bỏ sót thì hạ xuống.
+repeat_purchase:
+  lookback_days: 45
+  # 0..1 — độ trùng từ khoá tối thiểu giữa hai tên gói để coi là "mua lặp".
+  # Lưu ý khi chỉnh: TÊN BỘ PHẬN chính là phần phải khác nhau trong một lần
+  # mua lặp hợp lệ, nên nó luôn kéo điểm xuống. Đo thực tế:
+  #   "25 máy trạm cho nhóm dự án"   ~ "30 máy trạm cho nhóm phát triển" = 0.71 → bắt
+  #   "25 máy trạm cho nhóm kiểm thử" ~ "30 máy trạm cho nhóm phát triển" = 0.56 → bắt
+  #   "12 máy trạm và màn hình cho kế toán" ~ cặp trên                    = 0.36 → bỏ qua
+  # 0.5 tách sạch hai nhóm. Bắt nhầm nhiều thì nâng, bỏ sót thì hạ.
+  similarity: 0.5
+  # Chỉ soi các gói đáng kể; đồ vặt mua lại liên tục là bình thường.
+  min_value: 100000000
+
 # --- Điều kiện hợp lệ tối thiểu của case ------------------------------------
 intake:
   require_approved_pr: true

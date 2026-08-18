@@ -65,6 +65,18 @@ class ProcurementRules:
     approval_tiers: tuple[ApprovalTier, ...] = ()
     # Role dùng khi rule pack chưa khai tier nào (giữ hành vi cũ).
     default_approver_role: str = "approver"
+    # Phụ lục G3 — mua lặp. 0 ở bất kỳ trường nào = tắt phép kiểm này.
+    repeat_lookback_days: int = 0
+    repeat_similarity: float = 0.0
+    repeat_min_value: int = 0
+
+    def watches_repeat_purchase(self, value_minor: int) -> bool:
+        """Is this package big enough and the rule turned on at all?"""
+        return (
+            self.repeat_lookback_days > 0
+            and self.repeat_similarity > 0
+            and value_minor >= self.repeat_min_value
+        )
 
     def approver_role_for(self, value_minor: int, checkpoint: str) -> str:
         """Membership role that must receive/decide this checkpoint.

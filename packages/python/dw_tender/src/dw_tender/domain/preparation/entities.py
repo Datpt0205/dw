@@ -45,6 +45,40 @@ class CaseState(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
 
+    @property
+    def accepts_amendment(self) -> bool:
+        """Can the requester still change what they asked for?
+
+        Up to the moment CP2 is signed, nothing has left the building: the
+        package is internal and changing it costs a re-check, no more. Once
+        CP2 approves it the package becomes official and goes out to suppliers,
+        and from then on a change is an addendum — a formal document sent to
+        everyone who received the invitation, because a change only some
+        bidders know about is an unfair one.
+
+        A rejected checkpoint stays amendable on purpose: fixing what the
+        approver objected to is exactly what should happen next.
+        """
+        return self in _AMENDABLE
+
+
+_AMENDABLE: frozenset[CaseState] = frozenset(
+    {
+        CaseState.DRAFT,
+        CaseState.INTAKE_READY,
+        CaseState.ANALYZING,
+        CaseState.WAITING_CLARIFICATION,
+        CaseState.APPROACH_READY,
+        CaseState.CP1_PENDING,
+        CaseState.CP1_REJECTED,
+        CaseState.CP1_APPROVED,
+        CaseState.BUILDING_SOLICITATION,
+        CaseState.PACKAGE_READY,
+        CaseState.CP2_PENDING,
+        CaseState.CP2_REJECTED,
+    }
+)
+
 
 class ArtifactType(StrEnum):
     INTAKE_VERIFICATION = "intake_verification"
@@ -201,6 +235,21 @@ class PreparationCase:
         if self.state is not CaseState.DRAFT:
             raise TenderDomainError("only a draft case can be intake-rejected")
         self.state = CaseState.INTAKE_REJECTED
+        self.current_step = "intake"
+        self.version += 1
+
+    def reopen_for_amendment(self) -> None:
+        """Send an amended case back to the start of the derivation.
+
+        Everything downstream of the demand — the method, the criteria, the
+        package, the checkpoints already passed — was derived from figures that
+        just changed. Keeping any of it would mean approving a package on the
+        strength of a verdict earned by the old numbers, so the case returns to
+        the one state that says "the demand is stated, derive the rest".
+        """
+        if not self.state.accepts_amendment:
+            raise TenderDomainError(f"case cannot be amended from state {self.state.value}")
+        self.state = CaseState.INTAKE_READY
         self.current_step = "intake"
         self.version += 1
 

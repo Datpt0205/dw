@@ -45,6 +45,7 @@ from dw_tender.application.conversation.schemas import (
     parse_vnd_amounts,
     render_pr_markdown,
 )
+from dw_tender.application.preparation.amend import AmendCaseCommand
 from dw_tender.application.preparation.handlers import (
     AnswerPreparationClarificationsHandler,
     ClarificationAnswer,
@@ -235,6 +236,8 @@ class ConversationIntakeService:
     # The corpus DW01 already reads inside the workflow, now reachable from
     # chat. Same gateway, same trusted filters — a question from Zalo can only
     # retrieve what that person is cleared to read.
+    # Correcting a filed case while CP2 is still unsigned.
+    amend_case: Any | None = None
     # "Phát hành được chưa?" — read-only sweep over the package as it stands.
     assess_readiness: Any | None = None
     knowledge: KnowledgeGatewayPort | None = None
@@ -248,7 +251,7 @@ class ConversationIntakeService:
     run_case: RunPreparationHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.9.0"
+    prompt_version: str = "1.10.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 
@@ -779,7 +782,12 @@ class ConversationIntakeService:
         path that already worked exactly as it was.
         """
         spec = spec_for(turn.intent)
-        case_scoped = turn.intent in {"request_addendum", "record_submission", "open_bids"}
+        case_scoped = turn.intent in {
+            "amend_request",
+            "request_addendum",
+            "record_submission",
+            "open_bids",
+        }
         blank_request = (
             turn.intent == "create_request" and not (turn.slots.item_summary or "").strip()
         )
@@ -882,6 +890,84 @@ class ConversationIntakeService:
         return TurnOutcome(
             replies=(ChatReply(text=reply_for(turn.intent, "", receipt, self._STATE_LABELS)),),
             thinking=model_thinking,
+        )
+
+    # Artifacts worth putting in front of someone deciding, and the heading
+    # each gets. Anything not listed is machinery, not an answer.
+    _CASE_FACTS: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("procurement_approach", "Phương án mua sắm"),
+        ("evaluation_criteria", "Tiêu chí đánh giá"),
+        ("supplier_shortlist", "Nhà cung cấp dự kiến"),
+        ("risk_compliance_check", "Rà soát rủi ro & tuân thủ"),
+        ("clarification_list", "Điểm cần làm rõ"),
+        ("clarification_response", "Trả lời làm rõ"),
+        ("solicitation_package", "Hồ sơ mời thầu"),
+        ("submission_register", "Sổ tiếp nhận hồ sơ dự thầu"),
+        ("demand_snapshot", "Yêu cầu ban đầu / sửa đổi"),
+    )
+
+    async def _case_answer(
+        self,
+        case_id: uuid.UUID,
+        question: str,
+        context: AccessContext,
+        display_name: str,
+        model_thinking: str,
+    ) -> TurnOutcome:
+        """Answer a real question about one case, from that case's own record.
+
+        This used to return the title, the state and a link — enough to know a
+        case exists, useless to someone deciding whether to sign it. Everything
+        needed was already stored; nothing was reading it.
+        """
+        if self.get_case is None:
+            return TurnOutcome(replies=(ChatReply(text="Mình chưa đọc được hồ sơ ở kênh này."),))
+        view = await self.get_case.handle(case_id, context)
+        latest: dict[str, Any] = {}
+        for artifact in view.artifacts:
+            current = latest.get(artifact.artifact_type)
+            if current is None or artifact.artifact_version > current.artifact_version:
+                latest[artifact.artifact_type] = artifact
+        sections = [
+            f"### {heading}\n{str(latest[kind].content)[:1500]}"
+            for kind, heading in self._CASE_FACTS
+            if kind in latest
+        ]
+        try:
+            answer = await self.gateway.generate_structured(
+                ModelRequest(
+                    task="conversation.answer_about_case",
+                    prompt_id="conversation.answer_about_case",
+                    prompt_version="1.0.0",
+                    variables={
+                        "display_name": display_name or "bạn",
+                        "question": question,
+                        "case_title": view.title,
+                        "case_state": self._STATE_LABELS.get(view.state, view.state),
+                        "owner_name": view.owner_name,
+                        "estimated_value": f"{view.estimated_value_minor:,} {view.currency}",
+                        "deadline": view.deadline or "(chưa nêu)",
+                        "case_facts": "\n\n".join(sections) or "(hồ sơ chưa có nội dung nào)",
+                    },
+                    model_profile=self.model_profile,
+                ),
+                ComposedReply,
+                run_context=self._agent_run_context(context, trace=f"case-{str(case_id)[:8]}"),
+            )
+            reply = answer.reply_vi.strip()
+        except Exception:
+            reply = (
+                f"«{view.title}» đang {self._STATE_LABELS.get(view.state, view.state)} — "
+                f"giá trị {view.estimated_value_minor:,} {view.currency}, "
+                f"người đề nghị {view.owner_name}."
+            )
+        return TurnOutcome(
+            replies=(ChatReply(text=reply),),
+            thinking=model_thinking
+            or (
+                f"• Đọc {len(sections)} phần nội dung đã lập của hồ sơ «{view.title}».\n"
+                "• Chỉ trả lời từ những phần đó, không suy diễn thêm."
+            ),
         )
 
     async def _readiness_outcome(
@@ -1270,6 +1356,30 @@ class ConversationIntakeService:
         context: AccessContext,
         display_name: str,
     ) -> TurnOutcome | None:
+        if turn.intent == "amend_request" and self.amend_case is not None:
+            # Before CP2 the package is internal, so a correction costs a
+            # re-check and nothing else. The handler decides whether this case
+            # is still at that stage — and refuses with a reason if not.
+            command = AmendCaseCommand(
+                estimated_value_minor=turn.slots.estimated_value_vnd,
+                deadline=(f"{turn.slots.deadline_days} ngày" if turn.slots.deadline_days else None),
+                supplier_names=tuple(turn.slots.supplier_names) or None,
+                note=text[:400],
+            )
+            result = await self.amend_case.handle(case_id, command, context)
+            lines = ["✅ Đã sửa hồ sơ.", *result.changes]
+            if result.withdrew_checkpoint:
+                lines.append(
+                    f"Phiếu duyệt {result.withdrew_checkpoint} cho bản cũ đã được thu hồi — "
+                    "người duyệt đã được báo."
+                )
+            if result.rerun_id is not None:
+                lines.append("Đang chạy lại các bước kiểm với số liệu mới.")
+            return TurnOutcome(
+                replies=(ChatReply(text="\n".join(lines)),),
+                thinking=model_thinking,
+            )
+
         if turn.intent == "request_addendum" and self.propose_addendum is not None:
             # Role split: a requester PROPOSES; procurement DRAFTS and files CP3.
             change = (turn.addendum.change_summary if turn.addendum else "").strip() or text
@@ -1491,28 +1601,7 @@ class ConversationIntakeService:
             )
 
         if turn.intent == "ask_status":
-            facts = {"info": "gửi link trang hồ sơ"}
-            if self.get_case is not None:
-                try:
-                    view = await self.get_case.handle(case_id, context)
-                    facts = {"title": view.title, "state": str(view.state)}
-                except Exception:
-                    pass
-            return TurnOutcome(
-                replies=(
-                    self._case_link(
-                        case_id,
-                        await self._compose_reply(
-                            event="status_summary",
-                            facts=facts,
-                            fallback="Trạng thái chi tiết của hồ sơ:",
-                            context=context,
-                            trace=f"reply-{str(case_id)[:8]}",
-                        ),
-                    ),
-                ),
-                thinking=model_thinking,
-            )
+            return await self._case_answer(case_id, text, context, display_name, model_thinking)
         if turn.intent == "create_request":
             return None  # new purchase → caller opens a fresh intake conversation
         return TurnOutcome(replies=(ChatReply(text=turn.reply_vi),))
