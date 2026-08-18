@@ -19,14 +19,54 @@ it — a candidate here is one the person might mean, not one they may act on.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 import uuid
+from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from dw_tender.application.conversation.actions import Risk
-from dw_tender.application.conversation.service import rank_by_label
 
 Relation = Literal["FOCUS", "ACTIONABLE", "RELATED", "RECENT", "PENDING_INPUT"]
+
+
+def fold_text(text: str) -> str:
+    """Accent- and case-insensitive form for matching Vietnamese labels."""
+    lowered = text.casefold().replace("đ", "d")
+    decomposed = unicodedata.normalize("NFD", lowered)
+    return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+
+
+def _tokens(text: str) -> set[str]:
+    return {token for token in re.split(r"[^0-9a-z]+", fold_text(text)) if len(token) >= 3}
+
+
+def rank_by_label(text: str, labels: Sequence[str]) -> list[float]:
+    """Score how specifically the message names each label.
+
+    A hand-written stopword list used to strip the words that carry no
+    identity, which only ever knew the words someone thought of. But whether a
+    word discriminates is a property of THIS candidate set, not of Vietnamese:
+    when every pending case begins with "Mua", "mua" identifies nothing; when
+    exactly one is a rental, "thuê" identifies it outright. Weighting each
+    matched token by how many candidates share it says both, needs no list to
+    maintain, and behaves the same in any language.
+
+    Callers require a clear winner, so a vague message scores several labels
+    alike and they ask instead of guessing.
+    """
+    folded = _tokens(text)
+    per_label = [_tokens(label) for label in labels]
+    if len(per_label) <= 1:  # nothing to tell apart: any overlap is a match
+        return [float(len(tokens & folded)) for tokens in per_label]
+    shared_by = Counter(token for tokens in per_label for token in tokens)
+    total = len(per_label)
+    return [
+        sum(1.0 - shared_by[token] / total for token in tokens & folded) for tokens in per_label
+    ]
+
 
 # States where a case is waiting on a person rather than on the clock or a
 # supplier. Used only to tag a candidate as worth surfacing first; refusing an

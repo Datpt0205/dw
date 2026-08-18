@@ -256,6 +256,19 @@ async def main() -> None:
     named_or_asked = "/100" in reply or "hồ sơ nào" in reply.lower()
     check(named_or_asked, "hai ho so trung ten -> hoi lai chu khong ra soat nham", reply[:160])
 
+    # --------------------------------------------------------------- 11 ----
+    # The approver's bug, kept forever. She never filed a case, so nothing in
+    # her chat owns one; this used to fall through to intake and ask her what
+    # she wanted to buy. Asking which case is the correct answer — opening a
+    # purchase request is not, at any confidence.
+    print("\n[11] Nguoi duyet xin gia han ma khong neu ho so")
+    reply = await chi2.say("kéo dài thời gian 10 ngày mời thầu")
+    asked = "hồ sơ nào" in reply.lower()
+    became_intake = any(
+        word in reply.lower() for word in ("hàng hoá", "số lượng", "ngân sách dự kiến")
+    )
+    check(asked and not became_intake, "hoi lai chu KHONG mo yeu cau mua moi", reply[:180])
+
     print("\n" + "=" * 66)
     failed = [name for ok, name, _ in results if not ok]
     print(f"{len(results) - len(failed)}/{len(results)} PASS")

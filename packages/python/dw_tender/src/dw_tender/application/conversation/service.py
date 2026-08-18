@@ -9,11 +9,7 @@ slot-filling → deterministic completeness → confirm-before-commit → the sa
 from __future__ import annotations
 
 import json
-import re
-import unicodedata
 import uuid
-from collections import Counter
-from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC
 from typing import Any, ClassVar, Literal, Protocol
@@ -25,6 +21,18 @@ from dw_kernel.ports import IdGenerator, UtcClock
 from dw_knowledge.contracts import SearchQuery
 from dw_knowledge.ports import KnowledgeGatewayPort
 from dw_platform.application.access_context import AccessContext
+from dw_tender.application.conversation.actions import spec_for
+from dw_tender.application.conversation.focus import (
+    Candidate,
+    CaseFact,
+    DraftFact,
+    build_menu,
+    fold_text,
+    rank_by_label,
+    render,
+    resolve,
+)
+from dw_tender.application.conversation.receipt import CaseSnapshot, observed, reply_for
 from dw_tender.application.conversation.schemas import (
     AddendumDraftText,
     CaseOverviewReply,
@@ -64,42 +72,9 @@ ConversationState = Literal["collecting", "confirming", "case_created", "cancell
 # state. Same split as everywhere else — LLM understands, code decides.
 
 
-def fold_text(text: str) -> str:
-    """Accent- and case-insensitive form for matching Vietnamese labels.
-
-    Public: the chat decision engine matches case titles the same way."""
-    lowered = text.casefold().replace("đ", "d")
-    decomposed = unicodedata.normalize("NFD", lowered)
-    return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
-
-
-def _tokens(text: str) -> set[str]:
-    return {token for token in re.split(r"[^0-9a-z]+", fold_text(text)) if len(token) >= 3}
-
-
-def rank_by_label(text: str, labels: Sequence[str]) -> list[float]:
-    """Score how specifically the message names each label.
-
-    A hand-written stopword list used to strip the words that carry no
-    identity, which only ever knew the words someone thought of. But whether a
-    word discriminates is a property of THIS candidate set, not of Vietnamese:
-    when every pending case begins with "Mua", "mua" identifies nothing; when
-    exactly one is a rental, "thuê" identifies it outright. Weighting each
-    matched token by how many candidates share it says both, needs no list to
-    maintain, and behaves the same in any language.
-
-    Callers require a clear winner, so a vague message scores several labels
-    alike and they ask instead of guessing.
-    """
-    folded = _tokens(text)
-    per_label = [_tokens(label) for label in labels]
-    if len(per_label) <= 1:  # nothing to tell apart: any overlap is a match
-        return [float(len(tokens & folded)) for tokens in per_label]
-    shared_by = Counter(token for tokens in per_label for token in tokens)
-    total = len(per_label)
-    return [
-        sum(1.0 - shared_by[token] / total for token in tokens & folded) for tokens in per_label
-    ]
+# Text matching lives with target resolution; re-exported here because the chat
+# decision engine has always imported it from this module.
+__all__ = ["ConversationIntakeService", "fold_text", "rank_by_label"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,7 +248,7 @@ class ConversationIntakeService:
     run_case: RunPreparationHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.8.0"
+    prompt_version: str = "1.9.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 
@@ -347,6 +322,17 @@ class ConversationIntakeService:
         )
         if focus is not None:
             return focus
+
+        # A case-scoped intent on a conversation that owns no case. This is the
+        # approver's whole world — she never files anything, so nothing in her
+        # chat carries a case, and "gia hạn 10 ngày" used to fall through to
+        # intake and ask her what she wanted to buy. Resolve against the cases
+        # she can SEE instead, and ask when several could be meant.
+        brokered = await self._brokered_turn(
+            turn, conversation, open_convs, text, context, display_name, model_thinking
+        )
+        if brokered is not None:
+            return brokered
 
         # Mid-intake pivot ("thôi, giờ cần mua X khác"): PARK the current draft
         # and open a fresh conversation so two requests never blend into one.
@@ -743,6 +729,160 @@ class ConversationIntakeService:
     _DECIDE_STATES: ClassVar[frozenset[str]] = frozenset(
         {"draft", "cp1_pending", "cp2_pending", "cp3_pending", "cp4_ready"}
     )
+
+    # ------------------------------------------------------------ broker --
+    async def _menu_for(
+        self, context: AccessContext, open_convs: list[ConversationView], focus: uuid.UUID | None
+    ) -> tuple[Candidate, ...]:
+        """Everything this person could be talking about, numbered by code."""
+        if self.list_cases is None:
+            return ()
+        cases = await self.list_cases.handle(context)
+        return build_menu(
+            cases=[
+                CaseFact(
+                    case_id=case.id,
+                    title=case.title,
+                    owner_name=case.owner_name,
+                    state=case.state,
+                    created_by=case.created_by,
+                )
+                for case in cases
+            ],
+            drafts=[
+                DraftFact(
+                    conversation_id=c.id,
+                    label=self._conv_label(c),
+                    status=self._conv_status(c),
+                )
+                for c in open_convs
+                if c.case_id is None and self._has_content(c)
+            ],
+            actor_id=context.principal_id,
+            can_decide=context.has_scope("approvals.decide"),
+            focus_case_id=focus,
+        )
+
+    async def _brokered_turn(
+        self,
+        turn: IntakeChatTurn,
+        conversation: ConversationView,
+        open_convs: list[ConversationView],
+        text: str,
+        context: AccessContext,
+        display_name: str,
+        model_thinking: str,
+    ) -> TurnOutcome | None:
+        """Resolve a case-scoped intent that the conversation cannot supply.
+
+        Returns None when this turn is not the broker's business, leaving every
+        path that already worked exactly as it was.
+        """
+        spec = spec_for(turn.intent)
+        case_scoped = turn.intent in {"request_addendum", "record_submission", "open_bids"}
+        blank_request = (
+            turn.intent == "create_request" and not (turn.slots.item_summary or "").strip()
+        )
+        if conversation.case_id is not None or not (case_scoped or blank_request):
+            return None
+
+        focus = next((c.case_id for c in open_convs if c.case_id is not None), None)
+        menu = await self._menu_for(context, open_convs, focus)
+        if blank_request:
+            # A sentence that names no goods is not a purchase request. Opening a
+            # blank intake off the back of one is how "thêm 7 ngày mời thầu"
+            # became a form asking what to buy.
+            if not menu:
+                return None
+            return self._ask_which(
+                menu,
+                "Mình chưa rõ ý bạn — câu này không nêu hàng hoá nào nên chưa phải "
+                "một yêu cầu mua sắm mới.\nBạn đang nói về hồ sơ nào?",
+                model_thinking,
+            )
+
+        outcome = resolve(menu=menu, target_ref=turn.target_ref, text=text, risk=spec.risk)
+        if outcome.kind == "no_target":
+            return TurnOutcome(
+                replies=(
+                    ChatReply(
+                        text=f"Mình chưa {spec.label} được — hiện không có hồ sơ nào "
+                        "trong phạm vi bạn xem được."
+                    ),
+                ),
+                thinking=model_thinking,
+            )
+        if outcome.kind == "ambiguous" or not turn.certain:
+            return self._ask_which(
+                outcome.options or menu,
+                f"Bạn muốn mình {spec.label} cho hồ sơ nào?",
+                model_thinking,
+            )
+
+        chosen = outcome.candidate
+        assert chosen is not None
+        if chosen.case_id is None:  # a draft, not a filed case — nothing to act on
+            return self._ask_which(
+                menu, f"Bạn muốn mình {spec.label} cho hồ sơ nào?", model_thinking
+            )
+        return await self._act_with_receipt(
+            turn, conversation, chosen.case_id, text, context, display_name, model_thinking
+        )
+
+    def _ask_which(
+        self, menu: tuple[Candidate, ...], question: str, model_thinking: str
+    ) -> TurnOutcome:
+        return TurnOutcome(
+            replies=(ChatReply(text=f"{question}\n{render(menu)}"),),
+            thinking=model_thinking
+            or f"• {len(menu)} hồ sơ có thể là hồ sơ được nhắc tới — hỏi lại thay vì đoán.",
+        )
+
+    async def _snapshot(self, case_id: uuid.UUID, context: AccessContext) -> CaseSnapshot | None:
+        if self.get_case is None:
+            return None
+        try:
+            view = await self.get_case.handle(case_id, context)
+        except Exception:
+            return None
+        return CaseSnapshot(
+            state=view.state,
+            artifact_types=frozenset(a.artifact_type for a in view.artifacts),
+            notification_count=len(view.notifications),
+            title=view.title,
+            case_id=case_id,
+        )
+
+    async def _act_with_receipt(
+        self,
+        turn: IntakeChatTurn,
+        conversation: ConversationView,
+        case_id: uuid.UUID,
+        text: str,
+        context: AccessContext,
+        display_name: str,
+        model_thinking: str,
+    ) -> TurnOutcome:
+        """Run the action, then describe what measurably changed — in that order."""
+        before = await self._snapshot(case_id, context)
+        error: Exception | None = None
+        outcome: TurnOutcome | None = None
+        try:
+            outcome = await self._lifecycle_action(
+                turn, model_thinking, conversation, case_id, text, context, display_name
+            )
+        except (ConflictError, DomainError) as exc:
+            error = exc
+        after = await self._snapshot(case_id, context) if error is None else before
+        receipt = observed(turn.intent, before, after, error)
+        # A handler that asked for more information (a supplier name, say) did
+        # not claim anything, so let its own words through.
+        if error is None and outcome is not None and not receipt.had_effect:
+            return outcome
+        return TurnOutcome(
+            replies=(ChatReply(text=reply_for(turn.intent, "", receipt, self._STATE_LABELS)),),
+            thinking=model_thinking,
+        )
 
     async def _readiness_outcome(
         self,
@@ -1731,6 +1871,10 @@ class ConversationIntakeService:
         open_convs: list[ConversationView] | None = None,
     ) -> tuple[IntakeChatTurn, str]:
         missing = missing_required(conversation.slots, self.rules)
+        # The numbered menu the model may point into. Code builds it and code
+        # maps the number back, so a case name the model invents refers to
+        # nothing — see focus.resolve.
+        menu = await self._menu_for(context, open_convs or [], conversation.case_id)
         request = ModelRequest(
             task="conversation.intake_chat",
             prompt_id="conversation.intake_chat",
@@ -1739,6 +1883,7 @@ class ConversationIntakeService:
                 "known_slots": conversation.slots.model_dump_json(exclude_none=True),
                 "missing_fields": "; ".join(missing) or "(không còn)",
                 "open_requests": self._render_open_requests(conversation, open_convs or []),
+                "case_menu": render(menu) or "(chưa có hồ sơ nào)",
                 "message": text,
                 "display_name": display_name,
                 "today": f"{self.clock.now().astimezone(UTC):%d/%m/%Y}",

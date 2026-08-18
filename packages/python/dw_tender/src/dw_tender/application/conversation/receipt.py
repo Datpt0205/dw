@@ -29,10 +29,17 @@ Outcome = Literal["done", "refused", "not_attempted"]
 
 @dataclass(frozen=True, slots=True)
 class CaseSnapshot:
-    """The observable facts about a case at one instant."""
+    """The observable facts about a case at one instant.
+
+    Notifications count as an effect. A requester proposing an addendum moves
+    no state and writes no artifact by design — procurement files the paperwork
+    — but a decision card does go out, and reporting that as "nothing happened"
+    would be as wrong as the promise it replaced.
+    """
 
     state: str
     artifact_types: frozenset[str] = frozenset()
+    notification_count: int = 0
     title: str = ""
     case_id: uuid.UUID | None = None
 
@@ -48,6 +55,7 @@ class ActionReceipt:
     previous_state: str = ""
     new_state: str = ""
     artifacts_created: tuple[str, ...] = ()
+    notifications_sent: int = 0
     # Why it did not happen. Shown to the person, so it names the obstacle.
     reason: str = ""
     warnings: tuple[str, ...] = field(default_factory=tuple)
@@ -59,6 +67,11 @@ class ActionReceipt:
     @property
     def changed_state(self) -> bool:
         return bool(self.new_state) and self.new_state != self.previous_state
+
+    @property
+    def had_effect(self) -> bool:
+        """Did anything observable happen at all?"""
+        return bool(self.changed_state or self.artifacts_created or self.notifications_sent)
 
 
 def observed(
@@ -97,6 +110,7 @@ def observed(
             warnings=warnings,
         )
     fresh = after.artifact_types - (before.artifact_types if before else frozenset())
+    notified = max(0, after.notification_count - (before.notification_count if before else 0))
     return ActionReceipt(
         action=action,
         outcome="done",
@@ -105,6 +119,7 @@ def observed(
         previous_state=prev,
         new_state=after.state,
         artifacts_created=tuple(sorted(fresh)),
+        notifications_sent=notified,
         warnings=warnings,
     )
 
@@ -130,11 +145,18 @@ def describe(receipt: ActionReceipt, state_label: dict[str, str] | None = None) 
         tail = f" Hồ sơ vẫn đang {state(receipt.previous_state)}." if receipt.previous_state else ""
         return f"⚠️ Không {verb} được{case}: {receipt.reason}{tail}"
 
+    if not receipt.had_effect:
+        # The handler ran without complaint but nothing moved. Saying "đã xong"
+        # here is the failure this module exists to prevent.
+        return f"Mình chưa thấy thay đổi nào sau khi {verb}{case}. Bạn kiểm tra lại giúp mình nhé."
+
     lines = [f"✅ Đã {verb}{case}."]
     if receipt.changed_state:
         lines.append(f"Trạng thái: {state(receipt.previous_state)} → {state(receipt.new_state)}.")
     if receipt.artifacts_created:
         lines.append("Đã lập: " + ", ".join(receipt.artifacts_created) + ".")
+    if receipt.notifications_sent and not receipt.artifacts_created:
+        lines.append("Đã báo người phụ trách xử lý tiếp.")
     lines.extend(f"Lưu ý: {w}" for w in receipt.warnings)
     return "\n".join(lines)
 

@@ -165,6 +165,21 @@ class IntakeChatTurn(BaseModel):
             "chép đúng nhãn trong danh sách việc đang dở"
         ),
     )
+    target_ref: int | None = Field(
+        default=None,
+        description=(
+            "SỐ THỨ TỰ của mục trong danh sách HỒ SƠ LIÊN QUAN mà tin nhắn nhắm tới. "
+            "Chỉ điền khi tin nhắn nêu rõ hồ sơ nào; không chắc thì để null — "
+            "tuyệt đối không đoán một số cho có, và không tự bịa số ngoài danh sách."
+        ),
+    )
+    certain: bool = Field(
+        default=True,
+        description=(
+            "false khi bạn không chắc đã hiểu đúng ý hoặc không chắc hồ sơ nào. "
+            "Nói không chắc là câu trả lời hợp lệ, không phải thất bại."
+        ),
+    )
     knowledge_query: str = Field(
         default="",
         description=(
