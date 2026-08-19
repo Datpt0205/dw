@@ -184,8 +184,13 @@ async def main() -> None:
     # ---------------------------------------------------------------- 8 ----
     print("\n[8] Hoi dieu luat KHONG co trong kho")
     reply = await chi.say("Điều 20 Luật Đấu thầu quy định gì về bảo lãnh dự thầu?")
-    honest = "không tìm thấy" in reply.lower() or "không" in reply.lower()[:60]
-    check(honest, "noi that khi khong truy duoc thay vi bia", reply[:120])
+    # The question has a false premise: Điều 20 is about chỉ định thầu, and
+    # bảo đảm dự thầu lives in Điều 43. Both are in the corpus, so the honest
+    # answers are "I can't find that" OR correcting the premise and pointing
+    # at the right article — never quietly agreeing Điều 20 covers it.
+    lowered = reply.lower()
+    corrected = "không tìm thấy" in lowered or ("không quy định" in lowered or "điều 43" in lowered)
+    check(corrected, "khong hua theo tien de sai cua cau hoi", reply[:120])
 
     # ---------------------------------------------------------------- 9 ----
     # The whole path on the live model, filed through chat so the clarification
@@ -264,8 +269,10 @@ async def main() -> None:
     print("\n[11] Nguoi duyet xin gia han ma khong neu ho so")
     reply = await chi2.say("kéo dài thời gian 10 ngày mời thầu")
     asked = "hồ sơ nào" in reply.lower()
+    # Not "hàng hoá": the guard's own refusal says the sentence names none.
+    # What must not appear is the intake form asking her to supply them.
     became_intake = any(
-        word in reply.lower() for word in ("hàng hoá", "số lượng", "ngân sách dự kiến")
+        word in reply.lower() for word in ("số lượng", "ngân sách dự kiến", "địa điểm giao")
     )
     check(asked and not became_intake, "hoi lai chu KHONG mo yeu cau mua moi", reply[:180])
 

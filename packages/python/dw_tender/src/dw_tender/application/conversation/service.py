@@ -251,7 +251,7 @@ class ConversationIntakeService:
     run_case: RunPreparationHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.10.0"
+    prompt_version: str = "1.11.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 
@@ -788,8 +788,14 @@ class ConversationIntakeService:
             "record_submission",
             "open_bids",
         }
-        blank_request = (
-            turn.intent == "create_request" and not (turn.slots.item_summary or "").strip()
+        no_goods = not (turn.slots.item_summary or "").strip()
+        blank_request = (turn.intent == "create_request" and no_goods) or (
+            # Slot-filling needs a draft to fill. With none open, a sentence
+            # naming no goods is about a case that already exists, not the
+            # start of a new request: "kéo dài thêm 10 ngày mời thầu" was
+            # recorded as a delivery deadline on an empty intake because
+            # provide_info was exempt from this guard.
+            turn.intent == "provide_info" and no_goods and not self._has_content(conversation)
         )
         if conversation.case_id is not None or not (case_scoped or blank_request):
             return None
