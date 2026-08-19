@@ -11,8 +11,6 @@ Câu chữ chính xác nằm ở [demo-lines.yaml](demo-lines.yaml) — file nà
 sao*, không chép lại *gõ gì*. Chạy teleprompter để khỏi copy-dán:
 
 ```powershell
-$cue = "powershell -ExecutionPolicy Bypass -File scripts\demo_cue.ps1"
-
 powershell -ExecutionPolicy Bypass -File scripts\demo_cue.ps1            # Enter → dòng kế lên clipboard
 powershell -ExecutionPolicy Bypass -File scripts\demo_cue.ps1 -Only chi  # chỉ phần của Chi (máy thứ hai)
 powershell -ExecutionPolicy Bypass -File scripts\demo_cue.ps1 -Auto      # tự dán + gửi vào cửa sổ đang focus
