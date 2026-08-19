@@ -11,11 +11,16 @@ Câu chữ chính xác nằm ở [demo-lines.yaml](demo-lines.yaml) — file nà
 sao*, không chép lại *gõ gì*. Chạy teleprompter để khỏi copy-dán:
 
 ```powershell
-powershell -File scripts\demo_cue.ps1            # Enter → dòng kế lên clipboard
-powershell -File scripts\demo_cue.ps1 -Only chi  # chỉ phần của Chi (máy thứ hai)
-powershell -File scripts\demo_cue.ps1 -Auto      # tự dán + gửi vào cửa sổ đang focus
-powershell -File scripts\demo_cue.ps1 -From 9    # quay lại giữa chừng sau khi retake
+$cue = "powershell -ExecutionPolicy Bypass -File scripts\demo_cue.ps1"
+
+powershell -ExecutionPolicy Bypass -File scripts\demo_cue.ps1            # Enter → dòng kế lên clipboard
+powershell -ExecutionPolicy Bypass -File scripts\demo_cue.ps1 -Only chi  # chỉ phần của Chi (máy thứ hai)
+powershell -ExecutionPolicy Bypass -File scripts\demo_cue.ps1 -Auto      # tự dán + gửi vào cửa sổ đang focus
+powershell -ExecutionPolicy Bypass -File scripts\demo_cue.ps1 -From 9    # quay lại giữa chừng sau khi retake
 ```
+
+> `-ExecutionPolicy Bypass` là bắt buộc trên máy đặt policy mặc định (`Restricted`).
+> Nó chỉ áp cho tiến trình đó, không đổi cấu hình máy.
 
 > Zalo Bot API chỉ nói được với tư cách **bot**, không đăng được tin nhắn thay tài
 > khoản người. Nên bong bóng chat của An bắt buộc phải gửi từ máy An — script chỉ bỏ
