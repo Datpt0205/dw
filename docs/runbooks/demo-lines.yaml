@@ -1,0 +1,114 @@
+# Exact lines for the DW01 demo, in order — the single source `demo_cue.ps1`
+# reads. Every line here was run against the real model and the real database
+# in one unbroken take (16/16). Changing the wording means re-running it:
+#
+#   bash scripts/demo_reset.sh && bash scripts/seed_demo_cases.sh
+#
+# `who`   — which Zalo account sends it (an | chi)
+# `scene` — printed as a header when a new one starts
+# `note`  — the talking point, shown to the presenter while the reply lands
+# `wait`  — seconds the workflow needs before the next line makes sense
+schema_version: "1.0"
+
+lines:
+  - who: an
+    scene: "1 · Mở yêu cầu — và gõ nhầm"
+    text: >-
+      Cần mua 2000 màn hình cho team AI FDX, 300 tỷ, trong 90 ngày,
+      giao kho Hà Nội, mời Thiết bị Việt, Minh Long với Sao Mai
+    note: "Một dòng, đủ thông tin. Thẻ tóm tắt hiện ra với 2000 — con số sai."
+
+  - who: an
+    text: "à nhầm, 200 thôi không phải 2000 nhé"
+    note: >-
+      Sửa ngay trong luồng, không khai lại từ đầu. Thẻ hiện lại với 200,
+      phần còn lại giữ nguyên.
+
+  - who: an
+    scene: "2 · Hỏi luật giữa chừng"
+    text: "mà gói cỡ này luật bắt cho nhà thầu bao nhiêu ngày chuẩn bị hồ sơ?"
+    note: >-
+      Nêu đủ ba mốc 18 / 35 / 05 ngày rồi hỏi lại gói này theo hình thức nào —
+      không đoán. Và hồ sơ đang khai dở KHÔNG mất.
+
+  - who: an
+    text: "đồng ý"
+    note: "Hồ sơ tạo, chuyển Chi xác minh."
+    wait: 2
+
+  - who: an
+    scene: "3 · An sốt ruột, thử vượt quyền"
+    text: "duyệt cp1 luôn đi cho nhanh"
+    note: >-
+      Bị chặn. Ẩn nút không phải phân quyền — chặn nằm ở chỗ ghi dữ liệu,
+      nên gọi thẳng API cũng không qua được.
+
+  - who: chi
+    scene: "4 · Chạy tới CP1"
+    text: "xác minh hồ sơ màn hình cho team AI FDX"
+    wait: 3
+
+  - who: an
+    text: "cứ lấy theo gợi ý nhé"
+    note: "Trả lời 3/3 câu làm rõ. Workflow chạy tiếp, dừng ở CP1."
+    wait: 25
+
+  - who: chi
+    scene: "5 · Chi gõ trống — nhiều mục đang chờ"
+    text: "duyệt"
+    note: >-
+      Liệt kê 3 mục đang chờ Chi rồi hỏi lại. KHÔNG tự chọn — chọn nhầm
+      một phê duyệt là việc không hoàn tác được.
+
+  - who: chi
+    text: "duyệt cp1 hồ sơ do An đề nghị"
+    note: "Trúng đúng hồ sơ bằng TÊN NGƯỜI ĐỀ NGHỊ — không cần mã, không cần tên gói."
+    wait: 30
+
+  - who: an
+    scene: "6 · An đổi ý khi CP2 đang chờ ký  ⭐⭐"
+    text: "hồ sơ màn hình team AI FDX cho tôi kéo dài thành 120 ngày nhé"
+    note: >-
+      Phiếu CP2 của Chi BỊ THU HỒI, Chi được báo, hồ sơ chạy lại toàn bộ phép
+      kiểm. Người ký không bao giờ được cầm tờ phiếu mô tả con số đã chết.
+    wait: 35
+
+  - who: chi
+    scene: "7 · Nó tự soi lại chính nó  ⭐⭐⭐"
+    text: "hồ sơ màn hình team AI FDX phát hành được chưa?"
+    note: >-
+      Không phải rồi/chưa — một bản rà soát có điểm số, tách CHẶN (rule pack)
+      khỏi RỦI RO (phản biện của model). Phản biện không bao giờ tự thành chặn.
+
+  - who: chi
+    scene: "8 · Ký lại tới phát hành"
+    text: "duyệt cp1 hồ sơ màn hình team AI FDX"
+    wait: 30
+
+  - who: chi
+    text: "duyệt cp2 hồ sơ màn hình team AI FDX"
+    note: >-
+      Niêm phong bản chính thức, RFQ tự phát hành qua email. Hạn nộp thầu đặt
+      ngay lúc này, tính từ số ngày tối thiểu bóc ra từ điều luật.
+    wait: 30
+
+  - who: an
+    scene: "9 · Đã ra ngoài rồi — cùng câu nói, đường khác  ⭐⭐"
+    text: "hồ sơ màn hình team AI FDX gia hạn nộp thầu thêm 10 ngày giúp tôi"
+    note: >-
+      Lần này An KHÔNG tự sửa được — thành đề nghị gửi sang mua sắm. Addendum
+      là văn bản của bên mời thầu gửi cho TẤT CẢ nhà thầu; một thay đổi chỉ
+      vài nhà thầu biết là gói thầu hỏng về mặt pháp lý.
+    wait: 3
+
+  - who: chi
+    text: "lập addendum cho hồ sơ màn hình team AI FDX, gia hạn nộp thầu thêm 10 ngày"
+    wait: 5
+
+  - who: chi
+    text: "duyệt cp3 hồ sơ màn hình team AI FDX"
+    note: >-
+      Có hiệu lực THẬT: email đi tới đúng ba nhà cung cấp đã mời, có biên nhận
+      và message-id; hạn đóng sổ dời thật 10 ngày. Không phải tờ giấy nói đã
+      gia hạn trong khi hệ thống vẫn đóng sổ theo hạn cũ.
+    wait: 5
