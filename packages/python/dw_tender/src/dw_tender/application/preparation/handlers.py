@@ -768,10 +768,14 @@ class ProposeAddendumCommand:
 class ProposePreparationAddendumHandler:
     """Requester-side addendum PROPOSAL (role fix, see ADR-020 discussion).
 
-    The requester (An) never files CP3 paperwork — this only notifies the
-    procurement side (Bình) with a decision card: [Lập addendum & trình CP3]
-    or dismiss. Actual drafting/submission happens with the procurement
-    user's identity via ``SubmitPreparationAddendumHandler``.
+    The requester never files CP3 paperwork — this only notifies the
+    procurement side with a decision card: [Lập addendum & trình CP3] or
+    dismiss. Actual drafting/submission happens with the procurement user's
+    identity via ``SubmitPreparationAddendumHandler``, which enforces that
+    identity itself rather than trusting this routing.
+
+    Who receives the card is read from the role assignment in the database,
+    not named here.
     """
 
     uow_factory: PreparationUnitOfWorkFactory
@@ -869,6 +873,18 @@ class SubmitAddendumCommand:
 
 @dataclass
 class SubmitPreparationAddendumHandler:
+    """Files the addendum as the procuring entity, and only for them.
+
+    An addendum is a formal document sent to everyone who was invited, so the
+    party that issued the invitation is the party that may change it. The chat
+    router already splits on this — a requester's "gia hạn thêm 10 ngày" turns
+    into a proposal, procurement's turns into a filing — but that is routing,
+    and routing is not authorization. Requiring only ``tender.write`` here let
+    the requester reach the same mutation through the decision-card action or
+    the API, because ``tender.write`` is what lets them open a case at all.
+    The scope is the one the router reads, so both resolve from one source.
+    """
+
     uow_factory: PreparationUnitOfWorkFactory
     storage: DocumentStoragePort
     authorization: ScopeAuthorizationService
@@ -883,7 +899,7 @@ class SubmitPreparationAddendumHandler:
     ) -> None:
         await self.authorization.require(
             context=context,
-            action="tender.write",
+            action="approvals.decide",
             resource_type="preparation_addendum",
             resource_id=str(case_id),
         )
