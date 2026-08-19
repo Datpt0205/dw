@@ -271,6 +271,8 @@ class DecisionEngine:
             change = str(proposal.get("change", "")).strip()
             impact = str(proposal.get("impact", "")).strip()
             proposer = str(proposal.get("proposer", "người yêu cầu"))
+            raw_extend = proposal.get("extend_days")
+            extend_days = raw_extend if isinstance(raw_extend, int) and raw_extend > 0 else 0
             # Draft with the SAME pipeline as chat (LLM body + verbatim quote),
             # but under the procurement user's identity — they are the filer.
             markdown = await self.conversation_service._addendum_markdown(
@@ -290,6 +292,7 @@ class DecisionEngine:
                     content=markdown.encode("utf-8"),
                     change_summary=change,
                     impact_summary=impact,
+                    extend_bids_by_days=extend_days,
                 ),
                 context,
             )

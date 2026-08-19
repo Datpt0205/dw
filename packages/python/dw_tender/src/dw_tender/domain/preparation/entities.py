@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
@@ -305,9 +305,22 @@ class PreparationCase:
         self.current_step = "cp3"
         self.version += 1
 
-    def resolve_cp3(self) -> None:
+    def resolve_cp3(self, *, extend_bids_by_days: int = 0) -> None:
+        """Close CP3, and move the register's closing moment if it was extended.
+
+        An approved extension that leaves ``bids_close_at`` alone is a document
+        promising suppliers time the system will not actually give them: the
+        register still closes on the old moment. So the move belongs here, in
+        the same transition — a second mutating call would bump the version
+        twice and be refused by the optimistic lock on save.
+
+        Only the bid-submission window moves. ``deadline`` is when the goods
+        are needed, which an addendum about nộp thầu does not touch.
+        """
         if self.state is not CaseState.CP3_PENDING:
             raise TenderDomainError("case is not waiting for CP3")
+        if extend_bids_by_days > 0 and self.bids_close_at is not None:
+            self.bids_close_at = self.bids_close_at + timedelta(days=extend_bids_by_days)
         self.state = CaseState.PUBLISHED
         self.current_step = "publication"
         self.version += 1

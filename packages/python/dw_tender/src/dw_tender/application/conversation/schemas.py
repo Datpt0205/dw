@@ -113,6 +113,18 @@ class AddendumRequest(BaseModel):
     impact_summary: str = Field(
         default="", description="Ảnh hưởng tới NCC/thời hạn (nếu người dùng nêu)"
     )
+    # Typed on purpose. An extension buried in prose produces a document that
+    # promises suppliers time the register will not actually give them; a
+    # number is something code can apply to the closing moment.
+    extend_bids_by_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=180,
+        description=(
+            "Số NGÀY gia hạn thêm cho hạn NỘP THẦU, chỉ điền khi người dùng nêu rõ "
+            "(vd 'gia hạn thêm 10 ngày' → 10). Không phải thời hạn giao hàng."
+        ),
+    )
 
 
 class SubmissionInfo(BaseModel):

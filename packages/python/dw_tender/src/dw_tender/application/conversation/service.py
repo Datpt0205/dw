@@ -251,7 +251,7 @@ class ConversationIntakeService:
     run_case: RunPreparationHandler | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.11.0"
+    prompt_version: str = "1.12.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 
@@ -1392,7 +1392,13 @@ class ConversationIntakeService:
             impact = (turn.addendum.impact_summary if turn.addendum else "").strip()
             if context.has_scope("approvals.decide") and self.submit_addendum is not None:
                 return await self._draft_addendum(
-                    case_id, change, impact, text, context, display_name
+                    case_id,
+                    change,
+                    impact,
+                    text,
+                    context,
+                    display_name,
+                    extend_days=(turn.addendum.extend_bids_by_days or 0 if turn.addendum else 0),
                 )
             try:
                 await self.propose_addendum.handle(
@@ -1401,6 +1407,9 @@ class ConversationIntakeService:
                         change_summary=change,
                         impact_summary=impact,
                         proposer_name=display_name,
+                        extend_bids_by_days=(
+                            turn.addendum.extend_bids_by_days or 0 if turn.addendum else 0
+                        ),
                     ),
                     context,
                 )
@@ -1620,6 +1629,7 @@ class ConversationIntakeService:
         raw_text: str,
         context: AccessContext,
         display_name: str,
+        extend_days: int = 0,
     ) -> TurnOutcome:
         """Procurement files the addendum itself and sends it to CP3."""
         assert self.submit_addendum is not None
@@ -1641,6 +1651,7 @@ class ConversationIntakeService:
                     content=markdown.encode("utf-8"),
                     change_summary=change,
                     impact_summary=impact,
+                    extend_bids_by_days=extend_days,
                 ),
                 context,
             )

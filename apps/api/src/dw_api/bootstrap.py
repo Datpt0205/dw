@@ -721,6 +721,10 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     authorization=authorization,
                     clock=clock,
                     id_generator=id_generator,
+                    storage=storage,  # type: ignore[arg-type]
+                    email_publisher=_build_email_publisher(),  # type: ignore[arg-type]
+                    recipient_email=os.environ.get("DW_PUBLICATION_EMAIL", "")
+                    or os.environ.get("SMTP_USER", ""),
                 ),
                 uow_factory=preparation_uow_factory,
                 rules=procurement_rules,

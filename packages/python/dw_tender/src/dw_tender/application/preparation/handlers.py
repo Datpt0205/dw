@@ -22,7 +22,10 @@ from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.domain.audit import AuditEvent
 from dw_tender.application.ports import DocumentStoragePort, EmailPublisherPort
 from dw_tender.application.preparation.dto import PreparationCaseView
-from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
+from dw_tender.application.preparation.ports import (
+    PreparationUnitOfWork,
+    PreparationUnitOfWorkFactory,
+)
 from dw_tender.application.preparation.rules import ProcurementRules
 from dw_tender.domain.preparation.entities import (
     ArtifactStatus,
@@ -546,19 +549,7 @@ class RecordPreparationPublicationHandler:
                 content=artifact_content,
                 status=ArtifactStatus.OFFICIAL,
             )
-            # Closing moment = publication + the solicitation window the
-            # approach step derived, which the CP2 gate already checked against
-            # the legal minimum. Missing window (older cases) leaves it unset
-            # and the case simply keeps the old "close when enough arrive".
-            approach = await uow.artifacts.latest(case.id, ArtifactType.PROCUREMENT_APPROACH)
-            window_days = 0
-            if approach is not None:
-                raw_window = approach.content.get("solicitation_window_days")
-                if isinstance(raw_window, int | str):
-                    with contextlib.suppress(TypeError, ValueError):
-                        window_days = int(raw_window)
-            closes_at = recorded_at + timedelta(days=window_days) if window_days > 0 else None
-            case.record_publication(closes_at)
+            case.record_publication(await _bids_close_at(uow, case, recorded_at))
             await uow.cases.save(case)
             await uow.commit()
 
@@ -651,7 +642,7 @@ class AutoPublishPreparationHandler:
                 content=artifact_content,
                 status=ArtifactStatus.OFFICIAL,
             )
-            case.record_publication()
+            case.record_publication(await _bids_close_at(uow, case, recorded_at))
             # P3 trace + next-step guidance: after publication the flow is
             # chat-driven (submissions/CP3/CP4) — without this card the owner
             # has no idea what unlocks the next checkpoint.
@@ -676,8 +667,13 @@ class AutoPublishPreparationHandler:
                             ),
                             "Nhà cung cấp sẽ nộp hồ sơ về bộ phận mua sắm — quản lý "
                             "ghi nhận và mở thầu, mình sẽ báo tiến độ tại đây.",
+                            # This card goes to the REQUESTER, who cannot file
+                            # an addendum — only propose one. Promising to file
+                            # it described what happens for procurement, not
+                            # for the person actually reading the sentence.
                             "Riêng bạn: cần sửa đổi/gia hạn thì nhắn nội dung, "
-                            "mình lập bản sửa đổi trình duyệt.",
+                            "mình chuyển đề nghị sang bộ phận mua sắm — họ lập "
+                            "bản sửa đổi và trình duyệt.",
                         ],
                     },
                 )
@@ -729,6 +725,104 @@ class AutoPublishPreparationHandler:
         return {"message_id": message_id, "sent_to": self.recipient_email}
 
 
+async def _invited_supplier_names(uow: PreparationUnitOfWork, case: PreparationCase) -> str:
+    """Who holds the invitation, read from the shortlist the package went to."""
+    shortlist = await uow.artifacts.latest(case.id, ArtifactType.SUPPLIER_SHORTLIST)
+    rows = shortlist.content.get("shortlist") if shortlist else None
+    names = [
+        str(row.get("name", "")).strip()
+        for row in (rows if isinstance(rows, list) else [])
+        if isinstance(row, dict) and str(row.get("name", "")).strip()
+    ]
+    return ", ".join(names)
+
+
+def _build_addendum_email_body(case: PreparationCase, change: str, impact: str) -> str:
+    """Sent to ONE supplier at a time — never name the others (see RFQ body)."""
+    lines = [
+        "Kính gửi Quý nhà cung cấp,",
+        "",
+        f"Bên mời thầu thông báo SỬA ĐỔI hồ sơ mời thầu gói: {case.title}.",
+        "",
+        "## Nội dung sửa đổi",
+        change or "(không nêu)",
+    ]
+    if impact:
+        lines += ["", "## Ảnh hưởng", impact]
+    if case.bids_close_at is not None:
+        lines += ["", f"## Hạn nộp hồ sơ dự thầu\n{case.bids_close_at:%d/%m/%Y %H:%M} (giờ VN)"]
+    lines += [
+        "",
+        "Sửa đổi này là một phần không tách rời của hồ sơ mời thầu. "
+        "Đề nghị Quý nhà cung cấp cập nhật hồ sơ dự thầu theo nội dung trên.",
+        "",
+        "Trân trọng,",
+        "Bên mời thầu",
+    ]
+    return "\n".join(lines)
+
+
+def _addendum_effect_lines(
+    *,
+    approve: bool,
+    issued: dict[str, str],
+    extend_days: int,
+    closed_before: datetime | None,
+    closes_at: datetime | None,
+) -> list[str]:
+    """What the decision actually did — never what it was supposed to do."""
+    if not approve:
+        return ["Addendum không có hiệu lực; HSMT giữ nguyên."]
+    lines = []
+    if issued.get("issued_to"):
+        lines.append(f"Đã gửi sửa đổi tới: {issued['issued_to']}.")
+    else:
+        lines.append("⚠️ Chưa gửi được tới nhà cung cấp — chưa cấu hình kênh phát hành.")
+    if extend_days > 0 and closes_at is not None and closes_at != closed_before:
+        lines.append(f"Hạn nộp thầu lùi {extend_days} ngày → {closes_at:%d/%m/%Y %H:%M}.")
+    elif extend_days > 0:
+        lines.append(
+            f"Gia hạn {extend_days} ngày đã duyệt, nhưng gói này chưa có mốc đóng sổ để dời."
+        )
+    lines.append("Tiếp tục tiếp nhận hồ sơ dự thầu.")
+    return lines
+
+
+async def _bids_close_at(
+    uow: PreparationUnitOfWork, case: PreparationCase, published_at: datetime
+) -> datetime | None:
+    """Publication plus the solicitation window the approach step derived.
+
+    That window was already checked against the retrieved legal minimum at the
+    CP2 gate, so it is read here rather than recomputed. An older case with no
+    window recorded leaves the moment unset and keeps the previous behaviour.
+
+    Shared because it was not: the manual-evidence path computed it and the
+    auto-email path — the one the demo actually runs — called
+    ``record_publication()`` with no argument at all, so every automatically
+    published case had no closing moment and the register never closed on time.
+
+    The window's owner is ``legal_constraints.applied_window_days`` on the
+    approach artifact, where the node records the number it actually applied
+    after reconciling the method default against the legal minimum it read out
+    of the retrieved passages. Both callers used to look for a top-level
+    ``solicitation_window_days``, which lives in the graph's state and is never
+    written to the artifact — so the lookup silently found nothing every time.
+    """
+    approach = await uow.artifacts.latest(case.id, ArtifactType.PROCUREMENT_APPROACH)
+    if approach is None:
+        return None
+    constraints = approach.content.get("legal_constraints")
+    raw_window = constraints.get("applied_window_days") if isinstance(constraints, dict) else None
+    if not isinstance(raw_window, int | str):
+        return None
+    with contextlib.suppress(TypeError, ValueError):
+        days = int(raw_window)
+        if days > 0:
+            return published_at + timedelta(days=days)
+    return None
+
+
 def _build_rfq_email_body(case: PreparationCase, package: dict[str, Any]) -> str:
     # NOTE: this body is sent to ONE supplier at a time — never list the other
     # invited suppliers here (bidders must not learn who they compete against).
@@ -762,6 +856,8 @@ class ProposeAddendumCommand:
     change_summary: str
     impact_summary: str
     proposer_name: str
+    # Days added to the bid-submission window, when the person named a number.
+    extend_bids_by_days: int = 0
 
 
 @dataclass
@@ -814,6 +910,7 @@ class ProposePreparationAddendumHandler:
                     "change": change[:600],
                     "impact": command.impact_summary.strip()[:400],
                     "proposer": command.proposer_name[:80],
+                    "extend_days": command.extend_bids_by_days,
                 },
                 ensure_ascii=False,
             )
@@ -869,6 +966,8 @@ class SubmitAddendumCommand:
     content: bytes
     change_summary: str
     impact_summary: str
+    # Carried onto the draft so CP3 can apply it without re-reading prose.
+    extend_bids_by_days: int = 0
 
 
 @dataclass
@@ -929,6 +1028,10 @@ class SubmitPreparationAddendumHandler:
                 "document_hash": document.content_hash,
                 "change_summary": command.change_summary.strip(),
                 "impact_summary": command.impact_summary.strip(),
+                # Read back by CP3 to move the closing moment. Stored on the
+                # draft, not re-parsed from prose, so what the approver signs
+                # and what the register does are the same number.
+                "extend_bids_by_days": command.extend_bids_by_days,
                 "submitted_by": str(context.principal_id),
                 "submitted_at": self.clock.now().astimezone(UTC).isoformat(),
             }
@@ -978,10 +1081,26 @@ class SubmitPreparationAddendumHandler:
 
 @dataclass
 class DecidePreparationCp3Handler:
+    """Decides CP3 and, on approval, actually issues the addendum.
+
+    An addendum only means anything once every supplier holding the invitation
+    has it — a change some bidders know about and others do not is exactly the
+    unfairness the instrument exists to prevent. Approval used to write an
+    ``addendum_decision`` artifact and stop there, so the document was an
+    internal record of a decision rather than an amendment to the solicitation.
+
+    Dispatch mirrors publication: same email port, same publication record, so
+    "who was told, when, with what message id" is answered the same way for the
+    original package and for every change to it.
+    """
+
     uow_factory: PreparationUnitOfWorkFactory
     authorization: ScopeAuthorizationService
     clock: UtcClock
     id_generator: IdGenerator
+    storage: DocumentStoragePort | None = None
+    email_publisher: EmailPublisherPort | None = None
+    recipient_email: str = ""
 
     async def handle(
         self,
@@ -1014,14 +1133,25 @@ class DecidePreparationCp3Handler:
             draft = await uow.artifacts.latest(case.id, ArtifactType.ADDENDUM_DRAFT)
             if draft is None:
                 raise DomainError("CP3 has no addendum draft")
+            raw_extend = draft.content.get("extend_bids_by_days")
+            extend_days = raw_extend if isinstance(raw_extend, int) and raw_extend > 0 else 0
+            issued: dict[str, str] = {}
+            if approve:
+                # Send BEFORE recording, exactly as publication does: a record
+                # of an issue that never left the building is worse than none.
+                issued = await self._issue_to_suppliers(
+                    uow=uow, case=case, draft=draft, context=context
+                )
             decision_content: dict[str, Any] = {
                 "decision": "approved" if approve else "rejected",
                 "approval_reference": approval_reference.strip(),
                 "comment": comment.strip(),
                 "addendum_artifact_id": str(draft.id.value),
                 "addendum_hash": draft.content_hash,
+                "extend_bids_by_days": extend_days if approve else 0,
                 "decided_by": str(context.principal_id),
                 "decided_at": self.clock.now().astimezone(UTC).isoformat(),
+                **issued,
             }
             await _add_application_artifact(
                 uow=uow,
@@ -1032,7 +1162,8 @@ class DecidePreparationCp3Handler:
                 content=decision_content,
                 status=ArtifactStatus.APPROVED if approve else ArtifactStatus.DRAFT,
             )
-            case.resolve_cp3()
+            closed_before = case.bids_close_at
+            case.resolve_cp3(extend_bids_by_days=extend_days if approve else 0)
             # P3 trace: tell the owner what was decided.
             await uow.notifications.enqueue(
                 IntakeNotificationJob(
@@ -1056,10 +1187,12 @@ class DecidePreparationCp3Handler:
                         "lines": [
                             f"Tham chiếu phê duyệt: {approval_reference.strip()}.",
                             (comment.strip() or "Không có nhận xét."),
-                            (
-                                "Addendum có hiệu lực — tiếp tục tiếp nhận hồ sơ dự thầu."
-                                if approve
-                                else "Addendum không có hiệu lực; HSMT giữ nguyên."
+                            *_addendum_effect_lines(
+                                approve=approve,
+                                issued=issued,
+                                extend_days=extend_days,
+                                closed_before=closed_before,
+                                closes_at=case.bids_close_at,
                             ),
                         ],
                     },
@@ -1067,6 +1200,74 @@ class DecidePreparationCp3Handler:
             )
             await uow.cases.save(case)
             await uow.commit()
+
+    async def _issue_to_suppliers(
+        self,
+        *,
+        uow: PreparationUnitOfWork,
+        case: PreparationCase,
+        draft: PreparationArtifact,
+        context: AccessContext,
+    ) -> dict[str, str]:
+        """Email the approved addendum to everyone holding the invitation.
+
+        Returns the delivery facts to be stamped onto the decision. An
+        unconfigured publisher returns nothing rather than raising: a
+        deployment without email must still be able to decide CP3, and the
+        empty record is what tells the reader nobody was sent to.
+        """
+        if self.email_publisher is None or self.storage is None or not self.recipient_email:
+            return {}
+        change = str(draft.content.get("change_summary", "")).strip()
+        impact = str(draft.content.get("impact_summary", "")).strip()
+        subject = f"[SỬA ĐỔI HSMT][DW01:{case.id.value}] {case.title}"
+        body = _build_addendum_email_body(case, change, impact)
+        message_id = await self.email_publisher.send(
+            subject=subject, body=body, to=self.recipient_email
+        )
+        sent_at = self.clock.now().astimezone(UTC)
+        document = await _store_source_document(
+            storage=self.storage,
+            id_generator=self.id_generator,
+            case=case,
+            actor=UserId(context.principal_id),
+            kind=DocumentKind.PUBLICATION_RECEIPT,
+            title="Bằng chứng phát hành sửa đổi (email tự động)",
+            filename="addendum_email.txt",
+            content_type="text/plain; charset=utf-8",
+            content=(
+                f"Đã gửi tự động qua email tới {self.recipient_email}\n"
+                f"Message-ID: {message_id}\nThời điểm: {sent_at.isoformat()}\n\n{body}"
+            ).encode(),
+        )
+        await uow.documents.add(document)
+        await _add_application_artifact(
+            uow=uow,
+            id_generator=self.id_generator,
+            case=case,
+            actor=UserId(context.principal_id),
+            artifact_type=ArtifactType.PUBLICATION_RECORD,
+            content={
+                "source_mode": "addendum_email",
+                "channel": "Email công vụ (tự động)",
+                "recipient_summary": await _invited_supplier_names(uow, case)
+                or self.recipient_email,
+                "published_at": sent_at.isoformat(),
+                "external_reference": message_id,
+                "sent_to": self.recipient_email,
+                "receipt_document_id": str(document.id.value),
+                "receipt_hash": document.content_hash,
+                "addendum_artifact_id": str(draft.id.value),
+                "recorded_by": str(context.principal_id),
+                "recorded_at": sent_at.isoformat(),
+            },
+            status=ArtifactStatus.OFFICIAL,
+        )
+        return {
+            "issued_message_id": message_id,
+            "issued_to": await _invited_supplier_names(uow, case) or self.recipient_email,
+            "issued_at": sent_at.isoformat(),
+        }
 
 
 @dataclass(frozen=True)
