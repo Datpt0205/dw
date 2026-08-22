@@ -53,8 +53,10 @@ class OpenAICompatibleAdapter:
         is_reasoner = "reasoner" in route.model or route.model.endswith("-r1")
         if self.structured_mode == "json_object" or is_reasoner:
             schema_hint = (
-                "\n\nTrả về DUY NHẤT một JSON object hợp lệ đúng schema sau, "
-                "không kèm giải thích:\n" + json.dumps(json_schema, ensure_ascii=False)
+                "\n\nTrả về DUY NHẤT một JSON object theo đúng khuôn dưới đây. "
+                "Thay mỗi <...> bằng giá trị thật; giữ nguyên tên field; không "
+                "kèm giải thích:\n"
+                + json.dumps(_schema_as_instruction(json_schema), ensure_ascii=False)
             )
             messages = [
                 {"role": "system", "content": prompt.system + schema_hint},
@@ -112,6 +114,13 @@ class OpenAICompatibleAdapter:
         try:
             message = data["choices"][0]["message"]
             parsed = _extract_json_object(str(message.get("content") or ""))
+            if response_format is None or response_format.get("type") != "json_schema":
+                # Without a decoding constraint a model says "not applicable"
+                # by writing null, including into fields typed as plain
+                # strings. Absent is what it means, and absent is what the
+                # schema's own defaults are for — so the nulls come out and
+                # Pydantic fills the blanks it was always going to fill.
+                parsed = _drop_nulls(parsed)
             usage_data = data.get("usage", {})
         except (KeyError, IndexError, ValueError, json.JSONDecodeError) as exc:
             raise InfrastructureError(
@@ -127,6 +136,103 @@ class OpenAICompatibleAdapter:
             output_tokens=int(usage_data.get("completion_tokens", 0)),
         )
         return parsed, usage, str(reasoning) if reasoning else None
+
+
+def _drop_nulls(value: dict[str, object]) -> dict[str, object]:
+    """Remove nulls, at every depth, leaving the defaults to apply."""
+
+    def prune(node: object) -> object:
+        if isinstance(node, dict):
+            return {k: prune(v) for k, v in node.items() if v is not None}
+        if isinstance(node, list):
+            return [prune(item) for item in node if item is not None]
+        return node
+
+    pruned = prune(value)
+    return pruned if isinstance(pruned, dict) else value
+
+
+def _schema_as_instruction(schema: object) -> object:
+    """A skeleton of the ANSWER, not the schema that describes it.
+
+    Under ``json_schema`` the schema never reaches the model as text — the
+    provider turns it into a decoding constraint. Under ``json_object`` it is
+    pasted into the prompt, and asking for "a JSON object matching this schema"
+    while showing a JSON object gets the schema echoed straight back.
+
+    That is what broke the approval classifier. The model returned
+    ``{"description": ..., "properties": {"decision": {"enum": [...]}}, ...}``
+    — valid JSON, parsed cleanly, and validated cleanly too, because every real
+    field was absent and Pydantic filled its defaults. So an explicit "duyệt
+    cp2 hồ sơ do Lê Thu Hà đề nghị" arrived as ``decision="none"``: not a
+    refusal the model made, a refusal the schema's own defaults invented. No
+    exception, no retry, nothing to see in a log.
+
+    A skeleton removes the ambiguity: there is one object in the instruction
+    and it is shaped like the answer, with placeholders where values go.
+    ``default`` is dropped on the way — it is what the APPLICATION uses when a
+    field is missing, and showing it invites the model to pick it.
+    """
+    if not isinstance(schema, dict):
+        return schema
+    defs = schema.get("$defs")
+    return _placeholder(schema, defs if isinstance(defs, dict) else {})
+
+
+def _placeholder(spec: object, defs: dict[str, object], depth: int = 0) -> object:
+    """One field's slot, described by what may go in it.
+
+    Nested models arrive as ``$ref`` into ``$defs``, and optional ones as an
+    ``anyOf`` of the model and ``null``. Both have to be followed: rendering a
+    nested object as a string slot is an instruction to return a string there,
+    and the model obliges — which is how ``slots``, ``addendum`` and
+    ``submission`` came back as prose and failed validation.
+    """
+    if not isinstance(spec, dict) or depth > 6:
+        return "<giá trị>"
+
+    ref = spec.get("$ref")
+    if isinstance(ref, str):
+        target = defs.get(ref.rsplit("/", 1)[-1])
+        merged = (
+            {**target, **{k: v for k, v in spec.items() if k != "$ref"}}
+            if (isinstance(target, dict))
+            else spec
+        )
+        return _placeholder(merged, defs, depth + 1) if isinstance(target, dict) else "<giá trị>"
+
+    branches = spec.get("anyOf") or spec.get("oneOf")
+    if isinstance(branches, list):
+        concrete = [b for b in branches if not (isinstance(b, dict) and b.get("type") == "null")]
+        nullable = len(concrete) < len(branches)
+        if concrete:
+            inner = _placeholder({**concrete[0], **_carry(spec)}, defs, depth + 1)
+            if nullable and isinstance(inner, str) and inner.endswith(">"):
+                return inner[:-1] + ", hoặc null>"
+            return inner
+        return "<null>"
+
+    if isinstance(spec.get("enum"), list):
+        return "<" + "|".join(str(v) for v in spec["enum"]) + ">"
+
+    nested = spec.get("properties")
+    if isinstance(nested, dict):
+        return {name: _placeholder(inner, defs, depth + 1) for name, inner in nested.items()}
+
+    kind = spec.get("type")
+    if kind == "array":
+        return [_placeholder(spec.get("items"), defs, depth + 1)]
+    if kind == "boolean":
+        return "<true|false>"
+    hint = str(spec.get("description") or "")
+    if kind in {"integer", "number"}:
+        return f"<số — {hint}>" if hint else "<số>"
+    return f"<{hint}>" if hint else f"<{kind or 'giá trị'}>"
+
+
+def _carry(spec: dict[str, object]) -> dict[str, object]:
+    """A description written on the field, not on the branch, still applies."""
+    return {"description": spec["description"]} if "description" in spec else {}
 
 
 def _extract_json_object(content: str) -> dict[str, object]:
