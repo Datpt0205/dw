@@ -40,6 +40,8 @@ IMPORT_TO_DIST = {
     "jwt": "pyjwt",
     "yaml": "pyyaml",
     "langchain_core": "langchain-core",
+    "deepagents": "deepagents",
+    "langchain_openai": "langchain-openai",
     "dw_kernel": "dw-kernel",
     "dw_platform": "dw-platform",
     "dw_agent_runtime": "dw-agent-runtime",

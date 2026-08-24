@@ -191,6 +191,8 @@ forbidden_modules = [
     "alembic",
     "langgraph",
     "langchain",
+    "deepagents",
+    "langchain_openai",
     "qdrant_client",
     "redis",
     "httpx",
@@ -224,6 +226,8 @@ forbidden_modules = [
     "alembic",
     "langgraph",
     "langchain",
+    "deepagents",
+    "langchain_openai",
     "qdrant_client",
     "redis",
     "httpx",
@@ -261,7 +265,13 @@ source_modules = [
     "dw_agent_runtime.context",
     "dw_agent_runtime.model",
 ]
-forbidden_modules = ["langgraph", "langchain_core", "langchain"]
+forbidden_modules = [
+    "langgraph",
+    "langchain_core",
+    "langchain",
+    "deepagents",
+    "langchain_openai",
+]
 
 [[tool.importlinter.contracts]]
 name = "Vector/object-storage SDKs only inside knowledge adapters"

@@ -14,7 +14,15 @@ include .env
 export
 endif
 
-COMPOSE := docker compose --env-file .env -f infra/compose/docker-compose.yml
+# Compose files. The GPU overlay is opt-in: set DW_GPU=1 in .env on a machine
+# with a Turing-or-newer GPU (compute capability >= 7.5) and the NVIDIA
+# container runtime. It swaps tei-embed to the CUDA image and reserves the
+# device; everywhere else (CI included) TEI stays on the CPU image.
+COMPOSE_FILES := -f infra/compose/docker-compose.yml
+ifneq (,$(filter 1 true yes,$(DW_GPU)))
+COMPOSE_FILES += -f infra/compose/docker-compose.gpu.yml
+endif
+COMPOSE := docker compose --env-file .env $(COMPOSE_FILES)
 
 .PHONY: help bootstrap infra-up infra-down dev docker-up docker-down \
         db-migrate db-seed migrate seed lint format typecheck \
@@ -34,8 +42,13 @@ bootstrap: ## Install all Python + Node dependencies and local config
 	@echo ">> bootstrap complete"
 
 # -------------------------------------------------------------------- infra --
+# `up --wait` treats a one-shot container exiting(0) as a failure unless some
+# service declares it a `service_completed_successfully` dependency. In the
+# `infra` profile nothing can depend on minio-setup (api/worker live in `full`),
+# so start everything first, then wait only on the long-running services.
 infra-up: ## Start data plane (Postgres/Qdrant/Valkey/MinIO/Keycloak) in Docker
-	$(COMPOSE) --profile infra up -d --wait
+	$(COMPOSE) --profile infra up -d
+	$(COMPOSE) --profile infra up -d --wait postgres qdrant valkey minio keycloak
 
 infra-down: ## Stop data plane containers (volumes preserved)
 	$(COMPOSE) --profile infra down
@@ -56,7 +69,7 @@ db-seed: ## Seed demo tenants/users/data (idempotent; available from phase 1)
 	@if [ -f scripts/seed_demo.py ]; then \
 		uv run python scripts/seed_demo.py; \
 	else \
-		echo "ERROR: scripts/seed_demo.py arrives in phase 1 (see docs/implementation/IMPLEMENTATION_PLAN.md)"; \
+		echo "ERROR: scripts/seed_demo.py arrives in phase 1 (see docs/adr/ADR-011-phase-mapping.md)"; \
 		exit 1; \
 	fi
 

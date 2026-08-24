@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
-TEST_DB = "dw_test_runtime"
 
 
 def load_env() -> dict[str, str]:
@@ -33,6 +32,12 @@ def load_env() -> dict[str, str]:
         }
     )
     return values
+
+
+# Lab sandbox: tên DB test đọc qua chính load_env() ở trên, nên `make` lẫn
+# `uv run pytest` trần đều thấy — quan trọng vì _recreate_database chạy
+# DROP DATABASE ... WITH (FORCE) đúng trên cái tên này.
+TEST_DB = load_env().get("DW_TEST_RUNTIME_DB_NAME", "dw_test_runtime")
 
 
 @dataclass(frozen=True)

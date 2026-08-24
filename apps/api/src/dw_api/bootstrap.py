@@ -279,7 +279,26 @@ def _build_model_adapters(settings: ApiSettings) -> dict[str, ModelProviderAdapt
             strict_schema=settings.openai_strict_schema,
             breaker=CircuitBreaker(clock=SystemClock(), name="model.openai_responses"),
         )
-    if settings.profile == "production" and "openai_compatible" not in adapters:
+    if settings.fpt_api_key and settings.fpt_base_url:
+        # Second OpenAI-compatible endpoint on its own credentials (FPT Cloud,
+        # GLM-5.2). Chat/completions only: that gateway answers /v1/responses
+        # but returns no reasoning items, so the Responses adapter would cost
+        # stricter schemas for nothing (verified 2026-08-24, see glm.yaml).
+        ensure_allowed_outbound_url(
+            settings.fpt_base_url,
+            allow_private=settings.outbound_allow_private(),
+            allowed_hosts=tuple(settings.outbound_allowed_hosts),
+        )
+        adapters["fpt_openai"] = OpenAICompatibleAdapter(
+            base_url=settings.fpt_base_url,
+            api_key=settings.fpt_api_key,
+            provider="fpt_openai",
+            structured_mode=settings.openai_structured_mode,
+            breaker=CircuitBreaker(clock=SystemClock(), name="model.fpt_openai"),
+        )
+    # "A real provider is wired" is the rule; naming one key would now reject a
+    # deployment that runs entirely on fpt_openai.
+    if settings.profile == "production" and not (adapters.keys() - {"mock"}):
         raise RuntimeError("production requires a real model provider")
     return adapters
 

@@ -126,6 +126,16 @@ class ApiSettings(BaseSettings):
     openai_base_url: str | None = Field(
         default=None, validation_alias=AliasChoices("DW_API_OPENAI_BASE_URL", "OPENAI_BASE_URL")
     )
+    # Second OpenAI-compatible endpoint on its own credentials (FPT Cloud
+    # Marketplace, serving GLM-5.2). Registered as provider ``fpt_openai``
+    # alongside the OPENAI_* pair, so switching model families is one
+    # DW_API_MODEL_PROFILE change rather than a credential swap.
+    fpt_api_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_FPT_API_KEY", "FPT_API_KEY")
+    )
+    fpt_base_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_FPT_BASE_URL", "FPT_BASE_URL")
+    )
 
     # --- hardening ---
     rate_limit_per_minute: int = Field(
