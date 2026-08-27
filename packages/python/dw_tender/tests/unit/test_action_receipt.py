@@ -14,6 +14,8 @@ from __future__ import annotations
 import typing
 import uuid
 
+import pytest
+
 from dw_kernel.errors import ConflictError
 from dw_tender.application.conversation.actions import ACTIONS, mutating_intents, spec_for
 from dw_tender.application.conversation.receipt import (
@@ -23,6 +25,8 @@ from dw_tender.application.conversation.receipt import (
     reply_for,
 )
 from dw_tender.application.conversation.schemas import ChatIntent
+
+pytestmark = pytest.mark.unit
 
 STATES = {
     "published": "đã phát hành, chờ nhà cung cấp nộp",

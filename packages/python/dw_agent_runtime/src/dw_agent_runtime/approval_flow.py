@@ -46,6 +46,10 @@ class ApproveAndResumeService:
         # audit trail is for. Only the boundary knows this; make it say so.
         channel: str,
         approved_action_ids: list[str] | None = None,
+        # Why it was turned down, picked from the domain's closed catalogue.
+        # Optional: channels without a picker (chat replies, older clients)
+        # send nothing and the domain files it under its own fallback.
+        reason_code: str = "",
     ) -> ApprovalRequest:
         await authorization.require(
             context=context,
@@ -106,7 +110,17 @@ class ApproveAndResumeService:
             record = await self.run_store.get(
                 self._run_context_for(context, request.run_id, channel), request.run_id
             )
-            resume_payload: dict[str, Any] = {"approved": approve, "comment": comment}
+            resume_payload: dict[str, Any] = {
+                "approved": approve,
+                "comment": comment,
+                # Who decided. The run resumes as the original requester (see
+                # actor_id below), so without this the graph has no way to tell
+                # the approver apart from the person being approved — and any
+                # record it writes would name the wrong one.
+                "decided_by": str(context.principal_id),
+            }
+            if reason_code.strip():
+                resume_payload["reason_code"] = reason_code.strip()
             if approved_action_ids is not None:
                 resume_payload["approved_action_ids"] = approved_action_ids
             await self.runner.resume(

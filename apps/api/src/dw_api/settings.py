@@ -126,6 +126,45 @@ class ApiSettings(BaseSettings):
     openai_base_url: str | None = Field(
         default=None, validation_alias=AliasChoices("DW_API_OPENAI_BASE_URL", "OPENAI_BASE_URL")
     )
+    # Second OpenAI-compatible endpoint on its own credentials (FPT Cloud
+    # Marketplace, serving GLM-5.2). Registered as provider ``fpt_openai``
+    # alongside the OPENAI_* pair, so switching model families is one
+    # DW_API_MODEL_PROFILE change rather than a credential swap.
+    fpt_api_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_FPT_API_KEY", "FPT_API_KEY")
+    )
+    fpt_base_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_FPT_BASE_URL", "FPT_BASE_URL")
+    )
+
+    # --- legal retrieval source -------------------------------------------
+    # "qdrant" reads the ingested corpus; "web" asks a search engine at the
+    # moment a package is drafted, so the law is current rather than as-ingested.
+    # Only `domain="legal"` moves — internal policy is not on the web and stays
+    # on the corpus either way. Falls back to the corpus with no provider keyed.
+    legal_source: str = Field(default="qdrant", validation_alias=AliasChoices("DW_LEGAL_SOURCE"))
+    # One key per search provider. Every free tier is finite and none of them
+    # renew on the same clock, so the chain is only as long as the keys present:
+    # a provider with no key is dropped at wiring time, not discovered missing
+    # halfway through a drafting run.
+    serper_api_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_SERPER_API_KEY", "SERPER_API_KEY")
+    )
+    brave_api_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_BRAVE_API_KEY", "BRAVE_API_KEY")
+    )
+    tavily_api_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_TAVILY_API_KEY", "TAVILY_API_KEY")
+    )
+    google_cse_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DW_API_GOOGLE_CSE_API_KEY", "GOOGLE_CSE_API_KEY"),
+    )
+    # The Programmable Search Engine id. Useless without the key and vice versa,
+    # so the provider is skipped unless both are set.
+    google_cse_cx: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_GOOGLE_CSE_CX", "GOOGLE_CSE_CX")
+    )
 
     # --- hardening ---
     rate_limit_per_minute: int = Field(

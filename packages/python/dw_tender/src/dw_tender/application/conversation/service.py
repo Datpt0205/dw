@@ -18,7 +18,7 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.ports import ModelRequest, TracedModelGateway
 from dw_kernel.errors import ConflictError, DomainError
 from dw_kernel.ports import IdGenerator, UtcClock
-from dw_knowledge.contracts import SearchQuery
+from dw_knowledge.contracts import EvidenceChunk, SearchQuery
 from dw_knowledge.ports import KnowledgeGatewayPort
 from dw_platform.application.access_context import AccessContext
 from dw_tender.application.conversation.actions import spec_for
@@ -62,6 +62,7 @@ from dw_tender.application.preparation.handlers import (
     SubmitAddendumCommand,
     SubmitPreparationAddendumHandler,
 )
+from dw_tender.application.preparation.rework_wording import blocked_message
 from dw_tender.application.preparation.rules import ProcurementRules
 from dw_tender.domain.preparation.entities import BusinessDomain, ProcurementType
 
@@ -207,6 +208,23 @@ def _fmt_vnd(value: int | None) -> str:
     return f"{value:,}".replace(",", ".") + " VND" if value else "—"
 
 
+def _source_label(chunk: EvidenceChunk, titles: dict[uuid.UUID, str]) -> str:
+    """How one retrieved passage names itself to the model.
+
+    Two kinds of source, two kinds of provenance. A document in the corpus is
+    identified by id and titled from the database. A page fetched from the open
+    web has no row to look up, so it arrives carrying its own name and URL —
+    and the URL is the point: a legal answer a colleague cannot go and check is
+    an assertion, not a citation.
+    """
+    relevance = round(chunk.evidence.relevance_score * 100)
+    if chunk.evidence.source_uri:
+        name = chunk.evidence.source_title or chunk.evidence.source_uri
+        return f"{name}\nURL: {chunk.evidence.source_uri} (liên quan {relevance}%)"
+    title = titles.get(chunk.evidence.source_document_id, "tài liệu")
+    return f"{title} (phiên bản {chunk.evidence.source_version}, liên quan {relevance}%)"
+
+
 @dataclass
 class ConversationIntakeService:
     store: ConversationStorePort
@@ -249,6 +267,11 @@ class ConversationIntakeService:
     knowledge_domain: str = "shared"
     answer_clarifications: AnswerPreparationClarificationsHandler | None = None
     run_case: RunPreparationHandler | None = None
+    # Rework support. Checked the moment the model reads a turn as "I want to
+    # buy something", not at the end of intake: the gate exists to start a
+    # conversation, and making somebody fill in the whole form before saying
+    # "actually, let's talk first" wastes their time and reads as a bait.
+    rework_guard: Any | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
     prompt_version: str = "1.12.0"
@@ -317,6 +340,25 @@ class ConversationIntakeService:
                 context=context,
                 display_name=display_name,
             )
+
+        # Someone whose paperwork keeps coming back is asked for context before
+        # opening anything new. Checked HERE — as soon as the turn reads as a
+        # new request, before a single slot is merged — so the answer arrives
+        # on the first sentence rather than after three rounds of questions.
+        #
+        # Only a NEW request is gated. A conversation that already owns a case
+        # is work in progress and stays open; so does every lifecycle intent.
+        if (
+            turn.intent == "create_request"
+            and self.rework_guard is not None
+            and conversation.state != "case_created"
+        ):
+            blocked = await self.rework_guard.assess(context)
+            if blocked.blocked:
+                return TurnOutcome(
+                    replies=(ChatReply(text=blocked_message(blocked)),),
+                    thinking=model_thinking,
+                )
 
         # "Quay lại vụ laptop" / "đang dở những gì?" — resolve BEFORE any slot
         # from this message is merged, so nothing leaks into the wrong request.
@@ -526,7 +568,18 @@ class ConversationIntakeService:
             pr_content_type="text/markdown; charset=utf-8",
             supplier_names=tuple(slots.supplier_names),
         )
-        case_id = await self.create_case.handle(command, context)
+        try:
+            case_id = await self.create_case.handle(command, context)
+        except ConflictError as exc:
+            # The rework-support gate refused: this person has paperwork coming
+            # back often enough that somebody wants a word first. Its message
+            # already says what happened and how to move — let it through
+            # verbatim rather than dropping to the channel's generic "something
+            # went wrong", which would strand them with no way forward.
+            #
+            # The half-filled conversation is left exactly as it was, so
+            # nothing they typed is lost while this gets sorted out.
+            return TurnOutcome(replies=(ChatReply(text=str(exc)),))
         await self.store.update(
             conversation_id=conversation.id,
             tenant_id=context.tenant_id,
@@ -1086,9 +1139,7 @@ class ConversationIntakeService:
 
         titles = await self._document_titles(context)
         passages = "\n\n".join(
-            f"[{i}] {titles.get(c.evidence.source_document_id, 'tài liệu')} "
-            f"(phiên bản {c.evidence.source_version}, liên quan "
-            f"{round(c.evidence.relevance_score * 100)}%)\n{c.content.strip()}"
+            f"[{i}] {_source_label(c, titles)}\n{c.content.strip()}"
             for i, c in enumerate(chunks, start=1)
         )
         try:
@@ -1096,7 +1147,7 @@ class ConversationIntakeService:
                 ModelRequest(
                     task="conversation.answer_from_evidence",
                     prompt_id="conversation.answer_from_evidence",
-                    prompt_version="1.0.0",
+                    prompt_version="1.1.0",
                     variables={
                         "display_name": display_name or "bạn",
                         "question": question,

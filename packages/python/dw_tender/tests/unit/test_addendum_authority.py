@@ -41,6 +41,8 @@ from dw_tender.domain.preparation.entities import (
 )
 from dw_tender.domain.value_objects.ids import PreparationCaseId
 
+pytestmark = pytest.mark.unit
+
 TENANT = uuid.uuid4()
 WORKSPACE = uuid.uuid4()
 CASE = uuid.uuid4()

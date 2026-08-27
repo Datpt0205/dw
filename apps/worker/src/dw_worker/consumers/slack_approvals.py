@@ -105,6 +105,11 @@ class SlackApprovalConsumer:
                     reason=f"checkpoint no longer pending ({delivery.case_state})",
                 )
                 return
+        # Note for whoever generalises the two checks above: the rework.*
+        # cards must stay exempt. They are attached to a PERSON, not to a case
+        # state — the case_id on the job only records where the card was
+        # raised from. Folding them into a case_state comparison would cancel
+        # every one of them the moment that case moved on.
         slack_user_id = self.user_map.get(delivery.recipient_subject)
         if not slack_user_id:
             await self.store.mark_failed(

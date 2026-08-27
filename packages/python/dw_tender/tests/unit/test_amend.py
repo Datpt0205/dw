@@ -13,6 +13,8 @@ import pytest
 
 from dw_tender.domain.preparation.entities import CaseState
 
+pytestmark = pytest.mark.unit
+
 BEFORE_CP2 = [
     CaseState.DRAFT,
     CaseState.INTAKE_READY,
