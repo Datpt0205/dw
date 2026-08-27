@@ -13,12 +13,16 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from dw_tender.application.conversation.focus import (
     CaseFact,
     DraftFact,
     build_menu,
     resolve,
 )
+
+pytestmark = pytest.mark.unit
 
 AN = uuid.uuid4()
 CHI = uuid.uuid4()

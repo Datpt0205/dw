@@ -16,12 +16,18 @@ from dw_kernel.errors import ConflictError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_platform.adapters.persistence import tables as platform_tables
 from dw_tender.adapters.preparation import tables
+from dw_tender.adapters.preparation.rework_repositories import (
+    SqlExplanationRepository,
+    SqlReworkEventRepository,
+)
 from dw_tender.application.preparation.ports import (
+    ExplanationRepositoryPort,
     IntakeNotificationRepositoryPort,
     PreparationArtifactRepositoryPort,
     PreparationCaseRepositoryPort,
     PreparationDocumentRepositoryPort,
     PreparationUnitOfWork,
+    ReworkEventRepositoryPort,
 )
 from dw_tender.domain.preparation.entities import (
     ArtifactStatus,
@@ -184,6 +190,31 @@ class SqlPreparationCaseRepository:
                 )
                 .order_by(tables.preparation_cases.c.bids_close_at.asc())
                 .limit(20)
+            )
+        ).all()
+        return [_case_from_row(row) for row in rows]
+
+    # Between "the approach has been drafted" and "the package has been opened":
+    # earlier there is no cited article to compare against, later the bids are
+    # in and an addendum — not a warning — is the instrument for a change.
+    _LAW_REVIEW_STATES = (
+        CaseState.APPROACH_READY,
+        CaseState.CP1_PENDING,
+        CaseState.BUILDING_SOLICITATION,
+        CaseState.PACKAGE_READY,
+        CaseState.CP2_PENDING,
+        CaseState.PACKAGE_OFFICIAL,
+        CaseState.PUBLISHED,
+        CaseState.RECEIVING_BIDS,
+    )
+
+    async def list_pending_law_review(self, limit: int = 20) -> list[PreparationCase]:
+        rows = (
+            await self.session.execute(
+                sa.select(tables.preparation_cases)
+                .where(tables.preparation_cases.c.state.in_(self._LAW_REVIEW_STATES))
+                .order_by(tables.preparation_cases.c.updated_at.asc())
+                .limit(limit)
             )
         ).all()
         return [_case_from_row(row) for row in rows]
@@ -394,6 +425,8 @@ class SqlPreparationUnitOfWork:
     documents: PreparationDocumentRepositoryPort
     artifacts: PreparationArtifactRepositoryPort
     notifications: IntakeNotificationRepositoryPort
+    rework_events: ReworkEventRepositoryPort
+    explanations: ExplanationRepositoryPort
 
     def __init__(
         self, session_factory: async_sessionmaker[AsyncSession], tenant_id: TenantId
@@ -410,6 +443,8 @@ class SqlPreparationUnitOfWork:
         self.documents = SqlPreparationDocumentRepository(self._session)
         self.artifacts = SqlPreparationArtifactRepository(self._session)
         self.notifications = SqlIntakeNotificationRepository(self._session)
+        self.rework_events = SqlReworkEventRepository(self._session)
+        self.explanations = SqlExplanationRepository(self._session)
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]

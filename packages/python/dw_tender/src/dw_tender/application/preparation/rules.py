@@ -151,6 +151,39 @@ def approach_gate(
     return GateResult.of(failures)
 
 
+def effective_legal_minimum(
+    drafted_days: int | None, live_days: int | None
+) -> tuple[int | None, str]:
+    """Reconcile the figure a package was drafted against with today's figure.
+
+    A package sits between CP1 and CP2 for days or weeks. Without this the gate
+    enforces whatever the law said when someone started typing.
+
+    Two rules, and both are about refusing to do the tempting thing:
+
+    **Only ever tighten.** If today's sources read shorter than what was drafted
+    and approved, the drafted figure stands. Relaxing an approved deadline on the
+    strength of a search result is not a call a gate gets to make on its own, and
+    a shorter window is the direction that harms bidders.
+
+    **A failed lookup is not a change.** ``live_days is None`` covers an
+    exhausted provider chain, an unreachable source, and an answer that failed
+    verification alike — all of them leave the drafted figure in force. An
+    outage must never be the reason a package cannot be signed.
+
+    Returns the figure to enforce and a note for the failure message, empty
+    unless the law actually moved.
+    """
+    drafted = int(drafted_days or 0)
+    live = int(live_days or 0)
+    effective = max(drafted, live) or None
+    if live > drafted > 0:
+        note = f" Căn cứ tra lại lúc trình CP2 — khi soạn là {drafted} ngày, luật đã thay đổi."
+    else:
+        note = ""
+    return effective, note
+
+
 def solicitation_gate(
     *,
     rules: ProcurementRules,
@@ -161,12 +194,18 @@ def solicitation_gate(
     missing_sections: list[str],
     submission_window_days: int = 0,
     legal_min_window_days: int | None = None,
+    legal_min_note: str = "",
 ) -> GateResult:
     """CP2 gate: is the solicitation package complete, consistent, fair?
 
-    ``legal_min_window_days`` is the RAG-extracted, code-verified minimum
+    ``legal_min_window_days`` is the retrieved, code-verified minimum
     bid-preparation time — when present, a package whose submission window is
     shorter FAILS the gate (the law has teeth, not just a citation).
+
+    ``legal_min_note`` says where that figure came from when it is worth saying.
+    A package can fail here having passed CP1 on the same numbers, and the person
+    reading the failure deserves to know the law moved rather than assume someone
+    typed a deadline wrong.
     """
     failures: list[str] = []
     for section in missing_sections:
@@ -179,6 +218,7 @@ def solicitation_gate(
         failures.append(
             f"Hạn nộp hồ sơ {submission_window_days} ngày ngắn hơn mức tối thiểu "
             f"{legal_min_window_days} ngày theo căn cứ pháp lý đã truy xuất."
+            f"{legal_min_note}"
         )
     if rules.require_mandatory_criteria and not has_mandatory_criteria:
         failures.append("Thiếu tiêu chí bắt buộc (pass/fail).")

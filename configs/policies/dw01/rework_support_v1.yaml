@@ -1,0 +1,123 @@
+# DW01 — Hỗ trợ khi hồ sơ phải chỉnh lại nhiều lần
+#
+# Đây KHÔNG phải cơ chế kỷ luật, và câu chữ tuyệt đối không được nói như vậy.
+# Một hồ sơ bị trả lại vài lần trong tháng thường có nguyên nhân hệ thống:
+# người mới chưa quen mẫu, quy chế vừa đổi, hoặc đầu bài từ bộ phận yêu cầu
+# vốn đã thiếu. Cái đáng làm là phát hiện sớm rồi hỏi xem hỗ trợ được gì —
+# chứ không phải đếm lỗi.
+#
+# Vì thế một lần báo nhầm tốn kém hơn một lần bỏ sót: bị chặn oan giữa lúc gấp
+# hạn thầu thì người ta sẽ tìm cách đi vòng qua hệ thống, và mất luôn cả dữ
+# liệu lẫn thiện chí. Đặt ngưỡng rộng rồi siết dần theo số liệu thật.
+#
+# Đặt ngưỡng ở đây để procurement chỉnh được mà không đụng code.
+# Đổi bất kỳ giá trị nào bên dưới thì PHẢI tăng policy_version — một quyết
+# định chặn trong quá khứ cần truy được về đúng bộ ngưỡng lúc đó.
+
+schema_version: "1.0"
+policy_id: dw01_rework_support
+policy_version: "1.0.0"
+
+# Không hồi tố. Sự kiện trả lại xảy ra TRƯỚC mốc này không được tính vào bất kỳ
+# ngưỡng nào. Bật tính năng mà tính cả lịch sử thì sẽ có người bị chặn ngay
+# sáng đầu tiên vì những lần trả lại từ hồi chưa ai biết cơ chế này tồn tại.
+#
+# Vì sao mốc này đặt TRƯỚC ngày bảng ra đời (26/08/2026): bảng
+# preparation_rework_events được tạo ở migration 0015, nên về mặt vật lý
+# KHÔNG tồn tại bản ghi nào cũ hơn ngày đó — không có gì để hồi tố. Đặt mốc
+# đúng bằng ngày bật sẽ làm cơ chế nằm im suốt 30 ngày đầu và, quan trọng hơn,
+# khiến mọi dữ liệu dựng sẵn cho demo/kiểm thử bị loại lặng lẽ: số đếm hiện ra
+# đúng trong SQL nhưng hệ thống vẫn quyết định "không có gì".
+#
+# Với một hệ thống ĐÃ CHẠY và có lịch sử trả hồ sơ từ trước, hãy đặt lại mốc
+# này về đúng ngày thông báo cho người dùng.
+enabled_from: "2026-08-01T00:00:00+00:00"
+
+# --- Hai cửa sổ trượt, độc lập nhau -----------------------------------------
+# Cửa sổ tính NGƯỢC từ thời điểm hiện tại, không phải tuần lịch / tháng lịch.
+# "3 lần trong 7 ngày" nghĩa là 7×24 giờ vừa qua, chứ không phải từ thứ Hai.
+#
+# Ngưỡng là ĐẠT TỚI (>=), không phải vượt quá: đúng 3 lần là chạm.
+#
+# Đặt cả hai threshold về 0 để TẮT hoàn toàn tính năng — không thẻ, không
+# thông báo, không chặn.
+
+# Chặn mềm: hiện thẻ hỗ trợ và mở form giải trình, nhưng KHÔNG cản trở gì.
+nudge:
+  window_days: 7
+  threshold: 3
+
+# Chặn cứng: từ chối tạo hồ sơ mới và trình hồ sơ lên duyệt, cho tới khi bản
+# giải trình được người có thẩm quyền duyệt. Hồ sơ đang dở vẫn sửa được.
+block:
+  window_days: 30
+  threshold: 5
+
+explanation:
+  # Đủ dài để nói được bối cảnh, đủ ngắn để không thành hình phạt. Khoảng hai
+  # câu. Nâng lên nữa là biến việc xin hỗ trợ thành bài luận.
+  min_chars: 80
+  # Vai trò nhận thông báo và duyệt bản giải trình. Người tạo hồ sơ luôn bị
+  # loại khỏi danh sách nhận (không ai tự duyệt bản của mình).
+  supporter_role: procurement_head
+  # Treo quá lâu thì leo thang lên platform_admin. Người đang bị chặn cứng mà
+  # chờ mãi không ai duyệt là tình huống tệ nhất của cả cơ chế này.
+  escalate_after_hours: 48
+
+# Dùng khi nhóm nguyên nhân nổi trội không có gợi ý riêng, hoặc chưa xác định
+# được nhóm nào nổi trội. Không bao giờ để trống chỗ gợi ý trên thẻ.
+general_guidance: >-
+  Bên mua sắm có mẫu hồ sơ và người hướng dẫn cho từng loại gói. Nhắn cho
+  Trưởng bộ phận mua sắm để được rà cùng trước khi nộp lần sau.
+
+# --- Danh mục nhóm nguyên nhân ----------------------------------------------
+# Danh mục ĐÓNG: người duyệt chọn một mã khi trả hồ sơ, mã lạ bị từ chối.
+#
+# THỨ TỰ khai báo có ý nghĩa: khi hai nhóm cùng số lần xuất hiện cao nhất, hệ
+# thống chọn nhóm đứng trước. Đây là cách giải hoà điểm tất định — xếp theo
+# mức độ hay gặp giảm dần, đừng xếp theo bảng chữ cái.
+#
+# label và guidance là văn bản hiển thị cho người tạo hồ sơ. Viết như đang
+# hướng dẫn một đồng nghiệp, không phải như đang lập biên bản.
+reason_codes:
+  - code: missing_pr_evidence
+    label: "Thiếu căn cứ phê duyệt"
+    guidance: >-
+      Hồ sơ cần đính kèm đề nghị mua sắm đã được duyệt, còn hiệu lực và khớp
+      với nội dung gói. Kiểm tra số hiệu và ngày duyệt trước khi nộp.
+
+  - code: budget_mismatch
+    label: "Ngân sách chưa khớp"
+    guidance: >-
+      Giá trị dự toán trên hồ sơ cần khớp với đề nghị mua sắm và đúng đơn vị
+      tiền tệ. Sai lệch hay gặp nhất là nhập nhầm đơn vị nghìn/triệu đồng.
+
+  - code: supplier_shortfall
+    label: "Chưa đủ nhà cung cấp"
+    guidance: >-
+      Mỗi hình thức lựa chọn nhà thầu có số nhà cung cấp tối thiểu riêng. Xem
+      lại hình thức đang áp dụng rồi bổ sung danh sách cho đủ.
+
+  - code: criteria_issue
+    label: "Tiêu chí đánh giá chưa đạt"
+    guidance: >-
+      Tổng trọng số các tiêu chí phải đúng 100 và phải có tiêu chí bắt buộc
+      dạng đạt/không đạt. Bên mua sắm có bộ tiêu chí mẫu theo từng loại gói.
+
+  - code: timeline_issue
+    label: "Mốc thời gian chưa hợp lệ"
+    guidance: >-
+      Thời hạn nộp hồ sơ phải đủ dài theo quy định hiện hành và thời hạn cần
+      hàng phải khả thi so với thời gian giao. Đối chiếu lại hai mốc này.
+
+  - code: missing_documents
+    label: "Thiếu tài liệu kèm theo"
+    guidance: >-
+      Còn thiếu mục bắt buộc trong bộ hồ sơ. Danh sách mục bắt buộc nằm ngay
+      trên trang hồ sơ, phần kiểm tra trước khi trình.
+
+  - code: other
+    label: "Nội dung khác cần chỉnh"
+    guidance: >-
+      Xem nhận xét của người duyệt ngay trên hồ sơ. Nếu chưa rõ ý, nhắn trực
+      tiếp cho người duyệt để thống nhất trước khi sửa.
