@@ -13,6 +13,15 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# The one question asked about bid-preparation time, wherever it is asked from:
+# the drafting node, the CP2 gate, and the background law watcher. Comparing two
+# answers only means something if the question did not change between them, and
+# it was three hand-copied strings across two packages before this.
+#
+# It also decides a cache key. Same string, same tenant, same day = one paid
+# search instead of three.
+LEGAL_WINDOW_QUERY = "thời gian chuẩn bị hồ sơ dự thầu tối thiểu kể từ ngày phát hành hồ sơ"
+
 
 class LegalConstraintExtraction(BaseModel):
     """Model output: a quantitative constraint copied from the passages."""
@@ -60,6 +69,68 @@ def verified_constraint(
         return None
     return {
         "min_bid_preparation_days": days,
+        "article_ref": extraction.article_ref.strip(),
+        "source_quote": extraction.source_quote.strip(),
+    }
+
+
+def numbered_passages(quotes: list[str]) -> str:
+    """How retrieved passages are presented to the model.
+
+    Numbering is not decoration: the prompt refers to passages by index, and the
+    extraction is only accepted if its quote is found in one of these, so the
+    text handed over must be exactly the text checked against.
+    """
+    return "\n".join(f"[{i}] {p}" for i, p in enumerate(quotes, start=1) if p)
+
+
+class RequiredSectionsExtraction(BaseModel):
+    """Model output: the sections a solicitation package must contain by law."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sections: list[str] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "Tên các mục bắt buộc của HSMT, CHÉP NGUYÊN VĂN cụm từ xuất hiện "
+            "trong trích đoạn. Không diễn giải, không gộp, không thêm mục nào "
+            "trích đoạn không nêu."
+        ),
+    )
+    article_ref: str = Field(default="", description="Số điều/khoản nêu danh mục này")
+    source_quote: str = Field(
+        default="", description="Câu nêu danh mục, chép nguyên văn từ trích đoạn"
+    )
+
+
+def verified_sections(
+    extraction: RequiredSectionsExtraction, passages: list[str]
+) -> dict[str, Any] | None:
+    """Accept the list only if every name in it was actually on the page.
+
+    Same shape of contract as ``verified_constraint``, with one deliberate
+    difference. There, the number had to sit inside the quoted sentence, because
+    a figure is a single claim made in one place. A statutory list of required
+    sections routinely runs across several clauses, so demanding all of it inside
+    one sentence would reject correct extractions. Instead the quote anchors
+    WHICH provision this came from, and every section name must appear verbatim
+    somewhere in the retrieved text.
+
+    What that still forbids is the thing worth forbidding: a model naming a
+    requirement the sources never mentioned.
+    """
+    quote = _norm(extraction.source_quote)
+    names = [name.strip() for name in extraction.sections if name.strip()]
+    if not names or len(quote) < 15:
+        return None
+    if not any(quote in _norm(passage) for passage in passages):
+        return None
+    corpus = " ".join(_norm(passage) for passage in passages)
+    if any(_norm(name) not in corpus for name in names):
+        return None
+    return {
+        "sections": names,
         "article_ref": extraction.article_ref.strip(),
         "source_quote": extraction.source_quote.strip(),
     }

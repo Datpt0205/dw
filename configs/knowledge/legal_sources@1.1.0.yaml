@@ -1,0 +1,302 @@
+schema_version: "1.1"
+source_set_id: vn_procurement_law
+version: "1.1.0"
+
+# Nguồn luật được phép dùng khi tra web thay cho corpus đã ingest.
+#
+# Kết quả tìm kiếm là NỘI DUNG KHÔNG ĐÁNG TIN: bất kỳ ai cũng SEO được một trang
+# viết "thời gian chuẩn bị hồ sơ dự thầu tối thiểu là 90 ngày". Danh sách này là
+# hàng rào CHÍNH, không phải hàng rào phụ — mọi kết quả ngoài danh sách bị loại
+# TRƯỚC khi nội dung tới model, chứ không dựa vào model tự nhận ra nguồn dởm.
+#
+# Fail closed: danh sách rỗng nghĩa là không nguồn nào được nhận, không phải mọi
+# nguồn đều được nhận.
+allowed_domains:
+  # Cổng thông tin văn bản quy phạm pháp luật của Chính phủ — bản gốc
+  - vanban.chinhphu.vn
+  - chinhphu.vn
+  # Cơ sở dữ liệu quốc gia về văn bản pháp luật (Bộ Tư pháp)
+  # Đo 2026-08-26: vbpl.moj.gov.vn không phân giải được tên miền từ mạng chạy
+  # dịch vụ, và www.mpi.gov.vn trả CERTIFICATE_VERIFY_FAILED. Giữ lại vì đây là
+  # bản gốc và cả hai đều có thể là chuyện mạng phía ta; chúng không nằm trong
+  # `search.sites` nên trên thực tế gần như không bao giờ chiếm suất tải trang.
+  - moj.gov.vn
+  # Hệ thống mạng đấu thầu quốc gia (Bộ KH&ĐT) — biểu mẫu, hướng dẫn nghiệp vụ
+  - muasamcong.mpi.gov.vn
+  - mpi.gov.vn
+  # Công báo
+  - congbao.chinhphu.vn
+  # Trang tổng hợp luật, được dùng vì bản gốc thường ở dạng PDF quét khó bóc chữ.
+  # Xếp sau các nguồn trên khi cùng khớp — xem `preferred_order`.
+  - luatvietnam.vn
+  #
+  # HAI nguồn CỐ TÌNH vắng mặt, đo ngày 2026-08-24:
+  #
+  # thuvienphapluat.vn — mọi request trả 403 kể cả khi khai User-Agent trình
+  #   duyệt; trang yêu cầu phiên đăng nhập.
+  # vbpl.vn — dựng nội dung bằng JavaScript. Tải HTML về được 56KB nhưng trong
+  #   đó KHÔNG có lấy một chữ "đấu thầu", không iframe, không frameset.
+  #
+  # Giữ chúng trong danh sách còn tệ hơn bỏ: chúng xếp rất cao cho các truy vấn
+  # này, nên `max_pages_per_query` bị tiêu hết vào trang không đọc được và truy
+  # vấn trả về RỖNG. Đi vòng qua chốt chặn của họ không phải lựa chọn.
+  #
+  # ĐÃ ĐO 2026-08-26, với khoá Tavily hợp lệ — câu trả lời là KHÔNG, cả hai đều
+  # ở nguyên ngoài danh sách. Tavily tìm ra trang (5 kết quả mỗi nguồn) nhưng
+  # `raw_content` về 0 ký tự trên TOÀN BỘ kết quả của cả vbpl.vn lẫn
+  # thuvienphapluat.vn. Tavily crawl bằng HTTP như ta, nên nó vấp đúng hai bức
+  # tường ta đã vấp: JS render, và phiên đăng nhập. Cùng lượt đo đó Tavily trả
+  # 183.283 ký tự cho xaydungchinhsach.chinhphu.vn — nên đây là giới hạn của
+  # nguồn, không phải của Tavily.
+  #
+  # Đo lại khi nào: chỉ khi một trong hai nguồn đổi cách phục vụ, hoặc khi Tavily
+  # công bố có render JS. Không đo lại chỉ vì đã lâu.
+
+# Khi nhiều nguồn cùng trả kết quả, ưu tiên theo thứ tự này (không có trong danh
+# sách thì xếp cuối). Đo 2026-08-24 — thứ tự này đi ngược trực giác và có lý do.
+#
+# luatvietnam.vn xếp đầu vì nó là nguồn DUY NHẤT đo được là mang toàn văn điều
+# khoản (~200k ký tự, có đúng câu "thời gian chuẩn bị hồ sơ dự thầu … tối thiểu
+# là N ngày"). vanban.chinhphu.vn phục vụ HTML tĩnh đọc được bình thường, nhưng
+# các URL trả về cho truy vấn kiểu này là trang MỤC LỤC — bản thân văn bản nằm ở
+# file đính kèm mà ta chưa bóc chữ được (image API không có docling).
+#
+# Ưu tiên một nguồn chỉ vì nó chính thống hơn, trong khi nó không mang nội dung,
+# thì kết quả là truy vấn trả về rỗng.
+#
+# ĐO LẠI 2026-08-26 — có một chỗ đính chính và một nguồn mới lên hạng.
+#
+# luatvietnam.vn: VẪN NGUYÊN, 201.122 ký tự toàn văn Luật 22/2023/QH15, bắt được
+#   "tối thiểu … 18 ngày". (Một lượt đo ngày 25/08 báo trang này còn 5.060 ký tự
+#   và kết luận nguồn đã đổi — SAI: lượt đó đo nhầm một URL bài viết, không phải
+#   trang toàn văn. Chuỗi thật vẫn xếp trang toàn văn ở vị trí #1.)
+#
+# chinhphu.vn LÊN HẠNG HAI, và đây mới là phát hiện đáng giá. Nó phục vụ hai
+#   trang toàn văn đọc được bình thường:
+#     xaydungchinhsach.chinhphu.vn/toan-van-luat-dau-thau…   176.650 ký tự
+#     …/toan-van-nghi-dinh-quy-dinh-chi-tiet…                374.020 ký tự
+#   Trang Nghị định là nguồn DUY NHẤT đo được có "tiêu chí đánh giá" (5 lần) và
+#   "nội dung hồ sơ mời thầu" (5 lần). Bản thân Luật có "tiêu chí đánh giá" 0
+#   LẦN — nghĩa là trước hôm nay, hai node soạn HSMT và soạn tiêu chí không thể
+#   nào tra ra đoạn đúng chủ đề, dù chuỗi chạy hoàn hảo. Chi tiết nằm ở Nghị
+#   định, và Nghị định không có trên nguồn ta đang hỏi.
+#
+# vanban.chinhphu.vn TỤT xuống dưới: cả hai URL nó trả về đều là trang MỤC LỤC
+#   (8.098 và 13.144 ký tự, cả năm neo đều 0 lần). Vẫn giữ trong allowlist vì
+#   nó là bản gốc và có thể trả trang khác cho truy vấn khác — nhưng nó không
+#   còn được dùng để hướng máy tìm kiếm, xem `search.sites`.
+#
+# ⚠ Đổi thứ tự này KHÔNG có tác dụng nếu thiếu bản vá cùng ngày trong
+#   `allowed_hits`/`rank_of`: trước đó allowlist khớp host CHÍNH XÁC, nên ba
+#   dòng `chinhphu.vn`, `moj.gov.vn`, `mpi.gov.vn` chưa từng khớp một kết quả
+#   nào — các cơ quan này không đăng trên tên miền gốc. Máy tìm kiếm trả về
+#   trang đúng, allowlist ném đi, và truy vấn về tay không. Đo trên ba dạng câu
+#   hỏi thật: số đoạn lấy được đi từ 0/0/1 lên 3/6/4.
+preferred_order:
+  - chinhphu.vn
+  - luatvietnam.vn
+  - vanban.chinhphu.vn
+  - congbao.chinhphu.vn
+  - muasamcong.mpi.gov.vn
+
+# --- Định tuyến: câu hỏi loại nào thì hỏi ở đâu ------------------------------
+#
+# web    = chỉ tra trực tuyến
+# corpus = chỉ đọc kho đã ingest trong Qdrant
+# both   = tra cả hai rồi trộn xen kẽ
+#
+# Domain không nêu ở đây mặc định là `corpus` — fail closed: thêm một domain mới
+# thì nó KHÔNG tự động được phép ra Internet.
+#
+# Trước 1.1.0 bảng này là ba `frozenset` nằm trong default của dataclass. Đưa ra
+# đây vì "câu hỏi nào được rời khỏi hệ thống" là quyết định người ta cần đọc
+# được mà không phải mở source, và là công tắc cần vặn được lúc có sự cố (hết
+# quota, hoặc một nguồn bắt đầu trả về rác) mà không phải deploy lại.
+routing:
+  # Luật công khai: đổi theo thời gian, ai cũng đọc được, nên tra lúc hỏi.
+  legal: web
+  # Quy chế mua sắm của công ty. Không có trên Google. Tra ở đó chỉ tốn một lượt
+  # để tìm ra quy chế của người khác.
+  policy: corpus
+  # Hồ sơ nhà thầu nộp lên, RFQ, chào giá — dữ liệu của tenant.
+  tender: corpus
+  # Domain của chat. Người hỏi không biết kho được xếp theo legal/policy/tender
+  # và không cần biết, nên câu hỏi có thể thuộc về bất kỳ ngăn nào.
+  shared: both
+
+# Khi tra trực tuyến không ra kết quả nào, có được trả lời bằng corpus đã ingest
+# không. Bật: căn cứ cũ vẫn hơn không có căn cứ nào — nhưng đoạn lấy từ corpus
+# KHÔNG có `source_uri`, và bên soạn đọc đúng dấu hiệu đó để đánh dấu hồ sơ là
+# "grounded trên bản lưu" rồi in cảnh báo lên thẻ duyệt. Tắt nếu bạn muốn thà
+# không có trích dẫn còn hơn có một trích dẫn có thể đã lỗi thời.
+corpus_fallback: true
+
+# --- Chuỗi nhà cung cấp -----------------------------------------------------
+#
+# THỨ TỰ NÀY LÀ THỨ TỰ THỬ. Luôn bắt đầu từ trên xuống, chỉ chuyển tầng khi tầng
+# trên hỏng, hết lượt, hoặc không trả về nổi một kết quả nào qua được allowlist.
+#
+# Không xoay vòng: rải đều sẽ kéo dài tổng hạn mức free, nhưng cùng một câu hỏi
+# hôm nay và mai sẽ ra căn cứ từ hai chỉ mục khác nhau — và khi có người khiếu
+# nại mốc thời gian dự thầu, "đã hỏi máy tìm kiếm nào" không phải câu hỏi nên có
+# đáp án ngẫu nhiên.
+#
+# Provider thiếu khoá thì bị loại lúc khởi động kèm một dòng log, không phải
+# phát hiện giữa chừng một lượt soạn hồ sơ.
+#
+# HẠN MỨC DƯỚI ĐÂY ĐO NGÀY 2026-08-25, không phải trí nhớ. Thị trường này đổi
+# nhanh — hai trong bốn dòng dưới đã đổi trong sáu tháng — nên khi đọc lại hãy
+# xem ngày trước, và nếu đã quá vài tháng thì đo lại rồi sửa cả comment lẫn ngày.
+providers:
+  # 2.500 lượt cấp MỘT LẦN (không tái tạo), hạn 6 tháng, không cần thẻ.
+  # Đứng đầu vì credit đã có sẵn thì tiêu trước khoản tự tái tạo hằng tháng.
+  - { name: serper, enabled: true }
+
+  # 1.000 credit/tháng, KHÔNG CẦN THẺ — tầng tự tái tạo duy nhất lấy được mà
+  # không phải khai thẻ. Đó là lý do nó đứng trên Brave dù đắt hơn mỗi lượt.
+  # Cộng thêm: nó trả sẵn nội dung trang, nên là cửa duy nhất trong chuỗi này có
+  # cơ đọc được nguồn render bằng JavaScript.
+  - { name: tavily, enabled: true }
+
+  # $5 tín dụng/tháng ≈ 1.000 lượt ở giá $5/1K. CẦN GẮN THẺ.
+  # Brave BỎ free tier tháng 02/2026; thẻ là biện pháp chống gian lận và không
+  # bị trừ tiền ở gói free, nhưng vẫn là thẻ — nên xếp dưới một tầng không đòi gì.
+  # Giữ trong chuỗi vì đây là chỉ mục crawl riêng, không bán lại Google: một
+  # chuỗi chỉ diễn đạt lại cùng một chỉ mục sẽ trả cùng một câu trả lời sai.
+  - { name: brave, enabled: true }
+
+  # TẮT — KHÔNG ĐĂNG KÝ MỚI ĐƯỢC NỮA. Banner trên tài liệu chính thức của Google:
+  #   "The Custom Search JSON API is closed to new customers."
+  # và API ngừng hẳn 01/01/2027. Hạn mức cũ (100 lượt/NGÀY, tự hồi mỗi sáng) vẫn
+  # tốt nếu bạn đã là khách hàng cũ — bật lên và điền GOOGLE_CSE_API_KEY +
+  # GOOGLE_CSE_CX. Adapter giữ lại chính vì trường hợp đó.
+  - { name: google_cse, enabled: false }
+
+  # TẮT. DuckDuckGo không có API trả kết quả web; đường duy nhất là đọc trang
+  # HTML. Không cam kết dịch vụ, markup đổi lúc nào cũng được. Nếu họ chặn thì ta
+  # bỏ, không nguỵ trang để đi vòng.
+  - { name: duckduckgo, enabled: false }
+
+# Nhận 429 (hoặc 403/401 trên tier có đo đếm) thì nghỉ provider đó bao lâu.
+# Khác hẳn circuit breaker: breaker lo "dịch vụ đang ốm" (30s là hồi), còn đây
+# lo "mình hết tiền" — hỏi lại sau 30 giây chỉ tốn thêm một lượt để nhận đúng
+# câu trả lời cũ.
+exhausted_cooldown_seconds: 21600
+
+# Provider trả 200 nhưng không kết quả nào qua được allowlist thì có sang tầng
+# kế không. Bật, vì "không có đoạn nào" nghĩa là không có ràng buộc kiểm chứng
+# được, nghĩa là mốc mặc định lặng lẽ áp dụng — tốn thêm một lượt gọi để tránh
+# một mốc thời gian sai là đáng.
+advance_on_empty: true
+
+search:
+  # gl = quốc gia, hl = ngôn ngữ giao diện. Cả hai đặt VN/vi để kết quả là văn
+  # bản tiếng Việt chứ không phải bài dịch.
+  gl: vn
+  hl: vi
+  num: 10
+  # Hướng máy tìm kiếm về đúng vài nguồn thực sự đọc được, để đỡ tốn lượt lọc
+  # phía ta. KHÔNG phải allowlist — allowlist vẫn lọc mọi thứ trả về.
+  #
+  # Đo 2026-08-24: nêu cả bảy nguồn thì kết quả bị gom gần hết về một site và
+  # truy vấn trả rỗng; bỏ hẳn thì kết quả toàn trang tổng hợp ngoài allowlist và
+  # bị lọc sạch. Hai nguồn là điểm cân bằng đo được.
+  #
+  # Từ 1.1.0 đây là DANH SÁCH HOST, không phải chuỗi `site:a OR site:b` như 1.0.
+  # Cú pháp `site:` là tiếng của Google; Tavily có tham số `include_domains`
+  # riêng và không hiểu nó. Mỗi provider tự dịch danh sách này sang tiếng mình.
+  #
+  # ĐỔI 2026-08-26: vanban.chinhphu.vn -> chinhphu.vn. Đo cho thấy
+  # vanban.chinhphu.vn chỉ trả trang mục lục (0/5 neo trên cả hai URL), nên một
+  # trong hai suất hướng dẫn đang bị tiêu vào chỗ không có nội dung. chinhphu.vn
+  # trả toàn văn cả Luật lẫn NGHỊ ĐỊNH — và Nghị định là nơi duy nhất có phần
+  # "tiêu chí đánh giá"/"nội dung hồ sơ mời thầu" mà hai node soạn đang cần.
+  sites:
+    - luatvietnam.vn
+    - chinhphu.vn
+  # Tavily tính tiền theo độ sâu: "basic" 1 credit, "advanced" 2 credit. Với
+  # hạn mức free 1.000 credit/tháng (đo 2026-08-25) thì đó là chênh lệch giữa
+  # 1.000 lượt và 500 lượt mỗi tháng.
+  #
+  # Để basic vì phần Tavily bóc đoạn hộ ta bị VỨT ĐI: `passages()` tự cắt theo
+  # ranh giới câu, vì `verified_constraint()` đòi câu model chép phải nằm nguyên
+  # văn trong đoạn CHÍNH TA đưa cho model. Thứ duy nhất cần ở Tavily là
+  # `raw_content` — nội dung trang.
+  #
+  # ĐÃ ĐO 2026-08-26 với khoá hợp lệ: "basic" VẪN trả `raw_content` —
+  # 183.283 ký tự cho trang toàn văn Luật, có đủ "thời gian chuẩn bị hồ sơ" (6
+  # lần), "tối thiểu là 18 ngày" và "Điều 45". Giữ "basic": không có lý do trả
+  # gấp đôi credit cho thứ ta đang nhận sẵn.
+  #
+  # Một chi tiết cần biết khi đọc log: chỉ 1 trong 10 kết quả kèm `raw_content`,
+  # chín kết quả còn lại về rỗng. Đó là chuyện bình thường và đã có đường lui —
+  # `SearchHit.content` rỗng thì `PageFetcher` tải trang như với mọi provider
+  # khác. Tavily rút ngắn được một lượt tải, không thay thế nó.
+  tavily_search_depth: basic
+
+  # Ghép vào mọi truy vấn. Hai việc: không có "luật đấu thầu" thì "thời gian
+  # chuẩn bị hồ sơ" ra kết quả tuyển dụng và du học; không có số hiệu + "toàn
+  # văn" thì máy tìm kiếm trả bài BÌNH LUẬN về đấu thầu chứ không phải văn bản
+  # luật, và bài bình luận không có câu nào chép ra để kiểm chứng được.
+  context_terms: "luật đấu thầu 22/2023/QH15 toàn văn"
+
+fetch:
+  # Trang luật thường 200-800KB. Cap chặn cả trang khổng lồ lẫn phản hồi bất
+  # thường; vượt cap thì bỏ trang đó, không cắt giữa chừng.
+  max_bytes: 3000000
+  timeout_seconds: 15
+  # Số trang tải mỗi truy vấn. Đây là nút vặn độ trễ chính: mỗi trang thêm
+  # khoảng 1-3s. 3 trang đủ để có ít nhất một trang bóc được đoạn văn.
+  max_pages_per_query: 3
+  # Chỉ nhận các kiểu nội dung bóc được chữ. PDF không nằm ở đây vì image API
+  # không có docling (đó là extra riêng của worker).
+  accept_content_types:
+    - text/html
+    - application/xhtml+xml
+    - text/plain
+
+passage:
+  # Cửa sổ ký tự quanh từ khoá. Phải đủ rộng để chứa TRỌN CÂU chứa con số —
+  # `verified_constraint()` đòi câu model chép xuất hiện nguyên văn trong đoạn,
+  # nên một đoạn bị cắt giữa câu làm hỏng toàn bộ chuỗi kiểm chứng.
+  window_chars: 1200
+  max_passages_per_page: 3
+  # Từ khoá neo để tìm đoạn đáng lấy trong một trang luật dài.
+  #
+  # `require` là điều kiện PHỤ mà đoạn tìm được qua neo đó phải thoả thêm.
+  # Trước 1.1.0 chỉ có MỘT luật chung: mọi đoạn đều phải chứa "N ngày". Luật đó
+  # viết cho câu hỏi về mốc thời gian nhưng lại chi phối cả ba câu hỏi còn lại,
+  # nên truy vấn về "nội dung hồ sơ mời thầu" hay "tiêu chí đánh giá" chỉ có thể
+  # trả về đoạn nói chuyện deadline — hoặc không trả về gì.
+  #
+  # Neo dạng chuỗi trần (không có `require`) vẫn được hiểu theo luật cũ, để các
+  # file 1.0 không đổi nghĩa.
+  anchors:
+    # Nhóm mốc thời gian — ĐÒI con số, vì trang luật lặp lại đúng cụm này ở
+    # tiêu đề và ở phần dẫn chiếu, và một đoạn tiêu đề thì không chép ra được
+    # câu nào để `verified_constraint()` kiểm.
+    - { text: "thời gian chuẩn bị hồ sơ", require: '\d+\s*ngày' }
+    - { text: "chuẩn bị hồ sơ dự thầu", require: '\d+\s*ngày' }
+    - { text: "đóng thầu", require: '\d+\s*ngày' }
+    - { text: "thời gian đăng tải", require: '\d+\s*ngày' }
+    # Nhóm căn cứ cho hình thức lựa chọn — không đòi con số nào.
+    - { text: "hình thức lựa chọn nhà thầu" }
+    - { text: "đấu thầu rộng rãi" }
+    - { text: "chào hàng cạnh tranh" }
+    - { text: "chỉ định thầu" }
+    - { text: "hồ sơ yêu cầu" }
+    # Nhóm nội dung HSMT (truy vấn ở draft_solicitation_package).
+    - { text: "nội dung hồ sơ mời thầu" }
+    - { text: "năng lực và kinh nghiệm" }
+    - { text: "yêu cầu về kỹ thuật" }
+    # Nhóm tiêu chí chấm điểm (truy vấn ở draft_evaluation_criteria).
+    - { text: "tiêu chí đánh giá" }
+    - { text: "phương pháp đánh giá" }
+
+# Mọi tier free đều hữu hạn. Mỗi hồ sơ bắn 4 truy vấn `legal` (2 ở bước chọn
+# phương án, 1 ở bước soạn HSMT, 1 ở bước tiêu chí) và watcher còn bắn lại định
+# kỳ — nên cache là thứ giữ cho quota sống được. Khoá đã chuẩn hoá khoảng trắng
+# và chữ hoa/thường, và không còn kèm top_k, nên tỉ lệ trúng cao hơn 1.0.
+cache:
+  ttl_seconds: 86400
+  max_entries: 512

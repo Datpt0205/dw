@@ -8,6 +8,8 @@ import pytest
 
 from dw_knowledge.retrieval_eval import RetrievalCase, evaluate_retrieval
 
+pytestmark = pytest.mark.unit
+
 D1 = uuid.uuid4()
 D2 = uuid.uuid4()
 D3 = uuid.uuid4()

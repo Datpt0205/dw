@@ -1,0 +1,113 @@
+schema_version: "1.0"
+source_set_id: vn_procurement_law
+version: "1.0.0"
+
+# Nguồn luật được phép dùng khi tra web thay cho corpus đã ingest.
+#
+# Kết quả Google là NỘI DUNG KHÔNG ĐÁNG TIN: bất kỳ ai cũng SEO được một trang
+# viết "thời gian chuẩn bị hồ sơ dự thầu tối thiểu là 90 ngày". Danh sách này là
+# hàng rào CHÍNH, không phải hàng rào phụ — mọi kết quả ngoài danh sách bị loại
+# TRƯỚC khi nội dung tới model, chứ không dựa vào model tự nhận ra nguồn dởm.
+#
+# Fail closed: danh sách rỗng nghĩa là không nguồn nào được nhận, không phải mọi
+# nguồn đều được nhận.
+allowed_domains:
+  # Cổng thông tin văn bản quy phạm pháp luật của Chính phủ — bản gốc
+  - vanban.chinhphu.vn
+  - chinhphu.vn
+  # Cơ sở dữ liệu quốc gia về văn bản pháp luật (Bộ Tư pháp)
+  - moj.gov.vn
+  # Hệ thống mạng đấu thầu quốc gia (Bộ KH&ĐT) — biểu mẫu, hướng dẫn nghiệp vụ
+  - muasamcong.mpi.gov.vn
+  - mpi.gov.vn
+  # Công báo
+  - congbao.chinhphu.vn
+  # Trang tổng hợp luật, được dùng vì bản gốc thường ở dạng PDF quét khó bóc chữ.
+  # Xếp sau các nguồn trên khi cùng khớp — xem `preferred_order`.
+  - luatvietnam.vn
+  #
+  # HAI nguồn CỐ TÌNH vắng mặt, đo ngày 2026-08-24:
+  #
+  # thuvienphapluat.vn — mọi request trả 403 kể cả khi khai User-Agent trình
+  #   duyệt; trang yêu cầu phiên đăng nhập.
+  # vbpl.vn — dựng nội dung bằng JavaScript. Tải HTML về được 56KB nhưng trong
+  #   đó KHÔNG có lấy một chữ "đấu thầu", không iframe, không frameset. Serper
+  #   /scrape cũng trả 500 trên trang này.
+  #
+  # Giữ chúng trong danh sách còn tệ hơn bỏ: Google xếp chúng rất cao cho các
+  # truy vấn này, nên `max_pages_per_query` bị tiêu hết vào trang không đọc được
+  # và truy vấn trả về RỖNG. Đi vòng qua chốt chặn của họ không phải lựa chọn.
+
+# Khi nhiều nguồn cùng trả kết quả, ưu tiên theo thứ tự này (không có trong danh
+# sách thì xếp cuối). Bản gốc trên cổng chính phủ đáng tin hơn trang tổng hợp.
+# Đo 2026-08-24 — thứ tự này đi ngược trực giác và có lý do.
+#
+# luatvietnam.vn xếp đầu vì nó là nguồn DUY NHẤT đo được là mang toàn văn điều
+# khoản (~200k ký tự, có đúng câu "thời gian chuẩn bị hồ sơ dự thầu … tối thiểu
+# là N ngày"). vanban.chinhphu.vn phục vụ HTML tĩnh đọc được bình thường, nhưng
+# các URL Google trả về cho truy vấn kiểu này là trang MỤC LỤC — bản thân văn
+# bản nằm ở file đính kèm mà ta chưa bóc chữ được (image API không có docling).
+#
+# Ưu tiên một nguồn chỉ vì nó chính thống hơn, trong khi nó không mang nội dung,
+# thì kết quả là truy vấn trả về rỗng.
+preferred_order:
+  - luatvietnam.vn
+  - vanban.chinhphu.vn
+  - congbao.chinhphu.vn
+  - muasamcong.mpi.gov.vn
+
+search:
+  # Serper: gl = quốc gia, hl = ngôn ngữ giao diện. Cả hai đặt VN/vi để kết quả
+  # là văn bản tiếng Việt chứ không phải bài dịch.
+  gl: vn
+  hl: vi
+  num: 10
+  # Ghép vào cuối truy vấn để Google tự thu hẹp trước, đỡ tốn lượt lọc phía ta
+  # và tăng tỉ lệ trang hợp lệ trong 10 kết quả đầu.
+  # Đo 2026-08-24: dạng "A OR B OR C" bị Google gom gần hết về một site, nên chỉ
+  # nêu nguồn thực sự đọc được. Bỏ site_bias ra thì Google trả các trang tổng hợp
+  # ngoài allowlist và mọi kết quả bị lọc sạch.
+  site_bias: "site:luatvietnam.vn OR site:vanban.chinhphu.vn"
+  # Ghép vào mọi truy vấn. Hai việc: không có "luật đấu thầu" thì "thời gian
+  # chuẩn bị hồ sơ" ra kết quả tuyển dụng và du học; không có số hiệu + "toàn
+  # văn" thì Google trả bài BÌNH LUẬN về đấu thầu chứ không phải văn bản luật,
+  # và bài bình luận không có câu nào chép ra để kiểm chứng được.
+  context_terms: "luật đấu thầu 22/2023/QH15 toàn văn"
+
+fetch:
+  # Trang luật thường 200-800KB. Cap chặn cả trang khổng lồ lẫn phản hồi bất
+  # thường; vượt cap thì bỏ trang đó, không cắt giữa chừng.
+  max_bytes: 3000000
+  timeout_seconds: 15
+  # Số trang tải mỗi truy vấn. Đây là nút vặn độ trễ chính: mỗi trang thêm
+  # khoảng 1-3s. 3 trang đủ để có ít nhất một trang bóc được đoạn văn.
+  max_pages_per_query: 3
+  # Chỉ nhận các kiểu nội dung bóc được chữ. PDF không nằm ở đây vì image API
+  # không có docling (đó là extra riêng của worker).
+  accept_content_types:
+    - text/html
+    - application/xhtml+xml
+    - text/plain
+
+passage:
+  # Cửa sổ ký tự quanh từ khoá. Phải đủ rộng để chứa TRỌN CÂU chứa con số —
+  # `verified_constraint()` đòi câu model chép xuất hiện nguyên văn trong đoạn,
+  # nên một đoạn bị cắt giữa câu làm hỏng toàn bộ chuỗi kiểm chứng.
+  window_chars: 1200
+  max_passages_per_page: 3
+  # Từ khoá neo để tìm đoạn đáng lấy trong một trang luật dài.
+  anchors:
+    - "thời gian chuẩn bị hồ sơ"
+    - "chuẩn bị hồ sơ dự thầu"
+    - "hồ sơ yêu cầu"
+    - "đóng thầu"
+    - "hình thức lựa chọn nhà thầu"
+    - "chỉ định thầu"
+    - "chào hàng cạnh tranh"
+    - "đấu thầu rộng rãi"
+
+# Tier free của Serper là 2.500 credit MỘT LẦN. Mỗi hồ sơ bắn 2 truy vấn legal,
+# và watcher còn bắn lại định kỳ — nên cache là thứ giữ cho quota sống được.
+cache:
+  ttl_seconds: 86400
+  max_entries: 512

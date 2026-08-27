@@ -27,6 +27,12 @@ class EvidenceRef(BaseModel):
     start_offset: int | None = Field(default=None, ge=0)
     end_offset: int | None = Field(default=None, ge=0)
     quote: str | None = None
+    # Where a reader could go to check this. The indexed corpus identifies a
+    # document by id and looks its title up in the database; a page fetched from
+    # the open web has no row to look up, so it carries its own name and URL —
+    # and a citation nobody can follow is not a citation.
+    source_title: str | None = None
+    source_uri: str | None = None
     relevance_score: float = Field(ge=0.0, le=1.0)
     classification: Classification
     provenance_hash: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
