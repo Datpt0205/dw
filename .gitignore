@@ -25,6 +25,18 @@ out/
 .env.*
 !.env.example
 
+# Keys and certificates — never commit
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+id_rsa*
+credentials.json
+service-account*.json
+secrets.yaml
+secrets.yml
+
 # IDE / OS
 .idea/
 .vscode/
@@ -32,12 +44,18 @@ out/
 .DS_Store
 Thumbs.db
 
+# Agent/IDE local settings — machine-local, not shared between clones
+.claude/settings.local.json
+
 # Runtime artifacts
 *.log
 .dw/
 evals/reports/*.json
 !evals/reports/.gitkeep
 release-manifest.local.json
+
+# Test artifacts — regenerated on every test run
+.test-tmp-slack/
 
 # Local working docs — not pushed to GitHub
 docs/LLM_BUDGET_*
