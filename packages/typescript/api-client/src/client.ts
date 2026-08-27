@@ -66,6 +66,45 @@ export const preparationNotificationSchema = z.object({
   sent_at: z.string().nullable(),
   last_error: z.string().nullable(),
 });
+export const reworkSupportSchema = z.object({
+  // false = the tally could not be computed. Render nothing; it is NOT an
+  // all-clear, and treating it as one would hide an outage behind a clean page.
+  available: z.boolean(),
+  level: z.enum(["none", "nudge", "block"]),
+  count: z.number(),
+  window_days: z.number(),
+  nudge_count: z.number(),
+  block_count: z.number(),
+  nudge_threshold: z.number(),
+  block_threshold: z.number(),
+  policy_version: z.string(),
+  top_reason_code: z.string().nullable(),
+  top_reason_label: z.string(),
+  // Every sentence comes from the server's wording module. Never assemble
+  // these client-side — the phrasing rules are tested in exactly one place.
+  headline: z.string(),
+  lines: z.array(z.string()),
+  prompt: z.string(),
+  explanation_min_chars: z.number(),
+});
+export type ReworkSupport = z.infer<typeof reworkSupportSchema>;
+
+export const explanationSchema = z.object({
+  id: z.string(),
+  case_id: z.string().nullable(),
+  creator_user_id: z.string(),
+  context_text: z.string(),
+  difficulty_text: z.string(),
+  support_request_text: z.string(),
+  block_count: z.number(),
+  nudge_count: z.number(),
+  top_reason_code: z.string(),
+  policy_version: z.string(),
+  submitted_at: z.string(),
+  status: z.string(),
+});
+export type ReworkExplanation = z.infer<typeof explanationSchema>;
+
 export const preparationCaseSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -563,11 +602,68 @@ export class ApiClient {
 
   rejectPreparationIntake(
     caseId: string,
-    input: { comment: string },
+    input: { comment: string; reason_code?: string },
   ): Promise<{ status: string }> {
     return this.request(
       "POST",
       `/api/v1/procurement/preparation/cases/${caseId}/reject-intake`,
+      actionResponseSchema,
+      { body: input },
+    );
+  }
+
+  /** The caller's own rework-support figures. Never another user's. */
+  getMyReworkSupport(): Promise<ReworkSupport> {
+    return this.request(
+      "GET",
+      "/api/v1/procurement/preparation/rework/me",
+      reworkSupportSchema,
+    );
+  }
+
+  /** People waiting to be unblocked, oldest first. Supporter role only. */
+  listPendingReworkExplanations(): Promise<ReworkExplanation[]> {
+    return this.request(
+      "GET",
+      "/api/v1/procurement/preparation/rework/explanations/pending",
+      z.array(explanationSchema),
+    );
+  }
+
+  submitReworkExplanation(input: {
+    context_text: string;
+    difficulty_text?: string;
+    support_request_text?: string;
+    case_id?: string;
+  }): Promise<{ explanation_id: string }> {
+    return this.request(
+      "POST",
+      "/api/v1/procurement/preparation/rework/explanations",
+      z.object({ explanation_id: z.string() }),
+      { body: input },
+    );
+  }
+
+  decideReworkExplanation(
+    explanationId: string,
+    input: { approve: boolean; comment: string },
+  ): Promise<{ status: string }> {
+    return this.request(
+      "POST",
+      `/api/v1/procurement/preparation/rework/explanations/${explanationId}/decision`,
+      actionResponseSchema,
+      { body: input },
+    );
+  }
+
+  /** Undo a mis-click. The record stays; it just leaves the tally. */
+  voidReworkEvent(
+    eventId: string,
+    input: { reason: string },
+  ): Promise<{ status: string }> {
+    return this.request(
+      "POST",
+      `/api/v1/procurement/preparation/rework/events/${eventId}/void`,
       actionResponseSchema,
       { body: input },
     );

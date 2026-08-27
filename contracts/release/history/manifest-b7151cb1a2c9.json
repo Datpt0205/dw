@@ -12,7 +12,6 @@
       "version": "1.0.0"
     }
   ],
-  "git_sha": "66722b809f33255297d7a0245d0baa3c83aa494d",
   "knowledge_index_version": "2026-07-25.structure-1",
   "knowledge_sources": [
     {
@@ -21,7 +20,7 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "e0890413ffa288ad7223c01bedbed0ca0bf4cfc97f93aa75f4e3c11d399f4e53",
+      "checksum": "f2b5812e33b6cffc3e4a835a453d328212cd8e29bb77b0d2de891c04f8e10b5a",
       "source_set_id": "vn_procurement_law",
       "version": "1.1.0"
     }
@@ -29,16 +28,6 @@
   "memory_policy_version": "1.0.0",
   "platform_version": "0.1.0",
   "policies": [
-    {
-      "checksum": "b70b747c446a4de1029ac32daadba84cbc82d4c52a4cd7eb649a0d47d7bed8d3",
-      "policy_id": "dw01.procurement_rules_v1",
-      "version": "1"
-    },
-    {
-      "checksum": "3231f06eff5239f54f8b59b2425cf49da14a91a156854f3f835a2cfdd43623c8",
-      "policy_id": "dw01.rework_support_v1",
-      "version": "1.0.0"
-    },
     {
       "checksum": "0fd35a9e94c0e47fda5930c8b21e52d27d8d6f774d2ea827bc39a935982a962b",
       "policy_id": "tender_scoring_v1",

@@ -1,7 +1,8 @@
 """Generate the immutable release manifest (blueprint §23).
 
 Collects every versioned artifact — platform, API, workers, graphs, prompt
-bundles, toolsets, policies, knowledge index, eval datasets — plus the git SHA,
+bundles, toolsets, policies, knowledge sources, knowledge index, eval datasets
+— plus the git SHA,
 canonicalizes to JSON and derives a content-addressed reference:
 
     sha256:<hex>          → contracts/release/manifest.json
@@ -79,17 +80,52 @@ def _prompt_bundles() -> list[dict[str, str]]:
 
 
 def _policies() -> list[dict[str, str]]:
+    """Every rule pack under configs/policies, nested directories included.
+
+    The recursive glob matters more than it looks. This used to scan only the
+    top level, which quietly left out ``dw01/procurement_rules_v1.yaml`` — the
+    pack that drives every DW01 gate and approval tier. A release manifest
+    that cannot name the thresholds a decision ran under cannot answer the one
+    question it exists to answer.
+
+    ``policy_id`` keeps the subdirectory so two packs named alike in different
+    folders stay distinguishable.
+    """
     policies = []
-    for path in sorted((REPO_ROOT / "configs" / "policies").glob("*.yaml")):
+    root = REPO_ROOT / "configs" / "policies"
+    for path in sorted(root.rglob("*.yaml")):
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        policy_id = path.relative_to(root).with_suffix("").as_posix().replace("/", ".")
         policies.append(
             {
-                "policy_id": path.stem,
+                "policy_id": policy_id,
                 "version": str(raw.get("policy_version", raw.get("version", "1.0.0"))),
                 "checksum": hashlib.sha256(path.read_bytes()).hexdigest(),
             }
         )
     return policies
+
+
+def _knowledge_sources() -> list[dict[str, str]]:
+    """Source policies — which outside sites may ground a decision.
+
+    Pinned for the same reason the policy pack is. The allowlist in
+    ``legal_sources@*.yaml`` is the fence between "a statute we retrieved" and
+    "whatever ranked first today", and the provider order decides which index
+    answered. A release that cannot say which fence was standing cannot answer
+    the question an auditor actually asks.
+    """
+    sources = []
+    for path in sorted((REPO_ROOT / "configs" / "knowledge").glob("*.yaml")):
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        sources.append(
+            {
+                "source_set_id": str(raw.get("source_set_id", path.stem)),
+                "version": str(raw.get("version", "1.0.0")),
+                "checksum": hashlib.sha256(path.read_bytes()).hexdigest(),
+            }
+        )
+    return sources
 
 
 def _toolsets() -> list[dict[str, str]]:
@@ -136,6 +172,7 @@ def build_manifest() -> dict[str, Any]:
         "toolsets": _toolsets(),
         "policies": _policies(),
         "knowledge_index_version": INDEX_VERSION,
+        "knowledge_sources": _knowledge_sources(),
         "memory_policy_version": MemoryWritePolicy().policy_version,
         "eval_datasets": _eval_datasets(),
     }

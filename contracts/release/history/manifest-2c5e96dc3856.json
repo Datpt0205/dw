@@ -12,7 +12,6 @@
       "version": "1.0.0"
     }
   ],
-  "git_sha": "66722b809f33255297d7a0245d0baa3c83aa494d",
   "knowledge_index_version": "2026-07-25.structure-1",
   "knowledge_sources": [
     {
@@ -21,7 +20,7 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "e0890413ffa288ad7223c01bedbed0ca0bf4cfc97f93aa75f4e3c11d399f4e53",
+      "checksum": "19b19f5c3f2330cc7dc021ad2a5dc7760f84b9c2e64a234365664f0bcfc5ee42",
       "source_set_id": "vn_procurement_law",
       "version": "1.1.0"
     }
@@ -29,16 +28,6 @@
   "memory_policy_version": "1.0.0",
   "platform_version": "0.1.0",
   "policies": [
-    {
-      "checksum": "b70b747c446a4de1029ac32daadba84cbc82d4c52a4cd7eb649a0d47d7bed8d3",
-      "policy_id": "dw01.procurement_rules_v1",
-      "version": "1"
-    },
-    {
-      "checksum": "3231f06eff5239f54f8b59b2425cf49da14a91a156854f3f835a2cfdd43623c8",
-      "policy_id": "dw01.rework_support_v1",
-      "version": "1.0.0"
-    },
     {
       "checksum": "0fd35a9e94c0e47fda5930c8b21e52d27d8d6f774d2ea827bc39a935982a962b",
       "policy_id": "tender_scoring_v1",
@@ -147,19 +136,9 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "6c5001ee6dc8c12c6bdf668326b4cc98012907d720e26a7c61b7bdd754ec4b74",
-      "prompt_id": "preparation.draft_criteria",
-      "version": "1.1.0"
-    },
-    {
       "checksum": "2750dcbe3cf628d67c0bb2340c9980c2746686bea91adefe2216c2939195336d",
       "prompt_id": "preparation.draft_solicitation",
       "version": "1.0.0"
-    },
-    {
-      "checksum": "06332f9500398a3be9c1a823ffb7e553a231818ea5015e7cc04c701f182fba3d",
-      "prompt_id": "preparation.draft_solicitation",
-      "version": "1.1.0"
     },
     {
       "checksum": "d64f00e907f45dbdd361bdba9c66d97118f7c8bf8c4f1fa4fed81155647fdd2b",
@@ -167,19 +146,9 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "4d7dc0468693ac94118eb9e7f0d46c67ab341354c94db796561ae78509b400c1",
-      "prompt_id": "preparation.extract_required_sections",
-      "version": "1.1.0"
-    },
-    {
       "checksum": "2c05e0f269e5eb4120a63c1d66adb6dfb937b0df3a49f334dddd0463059a6151",
       "prompt_id": "preparation.extract_requirements",
       "version": "1.0.0"
-    },
-    {
-      "checksum": "c9a851382f5bf4fd350dbca4bdaaece2cf2d8f4124d2ed0471add58914e5af4e",
-      "prompt_id": "preparation.extract_requirements",
-      "version": "1.1.0"
     },
     {
       "checksum": "881f14b52cc77864b163ef6de85a1e39daf3efe3707e76f9111758512499a49c",
@@ -262,7 +231,7 @@
       "graph_version": "1.0.0",
       "memory_policy_version": "1.0.0",
       "policy_version": "1.0.0",
-      "prompt_bundle_version": "1.1.0",
+      "prompt_bundle_version": "1.0.0",
       "toolset_version": "1.0.0",
       "worker_id": "preparation",
       "worker_version": "1.0.0"

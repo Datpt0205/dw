@@ -923,6 +923,11 @@
             "default": "",
             "title": "Comment",
             "type": "string"
+          },
+          "reason_code": {
+            "default": "",
+            "title": "Reason Code",
+            "type": "string"
           }
         },
         "required": [
@@ -1218,6 +1223,107 @@
           "content_hash"
         ],
         "title": "DocumentView",
+        "type": "object"
+      },
+      "ExplanationDecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "comment": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Comment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approve",
+          "comment"
+        ],
+        "title": "ExplanationDecisionRequest",
+        "type": "object"
+      },
+      "ExplanationView": {
+        "additionalProperties": false,
+        "description": "One pending explanation, as its reviewer sees it.\n\nCarries the author's user id because a reviewer has to know whose queue\nthey are unblocking; the requester-facing ``ReworkSupportView`` carries no\nidentity at all, and the two must not be merged for that reason.",
+        "properties": {
+          "block_count": {
+            "title": "Block Count",
+            "type": "integer"
+          },
+          "case_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Id"
+          },
+          "context_text": {
+            "title": "Context Text",
+            "type": "string"
+          },
+          "creator_user_id": {
+            "format": "uuid",
+            "title": "Creator User Id",
+            "type": "string"
+          },
+          "difficulty_text": {
+            "title": "Difficulty Text",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "nudge_count": {
+            "title": "Nudge Count",
+            "type": "integer"
+          },
+          "policy_version": {
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "support_request_text": {
+            "title": "Support Request Text",
+            "type": "string"
+          },
+          "top_reason_code": {
+            "title": "Top Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "case_id",
+          "creator_user_id",
+          "context_text",
+          "difficulty_text",
+          "support_request_text",
+          "block_count",
+          "nudge_count",
+          "top_reason_code",
+          "policy_version",
+          "submitted_at",
+          "status"
+        ],
+        "title": "ExplanationView",
         "type": "object"
       },
       "FindingView": {
@@ -2083,6 +2189,13 @@
             "minLength": 1,
             "title": "Comment",
             "type": "string"
+          },
+          "reason_code": {
+            "default": "other",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Reason Code",
+            "type": "string"
           }
         },
         "required": [
@@ -2123,6 +2236,100 @@
           "weight"
         ],
         "title": "RequirementView",
+        "type": "object"
+      },
+      "ReworkSupportView": {
+        "additionalProperties": false,
+        "description": "What the support ladder says about the caller.\n\nRendered on the caller's own case page. Deliberately carries no identity\nof any kind — it is only ever built for the person asking about\nthemselves, and a view with a user id on it is one refactor away from\nbeing rendered on somebody else's screen.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "block_count": {
+            "title": "Block Count",
+            "type": "integer"
+          },
+          "block_threshold": {
+            "title": "Block Threshold",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "explanation_min_chars": {
+            "default": 0,
+            "title": "Explanation Min Chars",
+            "type": "integer"
+          },
+          "headline": {
+            "default": "",
+            "title": "Headline",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "lines": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "nudge_count": {
+            "title": "Nudge Count",
+            "type": "integer"
+          },
+          "nudge_threshold": {
+            "title": "Nudge Threshold",
+            "type": "integer"
+          },
+          "policy_version": {
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "prompt": {
+            "default": "",
+            "title": "Prompt",
+            "type": "string"
+          },
+          "top_reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Reason Code"
+          },
+          "top_reason_label": {
+            "default": "",
+            "title": "Top Reason Label",
+            "type": "string"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "available",
+          "level",
+          "count",
+          "window_days",
+          "nudge_count",
+          "block_count",
+          "nudge_threshold",
+          "block_threshold",
+          "policy_version"
+        ],
+        "title": "ReworkSupportView",
         "type": "object"
       },
       "RunResponse": {
@@ -2222,6 +2429,60 @@
           "release_manifest_ref"
         ],
         "title": "RunView",
+        "type": "object"
+      },
+      "SubmitExplanationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "case_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Id"
+          },
+          "context_text": {
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Context Text",
+            "type": "string"
+          },
+          "difficulty_text": {
+            "default": "",
+            "maxLength": 5000,
+            "title": "Difficulty Text",
+            "type": "string"
+          },
+          "support_request_text": {
+            "default": "",
+            "maxLength": 5000,
+            "title": "Support Request Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "context_text"
+        ],
+        "title": "SubmitExplanationRequest",
+        "type": "object"
+      },
+      "SubmitExplanationResponse": {
+        "properties": {
+          "explanation_id": {
+            "format": "uuid",
+            "title": "Explanation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "explanation_id"
+        ],
+        "title": "SubmitExplanationResponse",
         "type": "object"
       },
       "TenderCaseView": {
@@ -2409,6 +2670,22 @@
           "approval_reference"
         ],
         "title": "VerifyIntakeRequest",
+        "type": "object"
+      },
+      "VoidReworkEventRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "VoidReworkEventRequest",
         "type": "object"
       },
       "WorkspaceMembershipModel": {
@@ -3862,6 +4139,201 @@
           }
         },
         "summary": "Verify",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/rework/events/{event_id}/void": {
+      "post": {
+        "description": "Undo a mis-click. The row stays; it just leaves the tally.",
+        "operationId": "void_rework_api_v1_procurement_preparation_rework_events__event_id__void_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidReworkEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Void Rework",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/rework/explanations": {
+      "post": {
+        "operationId": "submit_rework_explanation_api_v1_procurement_preparation_rework_explanations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitExplanationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitExplanationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Rework Explanation",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/rework/explanations/pending": {
+      "get": {
+        "operationId": "pending_explanations_api_v1_procurement_preparation_rework_explanations_pending_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExplanationView"
+                  },
+                  "title": "Response Pending Explanations Api V1 Procurement Preparation Rework Explanations Pending Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Pending Explanations",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/rework/explanations/{explanation_id}/decision": {
+      "post": {
+        "operationId": "decide_rework_explanation_api_v1_procurement_preparation_rework_explanations__explanation_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "explanation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Explanation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExplanationDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Rework Explanation",
+        "tags": [
+          "preparation"
+        ]
+      }
+    },
+    "/api/v1/procurement/preparation/rework/me": {
+      "get": {
+        "description": "The caller's own figures.\n\nNo authorization gate: a person always sees their own, whatever\nrole they hold. Showing somebody else's would be a different\nendpoint with a different gate — this one takes no user id, so it\ncannot be pointed at anyone but the caller.",
+        "operationId": "my_rework_support_api_v1_procurement_preparation_rework_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReworkSupportView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "My Rework Support",
         "tags": [
           "preparation"
         ]
