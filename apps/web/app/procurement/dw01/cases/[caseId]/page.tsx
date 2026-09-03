@@ -30,6 +30,7 @@ import {
   CardHeader,
   CardTitle,
   Input,
+  Select,
   Textarea,
   cn,
 } from "@dw/ui";
@@ -38,10 +39,23 @@ import { DW01_READONLY } from "../../../../../lib/readonly";
 import { apiClient } from "../../../../../lib/session";
 import { TagInput } from "../../../../../components/tag-input";
 import { Modal } from "../../../../../components/modal";
+import { ReworkSupportCard } from "../../../../../components/rework-support-card";
 import { ExecutionTrace } from "./execution-trace";
 import { businessDomainLabel, procurementTypeLabel } from "../../catalog";
 import { ComplianceChecklist } from "../../compliance-checklist";
 import { STATE_BADGE, STEPPER, currentStepIndex, formatVnd } from "../../state";
+
+/** Mirrors reason_codes in configs/policies/dw01/rework_support_v1.yaml.
+ *  Labels only — the server validates the code and owns every other string. */
+const REWORK_REASONS: Array<{ code: string; label: string }> = [
+  { code: "missing_pr_evidence", label: "Thiếu căn cứ phê duyệt" },
+  { code: "budget_mismatch", label: "Ngân sách chưa khớp" },
+  { code: "supplier_shortfall", label: "Chưa đủ nhà cung cấp" },
+  { code: "criteria_issue", label: "Tiêu chí đánh giá chưa đạt" },
+  { code: "timeline_issue", label: "Mốc thời gian chưa hợp lệ" },
+  { code: "missing_documents", label: "Thiếu tài liệu kèm theo" },
+  { code: "other", label: "Nội dung khác cần chỉnh" },
+];
 
 const ARTIFACT_TITLE: Record<string, string> = {
   intake_verification: "Xác minh hồ sơ đầu vào",
@@ -158,6 +172,9 @@ export default function Dw01CaseDetail({
   const [busy, setBusy] = useState(false);
   const [approvalReference, setApprovalReference] = useState("");
   const [verificationComment, setVerificationComment] = useState("");
+  // Which category this return falls under. Recorded so a requester who keeps
+  // hitting the same wall can be shown what it is, instead of a bare count.
+  const [rejectReason, setRejectReason] = useState("other");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [docViewer, setDocViewer] = useState<{
     filename: string;
@@ -263,6 +280,7 @@ export default function Dw01CaseDetail({
     try {
       await apiClient().rejectPreparationIntake(caseId, {
         comment: verificationComment,
+        reason_code: rejectReason,
       });
       toast.success(
         "Đã từ chối intake và xếp hàng thông báo Slack cho người tạo.",
@@ -784,13 +802,30 @@ export default function Dw01CaseDetail({
                 >
                   <FileCheck2 /> Xác nhận hồ sơ
                 </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => void rejectIntake()}
-                  disabled={busy || !verificationComment.trim()}
-                >
-                  <XCircle /> Từ chối và báo An
-                </Button>
+                <div className="space-y-2 rounded-lg border p-3">
+                  <p className="text-sm font-medium">Nếu trả hồ sơ về</p>
+                  <Select
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                  >
+                    {REWORK_REASONS.map((reason) => (
+                      <option key={reason.code} value={reason.code}>
+                        {reason.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Chọn nhóm gần đúng nhất — dùng để gợi ý hỗ trợ cho người tạo
+                    hồ sơ, không dùng để đánh giá ai.
+                  </p>
+                  <Button
+                    variant="destructive"
+                    onClick={() => void rejectIntake()}
+                    disabled={busy || !verificationComment.trim()}
+                  >
+                    <XCircle /> Từ chối và báo An
+                  </Button>
+                </div>
               </>
             ) : (
               <p className="text-sm text-muted-foreground">
@@ -870,6 +905,12 @@ export default function Dw01CaseDetail({
           </div>
         </Alert>
       )}
+
+      {/* Support offer, when this person's recent cases have been coming back.
+          Renders nothing at all unless a threshold was crossed. Placed above
+          the clarification form so the context is read before the fixing
+          starts — and it never blocks that form. */}
+      <ReworkSupportCard caseId={caseId} />
 
       {!DW01_READONLY &&
         data.state === "waiting_clarification" &&

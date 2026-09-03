@@ -12,6 +12,8 @@ from dw_tender.domain.exceptions import TenderDomainError
 from dw_tender.domain.preparation.entities import CaseState, PreparationCase
 from dw_tender.domain.value_objects.ids import PreparationCaseId
 
+pytestmark = pytest.mark.unit
+
 
 def _case() -> PreparationCase:
     return PreparationCase(

@@ -35,6 +35,18 @@ def _reply_hint(message: SlackApprovalMessage) -> str:
             "👉 Trả lời: «lập addendum <nội dung sửa đổi>» để lập và trình CP3, "
             "hoặc «bỏ qua addendum»."
         )
+    if event == "law.change_detected":
+        # No verb here on purpose. Nothing was undone and nothing is owed — the
+        # card reports a fact, and offers the amendment path for whoever decides
+        # the fact matters.
+        return "👉 Muốn áp mốc mới: «sửa hồ sơ <tên> thời hạn <số> ngày»."
+    if event == "rework.support_offered":
+        # Nothing is owed and nothing is blocked. The verb is an offer.
+        return "👉 Cần hỗ trợ thì mở hồ sơ và mô tả giúp phần đang vướng nhé."
+    if event == "rework.support_required":
+        return "👉 Mở hồ sơ để xem phần mô tả bối cảnh và trao đổi giúp."
+    if event == "rework.explanation_escalated":
+        return "👉 Nhờ bạn phân công người xem giúp phần mô tả này."
     return ""
 
 

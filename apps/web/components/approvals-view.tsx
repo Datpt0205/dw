@@ -27,6 +27,7 @@ import { EmptyState } from "./empty-state";
 import { PageHeading } from "./page-heading";
 import { PendingIntakeVerification } from "./pending-intake";
 import { PendingCp3Decision } from "./pending-cp3";
+import { PendingExplanations } from "./pending-explanations";
 import { useAuth } from "../lib/auth/auth-context";
 import { DW01_READONLY } from "../lib/readonly";
 import { apiClient } from "../lib/session";
@@ -170,6 +171,9 @@ export function ApprovalsView({
 
       <PendingIntakeVerification />
       <PendingCp3Decision />
+      {/* People blocked from filing until somebody reads what they wrote.
+          Renders nothing unless this account holds the supporting role. */}
+      <PendingExplanations />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       {approvals === null && !error && (

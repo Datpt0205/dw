@@ -31,6 +31,11 @@ class DecisionRequest(BaseModel):
     approve: bool
     comment: str = ""
     approved_action_ids: list[str] | None = None
+    # Which of the domain's reason categories applies when turning a
+    # checkpoint down. Optional here on purpose: making it required would
+    # break every existing client and the chat channels, which have no picker
+    # yet. An unrecognised value is still refused downstream.
+    reason_code: str = ""
 
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
@@ -107,6 +112,7 @@ async def decide(
         authorization=container.authorization,
         channel="web",
         approved_action_ids=body.approved_action_ids,
+        reason_code=body.reason_code,
     )
     return ApprovalView(
         id=request.id,

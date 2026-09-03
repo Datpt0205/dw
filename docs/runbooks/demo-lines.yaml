@@ -4,6 +4,11 @@
 #
 #   bash scripts/demo_reset.sh && bash scripts/seed_demo_cases.sh
 #
+# PHẠM VI: file này phủ CẢNH 1-9 (mạch Zalo đã kiểm 16/16). Cảnh 10-11 — hồ sơ
+# bị trả lại nhiều lần — KHÔNG nằm ở đây: nó cần một bước gieo dữ liệu giữa
+# buổi và phần lớn diễn ra trên web, nên được dẫn tay theo demo-script.md.
+# Đừng thêm câu chưa quay thử vào đây; con số 16/16 ở trên là một lời cam kết.
+#
 # `who`   — which Zalo account sends it (an | chi)
 # `scene` — printed as a header when a new one starts
 # `note`  — the talking point, shown to the presenter while the reply lands

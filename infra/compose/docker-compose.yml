@@ -43,7 +43,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./init/init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     networks: [dw-internal, dw-edge]
     healthcheck:
       test:
@@ -275,6 +275,28 @@ services:
       DW_API_OPENAI_STRUCTURED_MODE: ${DW_API_OPENAI_STRUCTURED_MODE:-json_schema}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      # Second OpenAI-compatible endpoint (FPT Cloud / GLM-5.2), registered as
+      # provider `fpt_openai`. Selected by DW_API_MODEL_PROFILE=glm.
+      FPT_API_KEY: ${FPT_API_KEY:-}
+      FPT_BASE_URL: ${FPT_BASE_URL:-}
+      # Legal retrieval: "web" asks Google (Serper) when a package is drafted so
+      # the law is current; "qdrant" reads the ingested corpus. Internal policy
+      # stays on the corpus either way.
+      # Uvicorn leaves the root logger at WARNING, which silently discarded
+      # everything the background loops log — mailroom, Zalo poller, law watch,
+      # and which sites a legal question was answered from.
+      DW_LOG_LEVEL: ${DW_LOG_LEVEL:-INFO}
+      DW_LEGAL_SOURCE: ${DW_LEGAL_SOURCE:-qdrant}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      GOOGLE_CSE_API_KEY: ${GOOGLE_CSE_API_KEY:-}
+      GOOGLE_CSE_CX: ${GOOGLE_CSE_CX:-}
+      # Re-reads the law under packages still waiting to be signed and tells the
+      # approver when it moved. Idle unless DW_LEGAL_SOURCE=web — against a
+      # static corpus the answer cannot change.
+      DW_LAW_WATCH_ENABLED: ${DW_LAW_WATCH_ENABLED:-false}
+      DW_LAW_WATCH_INTERVAL_SECONDS: ${DW_LAW_WATCH_INTERVAL_SECONDS:-21600}
       DW_TASK_CONNECTOR: ${DW_TASK_CONNECTOR:-mock}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       SLACK_DEFAULT_CHANNEL: ${SLACK_DEFAULT_CHANNEL:-}
@@ -330,6 +352,8 @@ services:
       - "127.0.0.1:8000:8000"
     networks: [dw-internal, dw-edge]
     depends_on:
+      minio-setup:
+        condition: service_completed_successfully
       seed:
         condition: service_completed_successfully
       postgres:
@@ -380,6 +404,8 @@ services:
       DW_PUBLIC_WEB_URL: ${DW_PUBLIC_WEB_URL:-http://localhost:3000}
     networks: [dw-internal, dw-edge]
     depends_on:
+      minio-setup:
+        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
       postgres:

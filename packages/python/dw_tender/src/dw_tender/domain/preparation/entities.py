@@ -97,6 +97,9 @@ class ArtifactType(StrEnum):
     ADDENDUM_DRAFT = "addendum_draft"
     ADDENDUM_DECISION = "addendum_decision"
     SUBMISSION_REGISTER = "submission_register"
+    # One law re-check of a waiting case: what was cited when it was drafted,
+    # what the sources say now, and whether those differ.
+    LAW_REVIEW = "law_review"
     BID_OPENING_RECORD = "bid_opening_record"
     EVALUATION_HANDOFF = "evaluation_handoff"
     # P5: independent review agent's recommendation for a checkpoint. The agent

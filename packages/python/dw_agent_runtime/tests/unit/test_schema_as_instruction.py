@@ -17,9 +17,12 @@ from __future__ import annotations
 
 from typing import Literal
 
+import pytest
 from pydantic import BaseModel, Field
 
 from dw_agent_runtime.adapters.openai_compatible import _drop_nulls, _schema_as_instruction
+
+pytestmark = pytest.mark.unit
 
 
 class _Decision(BaseModel):

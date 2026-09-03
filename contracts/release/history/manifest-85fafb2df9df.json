@@ -1,0 +1,280 @@
+{
+  "api_version": "0.1.0",
+  "eval_datasets": [
+    {
+      "checksum": "d79bd1c00603cfdbff8b60fc6257ca5b2935a8b3f957f81ac473e3e87608873d",
+      "dataset_id": "tender_smoke",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "74c2c52fd86a88f40f30e28f81f5b78b5c1d0932d876230562801c508cb42ab7",
+      "dataset_id": "work_ops_smoke",
+      "version": "1.0.0"
+    }
+  ],
+  "knowledge_index_version": "2026-07-25.structure-1",
+  "knowledge_sources": [
+    {
+      "checksum": "298c8f8c31e9444bae345fb951baedfe958667006c330346cb64d55e5edd33b7",
+      "source_set_id": "vn_procurement_law",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "e0890413ffa288ad7223c01bedbed0ca0bf4cfc97f93aa75f4e3c11d399f4e53",
+      "source_set_id": "vn_procurement_law",
+      "version": "1.1.0"
+    }
+  ],
+  "memory_policy_version": "1.0.0",
+  "platform_version": "0.1.0",
+  "policies": [
+    {
+      "checksum": "0fd35a9e94c0e47fda5930c8b21e52d27d8d6f774d2ea827bc39a935982a962b",
+      "policy_id": "tender_scoring_v1",
+      "version": "1.0.0"
+    }
+  ],
+  "prompt_bundles": [
+    {
+      "checksum": "01e05906a4a42faf12b3922242cbfafc15b2f2fc8a0108baad033fdef7f993a1",
+      "prompt_id": "conversation.answer_about_case",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "95573ae06171d2f335de9a015e9c595ffd40d8e8da01f386d1cb8baa2e228f2b",
+      "prompt_id": "conversation.answer_from_evidence",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "12c5d2f1f2b9ca7141c757aeb31d99aaa14b7c1cd3e5dc7383d7d4645e1787da",
+      "prompt_id": "conversation.answer_from_evidence",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "970fa582933db9e317c4b3088841a1086983a53b3797869f5011a14943614d30",
+      "prompt_id": "conversation.clarify_answers",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "85327eab477c6a4ee6157f415fb2116379b31d0ec3031855bf88c0a670169ca0",
+      "prompt_id": "conversation.compose_reply",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "a0a31d37b968a92456e1906f95c20aeb7e0baf9601b59c853a50f6064b147d97",
+      "prompt_id": "conversation.decision_intent",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "53ceabcf5fc90fee955a26ffd1265b77f4dfff3c754956b3d442703d8ac66b3d",
+      "prompt_id": "conversation.draft_addendum",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "2f2f4a397d840576f29e3903eea6c15f66f7c8ab43e77337b5eaa97a217a4942",
+      "prompt_id": "conversation.intake_chat",
+      "version": "1.10.0"
+    },
+    {
+      "checksum": "f2c1f414b3ea620a79acc3c2c22a2599f569fb03aa5807c38554466eb49dbc9a",
+      "prompt_id": "conversation.intake_chat",
+      "version": "1.11.0"
+    },
+    {
+      "checksum": "aebfe9fd92714b6ff44d351cfe2b3b63341547cbbfddf79318d5f3c37d8e482e",
+      "prompt_id": "conversation.intake_chat",
+      "version": "1.12.0"
+    },
+    {
+      "checksum": "d8466806364f826025366d539b18fcb62736803d394f3b358e8dcc02f6793a85",
+      "prompt_id": "conversation.intake_chat",
+      "version": "1.3.0"
+    },
+    {
+      "checksum": "69d19163a2921ce1d11b25a9edca775ed5eb5b34fed94600ec45775f5d44b1b5",
+      "prompt_id": "conversation.intake_chat",
+      "version": "1.4.0"
+    },
+    {
+      "checksum": "27eac70fdd08880b7de38774cc558403187ad1f1fc23738a61d54226c38720e9",
+      "prompt_id": "conversation.intake_chat",
+      "version": "1.5.0"
+    },
+    {
+      "checksum": "3836c738f1c357a5f7a00fa7d9436d18052adf3651ac42e6ef5890526e36dd50",
+      "prompt_id": "conversation.intake_chat",
+      "version": "1.6.0"
+    },
+    {
+      "checksum": "ddc2bdeef4af9ad165d44bf3e9f9f0020ae0ee345a5accadea42fc35d06ffba5",
+      "prompt_id": "conversation.intake_chat",
+      "version": "1.7.0"
+    },
+    {
+      "checksum": "84e3872f015006048238b98cc04f0c7c5aa06058a0f547cc962808ed189ee808",
+      "prompt_id": "conversation.intake_chat",
+      "version": "1.8.0"
+    },
+    {
+      "checksum": "ab34a1ca50d86c677441921c71cc5046b4bc9dbbc3467224538b1f2494114136",
+      "prompt_id": "conversation.intake_chat",
+      "version": "1.9.0"
+    },
+    {
+      "checksum": "2bc72c1bb967a9ccde9b0bfa263b99b0face627174648aa0b27431d87c1409f5",
+      "prompt_id": "conversation.summarize_cases",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "0e7db2c19c6195f736ea6116e20762aceecd28f8fdfb9b237c12b22484b52726",
+      "prompt_id": "conversation.summarize_cases",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "b254e2926adbcdef3cac6f49d413b5b7aa06c348f4355bd06f37a0e0a75b563e",
+      "prompt_id": "preparation.draft_criteria",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "6c5001ee6dc8c12c6bdf668326b4cc98012907d720e26a7c61b7bdd754ec4b74",
+      "prompt_id": "preparation.draft_criteria",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "2750dcbe3cf628d67c0bb2340c9980c2746686bea91adefe2216c2939195336d",
+      "prompt_id": "preparation.draft_solicitation",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "06332f9500398a3be9c1a823ffb7e553a231818ea5015e7cc04c701f182fba3d",
+      "prompt_id": "preparation.draft_solicitation",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "d64f00e907f45dbdd361bdba9c66d97118f7c8bf8c4f1fa4fed81155647fdd2b",
+      "prompt_id": "preparation.extract_legal_constraints",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "4d7dc0468693ac94118eb9e7f0d46c67ab341354c94db796561ae78509b400c1",
+      "prompt_id": "preparation.extract_required_sections",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "2c05e0f269e5eb4120a63c1d66adb6dfb937b0df3a49f334dddd0463059a6151",
+      "prompt_id": "preparation.extract_requirements",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "c9a851382f5bf4fd350dbca4bdaaece2cf2d8f4124d2ed0471add58914e5af4e",
+      "prompt_id": "preparation.extract_requirements",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "881f14b52cc77864b163ef6de85a1e39daf3efe3707e76f9111758512499a49c",
+      "prompt_id": "preparation.redteam_solicitation",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "9e1afc2d4279e224ac1262a77a6e006efcd87627d9b573345d1c9c539a8d81a3",
+      "prompt_id": "preparation.review_checkpoint",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "b98dc93275d09ed1808edc27ce4bbb52ce8bfc690143b0e09a679f327c8d3455",
+      "prompt_id": "tender.assess_compliance",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "ba09fa18eab2a2b076ea8dae4a5a970b91575046a9fa5bbd4b2d1ae4c11d8de5",
+      "prompt_id": "tender.draft_recommendation",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "7ff6b171b9852825cd699ab8aa1046ad600d2c301e9040febb84dd164a7e0a8c",
+      "prompt_id": "tender.extract_requirements",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "fddca607937308f8495a76ddbf5a7986976a05511a3e4e94630d2a1f71325052",
+      "prompt_id": "work_ops.analyze_meeting",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "0b1a0b84d65409c3f3cb612584d5c5b3f89705291fec1b7393a86fbc5958a720",
+      "prompt_id": "work_ops.analyze_meeting",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "31667fdacfa0c166890f152b965f7177b8011cf9e04aa27dd9bdec23193af91f",
+      "prompt_id": "work_ops.extract_actions",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "002f34c594184661821adbff2ececc5c5441ef570fba6c60c55819333081367d",
+      "prompt_id": "work_ops.extract_actions",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "5a83a483ecaa25631110a6965dede1df7aacd7b5de257dd62eef4bf01426c273",
+      "prompt_id": "work_ops.extract_decisions",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "9e79a7c1f3fd182782b4a3e5e3ade449ddd995081167960bb3991336ff2207e2",
+      "prompt_id": "work_ops.extract_decisions",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "0efc412cfd45f46a62c6205715f0f70c633c2e7595aa9447510cacc88530fc00",
+      "prompt_id": "work_ops.summarize",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "41b2ecca386d6581c4f7bb272c4edd26429350619521afc41f6d647a45211c08",
+      "prompt_id": "work_ops.summarize",
+      "version": "1.1.0"
+    }
+  ],
+  "schema_version": "1.0",
+  "toolsets": [
+    {
+      "approval_policy": "always",
+      "side_effect_level": "external",
+      "tool": "task.create_external",
+      "version": "1.0.0"
+    }
+  ],
+  "workers": [
+    {
+      "autonomy_level": "A2",
+      "graph_version": "1.0.0",
+      "memory_policy_version": "1.0.0",
+      "policy_version": "1.0.0",
+      "prompt_bundle_version": "1.1.0",
+      "toolset_version": "1.0.0",
+      "worker_id": "preparation",
+      "worker_version": "1.0.0"
+    },
+    {
+      "autonomy_level": "A2",
+      "graph_version": "1.0.0",
+      "memory_policy_version": "1.0.0",
+      "policy_version": "1.0.0",
+      "prompt_bundle_version": "1.0.0",
+      "toolset_version": "1.0.0",
+      "worker_id": "tender",
+      "worker_version": "1.0.0"
+    },
+    {
+      "autonomy_level": "A2",
+      "graph_version": "1.1.0",
+      "memory_policy_version": "1.0.0",
+      "policy_version": "1.0.0",
+      "prompt_bundle_version": "1.0.0",
+      "toolset_version": "1.0.0",
+      "worker_id": "work_ops",
+      "worker_version": "1.1.0"
+    }
+  ]
+}

@@ -12,8 +12,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from dw_tender.adapters.preparation.rules_loader import load_procurement_rules
 from dw_tender.application.preparation.repeat_purchase import PastPurchase, find_repeat
+
+pytestmark = pytest.mark.unit
 
 RULES = load_procurement_rules(
     Path(__file__).resolve().parents[5]

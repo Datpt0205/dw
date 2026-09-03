@@ -557,6 +557,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/procurement/preparation/rework/events/{event_id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Void Rework
+         * @description Undo a mis-click. The row stays; it just leaves the tally.
+         */
+        post: operations["void_rework_api_v1_procurement_preparation_rework_events__event_id__void_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/rework/explanations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Rework Explanation */
+        post: operations["submit_rework_explanation_api_v1_procurement_preparation_rework_explanations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/rework/explanations/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pending Explanations */
+        get: operations["pending_explanations_api_v1_procurement_preparation_rework_explanations_pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/rework/explanations/{explanation_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Rework Explanation */
+        post: operations["decide_rework_explanation_api_v1_procurement_preparation_rework_explanations__explanation_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/procurement/preparation/rework/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Rework Support
+         * @description The caller's own figures.
+         *
+         *     No authorization gate: a person always sees their own, whatever
+         *     role they hold. Showing somebody else's would be a different
+         *     endpoint with a different gate — this one takes no user id, so it
+         *     cannot be pointed at anyone but the caller.
+         */
+        get: operations["my_rework_support_api_v1_procurement_preparation_rework_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ready": {
         parameters: {
             query?: never;
@@ -1047,6 +1143,11 @@ export interface components {
              * @default
              */
             comment: string;
+            /**
+             * Reason Code
+             * @default
+             */
+            reason_code: string;
         };
         /** DecisionView */
         DecisionView: {
@@ -1170,6 +1271,53 @@ export interface components {
             text_content?: string | null;
             /** Title */
             title: string;
+        };
+        /** ExplanationDecisionRequest */
+        ExplanationDecisionRequest: {
+            /** Approve */
+            approve: boolean;
+            /** Comment */
+            comment: string;
+        };
+        /**
+         * ExplanationView
+         * @description One pending explanation, as its reviewer sees it.
+         *
+         *     Carries the author's user id because a reviewer has to know whose queue
+         *     they are unblocking; the requester-facing ``ReworkSupportView`` carries no
+         *     identity at all, and the two must not be merged for that reason.
+         */
+        ExplanationView: {
+            /** Block Count */
+            block_count: number;
+            /** Case Id */
+            case_id: string | null;
+            /** Context Text */
+            context_text: string;
+            /**
+             * Creator User Id
+             * Format: uuid
+             */
+            creator_user_id: string;
+            /** Difficulty Text */
+            difficulty_text: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Nudge Count */
+            nudge_count: number;
+            /** Policy Version */
+            policy_version: string;
+            /** Status */
+            status: string;
+            /** Submitted At */
+            submitted_at: string;
+            /** Support Request Text */
+            support_request_text: string;
+            /** Top Reason Code */
+            top_reason_code: string;
         };
         /** FindingView */
         FindingView: {
@@ -1507,6 +1655,11 @@ export interface components {
         RejectIntakeRequest: {
             /** Comment */
             comment: string;
+            /**
+             * Reason Code
+             * @default other
+             */
+            reason_code: string;
         };
         /** RequirementView */
         RequirementView: {
@@ -1523,6 +1676,62 @@ export interface components {
             statement: string;
             /** Weight */
             weight: string;
+        };
+        /**
+         * ReworkSupportView
+         * @description What the support ladder says about the caller.
+         *
+         *     Rendered on the caller's own case page. Deliberately carries no identity
+         *     of any kind — it is only ever built for the person asking about
+         *     themselves, and a view with a user id on it is one refactor away from
+         *     being rendered on somebody else's screen.
+         */
+        ReworkSupportView: {
+            /** Available */
+            available: boolean;
+            /** Block Count */
+            block_count: number;
+            /** Block Threshold */
+            block_threshold: number;
+            /** Count */
+            count: number;
+            /**
+             * Explanation Min Chars
+             * @default 0
+             */
+            explanation_min_chars: number;
+            /**
+             * Headline
+             * @default
+             */
+            headline: string;
+            /** Level */
+            level: string;
+            /**
+             * Lines
+             * @default []
+             */
+            lines: string[];
+            /** Nudge Count */
+            nudge_count: number;
+            /** Nudge Threshold */
+            nudge_threshold: number;
+            /** Policy Version */
+            policy_version: string;
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+            /** Top Reason Code */
+            top_reason_code?: string | null;
+            /**
+             * Top Reason Label
+             * @default
+             */
+            top_reason_label: string;
+            /** Window Days */
+            window_days: number;
         };
         /** RunResponse */
         RunResponse: {
@@ -1559,6 +1768,31 @@ export interface components {
             worker_id: string;
             /** Worker Version */
             worker_version: string;
+        };
+        /** SubmitExplanationRequest */
+        SubmitExplanationRequest: {
+            /** Case Id */
+            case_id?: string | null;
+            /** Context Text */
+            context_text: string;
+            /**
+             * Difficulty Text
+             * @default
+             */
+            difficulty_text: string;
+            /**
+             * Support Request Text
+             * @default
+             */
+            support_request_text: string;
+        };
+        /** SubmitExplanationResponse */
+        SubmitExplanationResponse: {
+            /**
+             * Explanation Id
+             * Format: uuid
+             */
+            explanation_id: string;
         };
         /** TenderCaseView */
         TenderCaseView: {
@@ -1625,6 +1859,11 @@ export interface components {
              * @default
              */
             comment: string;
+        };
+        /** VoidReworkEventRequest */
+        VoidReworkEventRequest: {
+            /** Reason */
+            reason: string;
         };
         /** WorkspaceMembershipModel */
         WorkspaceMembershipModel: {
@@ -2675,6 +2914,149 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    void_rework_api_v1_procurement_preparation_rework_events__event_id__void_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoidReworkEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_rework_explanation_api_v1_procurement_preparation_rework_explanations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitExplanationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitExplanationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pending_explanations_api_v1_procurement_preparation_rework_explanations_pending_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplanationView"][];
+                };
+            };
+        };
+    };
+    decide_rework_explanation_api_v1_procurement_preparation_rework_explanations__explanation_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                explanation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExplanationDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_rework_support_api_v1_procurement_preparation_rework_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReworkSupportView"];
                 };
             };
         };

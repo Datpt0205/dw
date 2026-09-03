@@ -1,0 +1,45 @@
+schema_version: "1.0"
+profile_id: glm
+routing_policy_version: "1.0.0"
+# GLM-5.2 qua FPT Cloud Marketplace. Bật bằng:
+#   DW_API_MODEL_PROFILE=glm
+#   FPT_BASE_URL=https://mkp-api.fptcloud.com/v1
+#   FPT_API_KEY=sk-...
+#   DW_API_OPENAI_STRUCTURED_MODE=json_schema
+#
+# Thăm dò gateway 2026-08-24 (dùng chính key trong .env):
+#   GET  /models              -> đúng MỘT model, id là "GLM-5.2" (không có tiền tố)
+#   POST /chat/completions    -> response_format json_schema strict CHẠY, JSON hợp lệ
+#   POST /responses           -> trả 200 nhưng output KHÔNG có item "reasoning"
+#   message.reasoning_content -> luôn null, kể cả với prompt cần suy luận
+#
+# Vì thế mọi route đi qua adapter chat/completions (openai_compatible), không phải
+# openai_responses: trên gateway này Responses API không cho thêm gì mà lại ràng buộc
+# schema chặt hơn. Visible thinking không mất — nó là field reasoning_summary trong
+# schema đầu ra (ADR-020), model nào điền cũng được, không phụ thuộc adapter.
+#
+# KHÔNG khai reasoning_effort ở bất kỳ route nào: gateway không phát reasoning content
+# nên knob đó vô nghĩa, chỉ thêm rủi ro bị từ chối request.
+#
+# Bốn route vẫn tách dù cùng model — chúng khác nhau ở timeout, không ở model.
+structured_extraction:
+  provider: fpt_openai
+  model: GLM-5.2
+  timeout_seconds: 60
+reasoning:
+  provider: fpt_openai
+  model: GLM-5.2
+  timeout_seconds: 120
+deep_reasoning:
+  provider: fpt_openai
+  model: GLM-5.2
+  timeout_seconds: 180
+# Thử khi route chính hỏng hai lần. Gateway chỉ có một model nên fallback trùng model
+# chính: nó cứu được lỗi lẻ và schema mismatch, không cứu được sự cố cả model.
+fallback:
+  provider: fpt_openai
+  model: GLM-5.2
+  timeout_seconds: 60
+budgets:
+  max_input_tokens_per_run: 100000
+  max_cost_usd_per_run: 1.00

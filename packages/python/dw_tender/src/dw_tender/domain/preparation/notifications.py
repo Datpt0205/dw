@@ -28,6 +28,27 @@ class IntakeNotificationType(StrEnum):
     # An proposes, procurement drafts, authority decides). Payload:
     # {"title", "lines", "buttons", "case_id"}.
     ADDENDUM_PROPOSED = "addendum.proposed"
+    # The law moved under a package that is still waiting to be signed. Advice,
+    # not an action: the approval stands and the person decides what to do,
+    # because a web result is not grounds to tear up work already under way.
+    # Payload: {"title", "lines", "case_id", "article_ref", "before", "after"}.
+    LAW_CHANGE_DETECTED = "law.change_detected"
+    # Rework support. These three are attached to a PERSON, not to a case
+    # state: the case_id on the job only says where the card was raised from.
+    # The Slack consumer's staleness check must skip them for that reason —
+    # otherwise the card is cancelled the moment the case moves on.
+    #
+    # Offered to the requester when returns start clustering. Advice, not an
+    # obstacle: work continues. Payload: {"lines", "count", "window_days"}.
+    REWORK_SUPPORT_OFFERED = "rework.support_offered"
+    # Someone is now waiting on a written explanation before they can file
+    # again. Goes to whoever the rule pack says can help — never to the person
+    # who is blocked. Payload: {"explanation_id", "lines", "block_count"}.
+    REWORK_SUPPORT_REQUIRED = "rework.support_required"
+    # That explanation has been sitting unread past the deadline. Blocked and
+    # ignored is the worst state this mechanism can produce, so it gets loud.
+    # Payload: {"explanation_id"}.
+    REWORK_EXPLANATION_ESCALATED = "rework.explanation_escalated"
 
 
 class NotificationJobStatus(StrEnum):

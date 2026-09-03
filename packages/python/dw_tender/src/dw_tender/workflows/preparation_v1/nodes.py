@@ -25,13 +25,19 @@ from dw_knowledge.contracts import SearchQuery
 from dw_tender.application.preparation.drafts import CriteriaDraft, SolicitationDraft
 from dw_tender.application.preparation.extraction import PreparationExtraction
 from dw_tender.application.preparation.legal import (
+    LEGAL_WINDOW_QUERY,
     LegalConstraintExtraction,
+    RequiredSectionsExtraction,
+    numbered_passages,
     verified_constraint,
+    verified_sections,
 )
 from dw_tender.application.preparation.review import ReviewRecommendation, review_card_lines
+from dw_tender.application.preparation.rework_recording import record_rework_event
 from dw_tender.application.preparation.rules import (
     ProcurementRules,
     approach_gate,
+    effective_legal_minimum,
     solicitation_gate,
 )
 from dw_tender.domain.preparation.entities import (
@@ -46,6 +52,7 @@ from dw_tender.domain.preparation.notifications import (
     IntakeNotificationJob,
     IntakeNotificationType,
 )
+from dw_tender.domain.preparation.rework import ReworkCheckpoint
 from dw_tender.domain.value_objects.ids import ArtifactId, PreparationCaseId
 from dw_tender.workflows.preparation_v1.services import PreparationServices
 from dw_tender.workflows.preparation_v1.state import (
@@ -108,7 +115,13 @@ def _citation_lines(citations: list[dict[str, Any]], *, limit: int = 5) -> list[
         if not quote:
             continue
         score = round(float(cite.get("relevance_score", 0)) * 100)
-        lines.append(f"> «{quote}» — _liên quan {score}%_")
+        source = str(cite.get("source_title") or "")
+        uri = str(cite.get("source_uri") or "")
+        # A quote with no attribution asks the approver to take it on faith.
+        attribution = f" — {source}" if source else ""
+        lines.append(f"> «{quote}»{attribution} _(liên quan {score}%)_")
+        if uri:
+            lines.append(f"> {uri}")
         if len(lines) >= limit:
             break
     return lines
@@ -169,6 +182,35 @@ def _dict_items(value: object) -> list[dict[str, Any]]:
     return [item for item in value if isinstance(item, dict)]
 
 
+def _passages_of(citations: list[dict[str, Any]]) -> str:
+    """Retrieved passages, numbered, ready to hand to a drafting prompt.
+
+    Same numbering the extraction prompt uses. Empty when nothing was retrieved,
+    and the prompts are written to expect that — retrieval is grounding, and a
+    package still has to be drafted when the sources are unreachable.
+    """
+    return numbered_passages([str(c.get("quote", "")) for c in citations if c.get("quote")])
+
+
+def _grounding_source(citations: list[dict[str, Any]]) -> str:
+    """Where the căn cứ under this artifact actually came from.
+
+    Told apart by ``source_uri``: a passage fetched from a live source carries
+    the URL a reader can open, while one read out of the ingested corpus is
+    identified by a database id and has none. That difference is already in the
+    evidence, so nothing here needs to know how retrieval was configured — which
+    matters, because the interesting case is the one where it was configured for
+    live search and quietly could not reach any source.
+
+    "indexed" is not an accusation. The corpus may be perfectly current. It is a
+    photograph, though, and the approver is the one who should decide whether a
+    photograph is good enough for this package.
+    """
+    if not citations:
+        return "not_available"
+    return "live" if any(c.get("source_uri") for c in citations) else "indexed"
+
+
 class PreparationNodes:
     def __init__(self, services: PreparationServices) -> None:
         self.services = services
@@ -208,6 +250,11 @@ class PreparationNodes:
                     # Full chunk (bounded for artifact size) — cards must show
                     # the real retrieved passage, not a teaser.
                     "quote": chunk.content[:1200],
+                    # Where it came from, when the source can say. Corpus hits
+                    # leave these empty; live web hits carry a name and a URL,
+                    # and the card is where an approver actually reads them.
+                    "source_title": ev.source_title,
+                    "source_uri": ev.source_uri,
                     "relevance_score": round(ev.relevance_score, 4),
                     "classification": ev.classification,
                 }
@@ -428,7 +475,7 @@ class PreparationNodes:
         passages = [str(c.get("quote", "")) for c in citations if c.get("quote")]
         if gateway is None or not passages:
             return None
-        numbered = "\n".join(f"[{i}] {p}" for i, p in enumerate(passages, start=1))
+        numbered = numbered_passages(passages)
         try:
             extraction: LegalConstraintExtraction = await gateway.generate_structured(
                 ModelRequest(
@@ -444,6 +491,94 @@ class PreparationNodes:
         except Exception:  # extraction is enrichment — never blocks drafting
             return None
         return verified_constraint(extraction, passages)
+
+    async def _live_legal_minimum(
+        self, rc: RunContext, method_label: str
+    ) -> tuple[int | None, str]:
+        """What the sources say the minimum bid-preparation window is RIGHT NOW.
+
+        Same question, same verification, same rules as the drafting node — asked
+        again at the moment the package is put up for signature. A package can sit
+        between CP1 and CP2 for weeks, and the number the gate enforces is
+        otherwise the number that was true when someone started typing.
+
+        ``None`` means "could not establish a figure", and it must stay
+        indistinguishable from "we did not ask": a search outage has to leave the
+        gate running on the drafted number rather than blocking a package that
+        was never at fault.
+
+        The second element says WHERE the figure came from, and it is not a
+        detail. Measured 2026-08-26: a full demo run recorded
+        ``live_min_days: 18`` while every web query had failed and the corpus
+        fallback had answered — so the audit trail said the law was re-checked
+        against today's sources when it had been checked against a snapshot.
+        The number was right and the claim was false, which is the worse of the
+        two failure modes.
+        """
+        citations = await self._cite(rc, LEGAL_WINDOW_QUERY, domain="legal")
+        if not citations:
+            return None, "not_available"
+        verified = await self._extract_legal_constraints(rc, method_label, citations)
+        if verified is None:
+            return None, "not_available"
+        days = verified.get("min_bid_preparation_days")
+        if not isinstance(days, int):
+            return None, "not_available"
+        return days, _grounding_source(citations)
+
+    async def _extract_required_sections(
+        self, rc: RunContext, citations: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        """Which sections the law says a solicitation package must contain.
+
+        Copy-then-verify, like the day-count extraction: the model may only name
+        sections that appear verbatim in the retrieved text, and
+        ``verified_sections`` throws away anything else.
+
+        Recorded and shown, NOT enforced. ``solicitation_gate`` has carried a
+        "missing section" branch since it was written and has never once run it,
+        because ``package_gate`` always hands it an empty list.
+
+        MEASURED 2026-08-26, 8 live runs over real retrieved passages, and the
+        answer is that it must stay that way for now. 7 of 8 runs passed
+        verification, and exactly ONE section name repeated across all 7:
+        "Biểu mẫu mời thầu và dự thầu". Three things move underneath it:
+
+        - Granularity is not stable. The same clause of Điều 44 came back once as
+          a single item carrying a whole semicolon list, and once as six separate
+          items cut out of that list. Both are honest copies and both pass
+          verification — which is the point: this output is prose, not a key set,
+          and exact-matching it against internal section keys would fail on the
+          split alone.
+        - The question decides which statute answers. "hồ sơ mời thầu phải có các
+          nội dung" retrieved the article on selecting INVESTORS, not contractors
+          — "phương án đầu tư kinh doanh", "hiệu quả sử dụng đất". A gate fed
+          that list blocks contractor packages for missing sections that were
+          never theirs.
+        - One run in eight returned nothing at all.
+
+        So the enforcement step needs a stable identity for a section before it
+        can exist, and that is a normalisation problem, not a retrieval one.
+        """
+        gateway = self.services.model_gateway
+        passages = [str(c.get("quote", "")) for c in citations if c.get("quote")]
+        if gateway is None or not passages:
+            return None
+        try:
+            extraction: RequiredSectionsExtraction = await gateway.generate_structured(
+                ModelRequest(
+                    task="preparation.required_sections",
+                    prompt_id="preparation.extract_required_sections",
+                    prompt_version=self.services.prompt_bundle_version,
+                    variables={"passages": numbered_passages(passages)},
+                    model_profile=self.services.model_profile,
+                ),
+                RequiredSectionsExtraction,
+                run_context=rc,
+            )
+        except Exception:  # enrichment — never blocks drafting
+            return None
+        return verified_sections(extraction, passages)
 
     # -- 1. intake --------------------------------------------------------
     async def load_case(self, state: PreparationState, config: RunnableConfig) -> PreparationState:
@@ -580,7 +715,12 @@ class PreparationNodes:
         return requirements, unknowns, "rule"
 
     async def _llm_solicitation(
-        self, run_context: RunContext, procurement_type: str, method: str, requirements: list[str]
+        self,
+        run_context: RunContext,
+        procurement_type: str,
+        method: str,
+        requirements: list[str],
+        citations: list[dict[str, Any]],
     ) -> SolicitationDraft | None:
         """LLM-draft the solicitation scope + technical requirements. None on
         no-model/error so the caller keeps the deterministic template."""
@@ -597,6 +737,7 @@ class PreparationNodes:
                         "procurement_type": procurement_type,
                         "method": method,
                         "requirements": "\n".join(f"- {r}" for r in requirements),
+                        "passages": _passages_of(citations),
                     },
                     model_profile=self.services.model_profile,
                 ),
@@ -607,7 +748,11 @@ class PreparationNodes:
             return None
 
     async def _llm_criteria(
-        self, run_context: RunContext, procurement_type: str, requirements: list[str]
+        self,
+        run_context: RunContext,
+        procurement_type: str,
+        requirements: list[str],
+        citations: list[dict[str, Any]],
     ) -> list[dict[str, Any]] | None:
         """LLM-draft weighted criteria; returns None unless weights sum to 100
         (else the caller keeps the rule-pack default)."""
@@ -623,6 +768,7 @@ class PreparationNodes:
                     variables={
                         "procurement_type": procurement_type,
                         "requirements": "\n".join(f"- {r}" for r in requirements),
+                        "passages": _passages_of(citations),
                     },
                     model_profile=self.services.model_profile,
                 ),
@@ -734,7 +880,7 @@ class PreparationNodes:
         # a different question than "which method", so its own query.
         window_basis = await self._cite(
             rc,
-            "thời gian chuẩn bị hồ sơ dự thầu tối thiểu kể từ ngày phát hành hồ sơ",
+            LEGAL_WINDOW_QUERY,
             domain="legal",
         )
         seen_quotes = {(c["source_document_id"], c["quote"]) for c in legal_basis}
@@ -782,6 +928,7 @@ class PreparationNodes:
         content["grounding_status"] = (
             "grounded" if content["legal_basis"] or content["policy_basis"] else "not_available"
         )
+        content["grounding_source"] = _grounding_source(legal_basis)
         if content["grounding_status"] == "not_available":
             content["grounding_warning"] = (
                 "Không truy xuất được căn cứ Knowledge; người duyệt phải kiểm tra "
@@ -802,6 +949,15 @@ class PreparationNodes:
             rag_lines.append(
                 "Không truy xuất được căn cứ từ kho tri thức — người duyệt "
                 "cần đối chiếu quy định thủ công."
+            )
+        if content["grounding_source"] == "indexed":
+            # The one thing an approver cannot see from the citations themselves.
+            # A passage with no link behind it may be a year old, and the number
+            # derived from it is already in the timeline by the time they read
+            # this card.
+            rag_lines.append(
+                "📎 Căn cứ pháp lý lấy từ kho đã lưu trong hệ thống, không phải "
+                "tra trực tuyến tại thời điểm này — hãy đối chiếu hiệu lực trước khi duyệt."
             )
         if legal_min is not None and constraint is not None:
             rag_lines.append(
@@ -1080,6 +1236,20 @@ class PreparationNodes:
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
+            if not approved and self.services.rework_rules is not None:
+                # In the same transaction as the state change: a case shown as
+                # turned down with no record would undercount in silence.
+                await record_rework_event(
+                    uow,
+                    case=case,
+                    decided_by=_decider(decision, rc),
+                    checkpoint=ReworkCheckpoint.CP1,
+                    reason_code=str(decision.get("reason_code", "") or ""),
+                    reason_text=comment or "Không có nhận xét kèm theo.",
+                    rules=self.services.rework_rules,
+                    clock=self.services.clock,
+                    id_generator=self.services.id_generator,
+                )
             case.advance(
                 CaseState.CP1_APPROVED if approved else CaseState.CP1_REJECTED,
                 "build_solicitation" if approved else "cp1_rejected",
@@ -1136,12 +1306,20 @@ class PreparationNodes:
             heading="Đang soạn hồ sơ mời thầu và tiêu chí chấm…",
             line="Bước này mất một lúc — xong mình gửi trạng thái tiếp tại đây.",
         )
+        # Retrieval FIRST. It used to run after the draft, which meant the
+        # passages could only ever be decoration: the prompt had already gone.
+        references = await self._cite(
+            rc,
+            "nội dung hồ sơ mời thầu yêu cầu về năng lực kỹ thuật thương mại",
+            domain="legal",
+        )
         # LLM drafts the scope + technical requirements; template is the fallback.
         draft = await self._llm_solicitation(
             rc,
             str(state.get("procurement_type", "")),
             str(state.get("method_label", "")),
             requirements,
+            references,
         )
         scope = draft.scope if draft else "Cung cấp hàng hoá/dịch vụ theo yêu cầu đã phê duyệt."
         tech_requirements = (
@@ -1180,13 +1358,11 @@ class PreparationNodes:
             ],
             "confidentiality": "Thông tin hồ sơ được bảo mật theo quy định.",
         }
-        # RAG grounding: legal/template basis for the solicitation structure.
-        content["references"] = await self._cite(
-            rc,
-            "nội dung hồ sơ mời thầu yêu cầu về năng lực kỹ thuật thương mại",
-            domain="legal",
-        )
+        content["references"] = references
         content["grounding_status"] = "grounded" if content["references"] else "not_available"
+        content["grounding_source"] = _grounding_source(content["references"])
+        # Observed, not enforced. See _extract_required_sections.
+        content["required_sections"] = await self._extract_required_sections(rc, references)
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
@@ -1203,10 +1379,17 @@ class PreparationNodes:
         rc = _run_context(config)
         case_id = _case_id(state)
         requirements = [r["text"] for r in state.get("requirements", [])]
+        # Retrieval FIRST, so the criteria can be named in the statute's own
+        # terms rather than merely footnoted with it.
+        references = await self._cite(
+            rc,
+            "tiêu chí đánh giá hồ sơ dự thầu phương pháp chấm điểm",
+            domain="legal",
+        )
         # LLM tailors the weighted criteria (validated to sum 100); mandatory
         # criteria stay from the rule pack (legal baseline). Fallback: rule pack.
         llm_weighted = await self._llm_criteria(
-            rc, str(state.get("procurement_type", "")), requirements
+            rc, str(state.get("procurement_type", "")), requirements, references
         )
         weighted = (
             llm_weighted
@@ -1223,20 +1406,21 @@ class PreparationNodes:
             ],
             "weighted": weighted,
             "method": "Chấm điểm có trọng số; điểm tiên quyết pass/fail.",
-            "source": "ai" if llm_weighted else f"rule_pack:{self.services.rules.version}",
+            # Names the WEIGHTED list only. `mandatory` above is always the rule
+            # pack — reading this as "the AI wrote our criteria" was the wrong
+            # thing to conclude from an artifact that says source: ai.
+            "weighted_source": (
+                "ai" if llm_weighted else f"rule_pack:{self.services.rules.version}"
+            ),
         }
         content: dict[str, Any] = {
             **criteria,
             "weighted_total": sum(int(c["weight"]) for c in criteria["weighted"]),
             "has_mandatory": bool(criteria["mandatory"]),
         }
-        # RAG grounding: legal basis for evaluation criteria/method.
-        content["references"] = await self._cite(
-            rc,
-            "tiêu chí đánh giá hồ sơ dự thầu phương pháp chấm điểm",
-            domain="legal",
-        )
+        content["references"] = references
         content["grounding_status"] = "grounded" if content["references"] else "not_available"
+        content["grounding_source"] = _grounding_source(content["references"])
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
@@ -1318,7 +1502,10 @@ class PreparationNodes:
         criteria = state.get("criteria", {})
         legal_info = dict(state.get("legal_constraints", {}) or {})
         extracted = dict(legal_info.get("extracted") or {})
-        legal_min = extracted.get("min_bid_preparation_days")
+        drafted_min = extracted.get("min_bid_preparation_days")
+        # Ask again at signature time, not just at drafting time.
+        live_min, live_source = await self._live_legal_minimum(rc, method.label)
+        legal_min, legal_note = effective_legal_minimum(drafted_min, live_min)
         window_days = int(
             state.get("solicitation_window_days")
             or _solicitation_window_days(state.get("method_key", ""))
@@ -1332,6 +1519,7 @@ class PreparationNodes:
             missing_sections=[],
             submission_window_days=window_days,
             legal_min_window_days=int(legal_min) if legal_min else None,
+            legal_min_note=legal_note,
         )
         gate = {"passed": result.passed, "reasons": list(result.reasons)}
         payload = {
@@ -1386,7 +1574,26 @@ class PreparationNodes:
             # gate shows its reasons in the UI instead of silently parking the case.
             package = await uow.artifacts.latest(case_id, ArtifactType.SOLICITATION_PACKAGE)
             if package is not None:
-                merged = {**package.content, "gate": gate}
+                # What the package was measured against at signature time, not at
+                # drafting time. An auditor asking "was this still lawful when it
+                # went up?" has nowhere else to read the answer.
+                merged = {
+                    **package.content,
+                    "gate": gate,
+                    "legal_recheck": {
+                        "at": self.services.clock.now().isoformat(),
+                        "drafted_min_days": drafted_min,
+                        "live_min_days": live_min,
+                        "applied_min_days": legal_min,
+                        # live / indexed / not_available — same three words the
+                        # drafting step uses, read the same way, from the same
+                        # evidence. "indexed" means the figure came out of the
+                        # ingested corpus because the live sources could not be
+                        # reached, and the approver is the one who decides
+                        # whether a snapshot is good enough for this package.
+                        "source": live_source,
+                    },
+                }
                 package = await self._add_artifact(
                     uow, case, ArtifactType.SOLICITATION_PACKAGE, merged
                 )
@@ -1437,6 +1644,15 @@ class PreparationNodes:
                 if package_refs:
                     cp2_lines.append("Căn cứ soạn hồ sơ:")
                     cp2_lines += package_refs
+                # Shown so a reviewer can tell us whether the extraction is worth
+                # trusting, before it is allowed to fail anyone's package.
+                required = (package.content.get("required_sections") if package else None) or {}
+                if isinstance(required, dict) and required.get("sections"):
+                    names = ", ".join(str(x) for x in required["sections"][:8])
+                    cp2_lines.append(
+                        f"Mục bắt buộc theo {required.get('article_ref') or 'căn cứ đã tra'}: "
+                        f"{names}. (Đối chiếu tham khảo — chưa dùng để chặn gate.)"
+                    )
                 if review is not None:
                     await self._add_artifact(
                         uow,
@@ -1483,6 +1699,20 @@ class PreparationNodes:
         async with self.services.uow_factory(TenantId(rc.tenant_id)) as uow:
             case = await uow.cases.get(case_id)
             assert case is not None
+            if not approved and self.services.rework_rules is not None:
+                # In the same transaction as the state change: a case shown as
+                # turned down with no record would undercount in silence.
+                await record_rework_event(
+                    uow,
+                    case=case,
+                    decided_by=_decider(decision, rc),
+                    checkpoint=ReworkCheckpoint.CP2,
+                    reason_code=str(decision.get("reason_code", "") or ""),
+                    reason_text=comment or "Không có nhận xét kèm theo.",
+                    rules=self.services.rework_rules,
+                    clock=self.services.clock,
+                    id_generator=self.services.id_generator,
+                )
             case.advance(
                 CaseState.CP2_APPROVED if approved else CaseState.CP2_REJECTED,
                 "official" if approved else "cp2_rejected",
@@ -1595,6 +1825,24 @@ class PreparationNodes:
         # A user supplies answers through the application API and starts a fresh,
         # fully traceable run; no paused workflow is silently mutated.
         return {}
+
+
+def _decider(decision: dict[str, Any], rc: RunContext) -> UserId:
+    """Who turned this checkpoint down.
+
+    The run resumes on behalf of its original requester, so ``rc.actor_id`` is
+    the person whose case it is — exactly the wrong name to file against a
+    rejection. The approver's identity rides in on the decision payload; the
+    fallback only matters for a delegated decision, where the agent acted and
+    there is no human approver to name.
+    """
+    raw = str(decision.get("decided_by", "") or "")
+    if raw:
+        try:
+            return UserId(uuid.UUID(raw))
+        except ValueError:
+            pass
+    return UserId(rc.actor_id)
 
 
 def _render_package_markdown(

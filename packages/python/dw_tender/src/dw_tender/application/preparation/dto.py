@@ -7,12 +7,19 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from dw_tender.application.preparation.rework import ReworkAssessment
+from dw_tender.application.preparation.rework_wording import (
+    explanation_prompt,
+    support_headline,
+    support_lines,
+)
 from dw_tender.domain.preparation.entities import (
     PreparationArtifact,
     PreparationCase,
     PreparationDocument,
 )
 from dw_tender.domain.preparation.notifications import IntakeNotificationJob
+from dw_tender.domain.preparation.rework import ExplanationRecord
 
 
 class DocumentView(BaseModel):
@@ -88,6 +95,99 @@ class NotificationView(BaseModel):
             due_at=job.due_at.isoformat(),
             sent_at=job.sent_at.isoformat() if job.sent_at is not None else None,
             last_error=job.last_error,
+        )
+
+
+class ReworkSupportView(BaseModel):
+    """What the support ladder says about the caller.
+
+    Rendered on the caller's own case page. Deliberately carries no identity
+    of any kind — it is only ever built for the person asking about
+    themselves, and a view with a user id on it is one refactor away from
+    being rendered on somebody else's screen.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # False means the tally could not be computed. The UI must treat that as
+    # "say nothing", never as "all clear" — the two are different facts.
+    available: bool
+    level: str
+    count: int
+    window_days: int
+    nudge_count: int
+    block_count: int
+    nudge_threshold: int
+    block_threshold: int
+    policy_version: str
+    top_reason_code: str | None = None
+    top_reason_label: str = ""
+    headline: str = ""
+    lines: list[str] = []
+    prompt: str = ""
+    explanation_min_chars: int = 0
+
+    @classmethod
+    def from_assessment(cls, assessment: ReworkAssessment, *, min_chars: int) -> ReworkSupportView:
+        return cls(
+            available=assessment.available,
+            level=assessment.level.value,
+            count=assessment.count,
+            window_days=assessment.window_days,
+            nudge_count=assessment.nudge_count,
+            block_count=assessment.block_count,
+            nudge_threshold=assessment.nudge_threshold,
+            block_threshold=assessment.block_threshold,
+            policy_version=assessment.policy_version,
+            top_reason_code=assessment.top_reason_code,
+            top_reason_label=assessment.top_reason_label,
+            # Every user-facing sentence comes from the one wording module —
+            # never assembled here, so the phrasing test covers all of it.
+            headline=support_headline(assessment),
+            lines=support_lines(assessment),
+            prompt=explanation_prompt(assessment),
+            explanation_min_chars=min_chars,
+        )
+
+
+class ExplanationView(BaseModel):
+    """One pending explanation, as its reviewer sees it.
+
+    Carries the author's user id because a reviewer has to know whose queue
+    they are unblocking; the requester-facing ``ReworkSupportView`` carries no
+    identity at all, and the two must not be merged for that reason.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    case_id: UUID | None
+    creator_user_id: UUID
+    context_text: str
+    difficulty_text: str
+    support_request_text: str
+    block_count: int
+    nudge_count: int
+    top_reason_code: str
+    policy_version: str
+    submitted_at: str
+    status: str
+
+    @classmethod
+    def from_domain(cls, record: ExplanationRecord) -> ExplanationView:
+        return cls(
+            id=record.id,
+            case_id=record.case_id.value if record.case_id is not None else None,
+            creator_user_id=record.creator_user_id.value,
+            context_text=record.context_text,
+            difficulty_text=record.difficulty_text,
+            support_request_text=record.support_request_text,
+            block_count=record.block_count,
+            nudge_count=record.nudge_count,
+            top_reason_code=record.top_reason_code,
+            policy_version=record.policy_version,
+            submitted_at=record.submitted_at.isoformat(),
+            status=record.status.value,
         )
 
 

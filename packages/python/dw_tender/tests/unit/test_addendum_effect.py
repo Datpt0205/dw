@@ -31,6 +31,8 @@ from dw_tender.domain.preparation.entities import (
 )
 from dw_tender.domain.value_objects.ids import PreparationCaseId
 
+pytestmark = pytest.mark.unit
+
 CLOSES = datetime(2026, 9, 1, 17, 0, tzinfo=UTC)
 
 

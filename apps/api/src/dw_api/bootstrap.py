@@ -5,10 +5,12 @@ Tests build their own container with fake ports; production wiring lives here.
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -43,11 +45,12 @@ from dw_api.settings import ApiSettings
 from dw_connectors.adapters.mock_task_connector import MockTaskConnectorAdapter
 from dw_connectors.adapters.slack_chat import SlackChatClient
 from dw_kernel.net_guard import ensure_allowed_outbound_url
-from dw_kernel.ports import SystemClock, Uuid4Generator
+from dw_kernel.ports import IdGenerator, SystemClock, Uuid4Generator
 from dw_kernel.resilience import CircuitBreaker
+from dw_knowledge.adapters.websearch.contracts import WebSearchProvider
 from dw_knowledge.gateway import KnowledgeGateway
 from dw_knowledge.ingest_jobs import IngestJobStore
-from dw_knowledge.ports import ObjectStoragePort
+from dw_knowledge.ports import KnowledgeGatewayPort, ObjectStoragePort
 from dw_memory.policy import MemoryWritePolicy
 from dw_memory.service import MemoryService
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
@@ -70,6 +73,7 @@ from dw_tender.adapters.conversation.store import SqlConversationStore
 from dw_tender.adapters.persistence.repositories import SqlTenderUnitOfWorkFactory
 from dw_tender.adapters.policy_loader import load_scoring_policy
 from dw_tender.adapters.preparation.repositories import SqlPreparationUnitOfWorkFactory
+from dw_tender.adapters.preparation.rework_rules_loader import load_rework_support_rules
 from dw_tender.adapters.preparation.rules_loader import load_procurement_rules
 from dw_tender.application.conversation.service import ConversationIntakeService
 from dw_tender.application.handlers import (
@@ -100,6 +104,15 @@ from dw_tender.application.preparation.handlers import (
 from dw_tender.application.preparation.handoff import HandoffToEvaluationHandler
 from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
 from dw_tender.application.preparation.readiness import AssessTenderReadinessHandler
+from dw_tender.application.preparation.rework_guard import ReworkGuard
+from dw_tender.application.preparation.rework_handlers import (
+    AssessReworkSupportHandler,
+    DecideExplanationHandler,
+    EscalateStaleExplanationsHandler,
+    ListPendingExplanationsHandler,
+    SubmitExplanationHandler,
+    VoidReworkEventHandler,
+)
 from dw_tender.application.preparation.rules import ProcurementRules
 from dw_tender.domain.services.scoring_engine import ScoringEngine
 from dw_tender.workflows.preparation_v1.registry import register_preparation_graphs
@@ -119,10 +132,15 @@ from dw_work_ops.domain.policies import CanAutoDispatchAction
 from dw_work_ops.workflows.registry import register_work_ops_graphs
 from dw_work_ops.workflows.v1.services import WorkOpsWorkflowServices
 
+if TYPE_CHECKING:  # imported lazily at call time to keep startup cheap
+    from dw_knowledge.adapters.web_law_search import LegalSourceConfig
+
 # In dev the repo root is derived from the source tree; in containers the
 # package lives in site-packages, so the image sets DW_REPO_ROOT=/app and
 # ships configs/, evals/fixtures/ and contracts/release/ at that root.
 REPO_ROOT = Path(os.environ.get("DW_REPO_ROOT", str(Path(__file__).resolve().parents[4])))
+
+logger = logging.getLogger("dw_api.bootstrap")
 
 
 def _release_manifest_ref() -> str:
@@ -177,6 +195,13 @@ class PreparationHandlers:
     # Needed by the bid-closing scanner (deadline-driven CP4).
     uow_factory: PreparationUnitOfWorkFactory
     rules: ProcurementRules
+    rework_guard: ReworkGuard
+    assess_rework: AssessReworkSupportHandler
+    list_pending_explanations: ListPendingExplanationsHandler
+    submit_explanation: SubmitExplanationHandler
+    decide_explanation: DecideExplanationHandler
+    void_rework_event: VoidReworkEventHandler
+    escalate_explanations: EscalateStaleExplanationsHandler
 
 
 @dataclass
@@ -209,6 +234,8 @@ class ApiContainer:
     tender: TenderHandlers | None = None
     preparation: PreparationHandlers | None = None
     knowledge_gateway: KnowledgeGateway | None = None
+    legal_gateway: KnowledgeGatewayPort | None = None
+    model_gateway: RoutingModelGateway | None = None
     ingest_job_store: IngestJobStore | None = None
     object_storage: ObjectStoragePort | None = None
     memory_service: MemoryService | None = None
@@ -279,9 +306,147 @@ def _build_model_adapters(settings: ApiSettings) -> dict[str, ModelProviderAdapt
             strict_schema=settings.openai_strict_schema,
             breaker=CircuitBreaker(clock=SystemClock(), name="model.openai_responses"),
         )
-    if settings.profile == "production" and "openai_compatible" not in adapters:
+    if settings.fpt_api_key and settings.fpt_base_url:
+        # Second OpenAI-compatible endpoint on its own credentials (FPT Cloud,
+        # GLM-5.2). Chat/completions only: that gateway answers /v1/responses
+        # but returns no reasoning items, so the Responses adapter would cost
+        # stricter schemas for nothing (verified 2026-08-24, see glm.yaml).
+        ensure_allowed_outbound_url(
+            settings.fpt_base_url,
+            allow_private=settings.outbound_allow_private(),
+            allowed_hosts=tuple(settings.outbound_allowed_hosts),
+        )
+        adapters["fpt_openai"] = OpenAICompatibleAdapter(
+            base_url=settings.fpt_base_url,
+            api_key=settings.fpt_api_key,
+            provider="fpt_openai",
+            structured_mode=settings.openai_structured_mode,
+            breaker=CircuitBreaker(clock=SystemClock(), name="model.fpt_openai"),
+        )
+    # "A real provider is wired" is the rule; naming one key would now reject a
+    # deployment that runs entirely on fpt_openai.
+    if settings.profile == "production" and not (adapters.keys() - {"mock"}):
         raise RuntimeError("production requires a real model provider")
     return adapters
+
+
+def _build_search_providers(
+    settings: ApiSettings, config: LegalSourceConfig, names: tuple[str, ...]
+) -> list[WebSearchProvider]:
+    """The configured chain, in configured order, minus whoever has no key.
+
+    Mirrors ``_build_model_adapters``: the composition root is the only place
+    that knows which concrete integrations exist. A provider named in config but
+    missing its secret is dropped here with a line saying so — the alternative
+    is discovering it mid-run, where the caller swallows retrieval failures and
+    the gap looks like "the law says nothing about this".
+    """
+    from dw_knowledge.adapters.websearch.providers.brave import BraveProvider
+    from dw_knowledge.adapters.websearch.providers.duckduckgo import DuckDuckGoProvider
+    from dw_knowledge.adapters.websearch.providers.google_cse import GoogleCseProvider
+    from dw_knowledge.adapters.websearch.providers.serper import SerperProvider
+    from dw_knowledge.adapters.websearch.providers.tavily import TavilyProvider
+
+    def breaker(name: str) -> CircuitBreaker:
+        return CircuitBreaker(clock=SystemClock(), name=f"knowledge.{name}")
+
+    built: list[WebSearchProvider] = []
+    for name in names:
+        if name == "serper" and settings.serper_api_key:
+            built.append(SerperProvider(api_key=settings.serper_api_key, breaker=breaker(name)))
+        elif name == "brave" and settings.brave_api_key:
+            built.append(BraveProvider(api_key=settings.brave_api_key, breaker=breaker(name)))
+        elif name == "tavily" and settings.tavily_api_key:
+            built.append(
+                TavilyProvider(
+                    api_key=settings.tavily_api_key,
+                    search_depth=config.tavily_search_depth,
+                    breaker=breaker(name),
+                )
+            )
+        elif name == "google_cse" and settings.google_cse_api_key and settings.google_cse_cx:
+            built.append(
+                GoogleCseProvider(
+                    api_key=settings.google_cse_api_key,
+                    engine_id=settings.google_cse_cx,
+                    breaker=breaker(name),
+                )
+            )
+        elif name == "duckduckgo":
+            # The only one needing no secret — and the only one with no service
+            # commitment behind it. Enabled solely when config asks for it.
+            built.append(DuckDuckGoProvider(breaker=breaker(name)))
+        else:
+            logger.info("web search: bỏ qua %s — chưa cấu hình khoá", name)
+    return built
+
+
+def _build_legal_gateway(
+    settings: ApiSettings,
+    corpus: KnowledgeGatewayPort,
+    id_generator: IdGenerator,
+) -> KnowledgeGatewayPort:
+    """Choose where legal questions are answered from.
+
+    An ingested corpus is a photograph of the law; live search is the law as it
+    stands when a package is drafted. Only ``domain="legal"`` moves — company
+    procurement rules are not on the web, so policy retrieval is unaffected by
+    this choice.
+
+    Misconfiguration degrades to the corpus rather than to silence: with no
+    usable provider there is nothing to search, and a drafting run that quietly
+    loses its legal grounding is worse than one using the indexed copy.
+    """
+    if settings.legal_source != "web":
+        return corpus
+
+    from dw_knowledge.adapters.web_law_search import (
+        DEFAULT_ROUTING,
+        LegalSourceRouter,
+        PageFetcher,
+        TtlCache,
+        WebLawGateway,
+        load_legal_sources,
+    )
+    from dw_knowledge.adapters.websearch.chain import FailoverSearchClient, ProviderCooldown
+
+    config = load_legal_sources(REPO_ROOT / "configs" / "knowledge" / "legal_sources@1.1.0.yaml")
+    if not config.allowed_domains:
+        # The allowlist is the fence. Without it every SEO farm is a legal
+        # source, so an empty list means the feature stays off.
+        logger.warning("legal source allowlist is empty — using the corpus")
+        return corpus
+
+    providers = _build_search_providers(settings, config, config.providers or ("serper",))
+    if not providers:
+        logger.warning("DW_LEGAL_SOURCE=web nhưng không provider nào có khoá — dùng corpus")
+        return corpus
+
+    web = WebLawGateway(
+        client=FailoverSearchClient(
+            providers=providers,
+            cooldown=ProviderCooldown(default_seconds=config.exhausted_cooldown_seconds),
+            advance_on_empty=config.advance_on_empty,
+        ),
+        fetcher=PageFetcher(
+            policy=config.fetch_policy, allow_private=settings.outbound_allow_private()
+        ),
+        config=config,
+        id_generator=id_generator,
+        cache=TtlCache(config.cache_ttl_seconds, config.cache_max_entries),
+    )
+    logger.info(
+        "legal retrieval via web search (chuỗi: %s | %d nguồn tin cậy | config %s)",
+        " → ".join(p.provider_name for p in providers),
+        len(config.allowed_domains),
+        config.version,
+    )
+    return LegalSourceRouter(
+        inner=corpus,
+        web=web,
+        routing=config.routing or DEFAULT_ROUTING,
+        corpus_fallback=config.corpus_fallback,
+    )
 
 
 def _build_telemetry(settings: ApiSettings) -> TelemetryPort:
@@ -365,6 +530,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
     tender: TenderHandlers | None = None
     preparation: PreparationHandlers | None = None
     knowledge_gateway: KnowledgeGateway | None = None
+    legal_gateway: KnowledgeGatewayPort | None = None
+    model_gateway: RoutingModelGateway | None = None
     ingest_job_store: IngestJobStore | None = None
     object_storage: ObjectStoragePort | None = None
     memory_service: MemoryService | None = None
@@ -498,6 +665,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 id_generator=id_generator,
                 reranker=reranker,
             )
+            legal_gateway = _build_legal_gateway(settings, knowledge_gateway, id_generator)
+            model_gateway = gateway
             # Upload path: API stages the raw file + enqueues; the worker ingests.
             object_storage = storage  # type: ignore[assignment]
             ingest_job_store = IngestJobStore(
@@ -528,6 +697,14 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
             procurement_rules = load_procurement_rules(
                 REPO_ROOT / "configs" / "policies" / "dw01" / "procurement_rules_v1.yaml"
             )
+            rework_rules = load_rework_support_rules(
+                REPO_ROOT / "configs" / "policies" / "dw01" / "rework_support_v1.yaml"
+            )
+            rework_guard = ReworkGuard(
+                uow_factory=preparation_uow_factory,
+                rules=rework_rules,
+                clock=clock,
+            )
             preparation_services = PreparationServices(
                 uow_factory=preparation_uow_factory,
                 storage=storage,  # type: ignore[arg-type]
@@ -536,10 +713,11 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 suppliers=(),
                 clock=clock,
                 id_generator=id_generator,
-                knowledge=knowledge_gateway,
+                knowledge=legal_gateway,
                 model_gateway=gateway,
                 model_profile=settings.model_profile,
                 autonomy_profile=settings.autonomy_profile,
+                rework_rules=rework_rules,
             )
 
             graph_registry = GraphRegistry()
@@ -623,6 +801,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     id_generator=id_generator,
                     clock=clock,
                     reminder_seconds=settings.approval_reminder_seconds,
+                    rework_guard=rework_guard,
                 ),
                 get_case=GetPreparationCaseHandler(
                     uow_factory=preparation_uow_factory,
@@ -638,6 +817,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     authorization=authorization,
                     entitlement=entitlement,
                     id_generator=id_generator,
+                    rework_guard=rework_guard,
                 ),
                 verify_intake=VerifyPreparationIntakeHandler(
                     uow_factory=preparation_uow_factory,
@@ -657,6 +837,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     authorization=authorization,
                     clock=clock,
                     id_generator=id_generator,
+                    rework_rules=rework_rules,
                 ),
                 answer_clarifications=AnswerPreparationClarificationsHandler(
                     uow_factory=preparation_uow_factory,
@@ -763,6 +944,37 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     gateway=gateway,
                     model_profile=settings.model_profile,
                 ),
+                rework_guard=rework_guard,
+                assess_rework=AssessReworkSupportHandler(guard=rework_guard),
+                list_pending_explanations=ListPendingExplanationsHandler(
+                    uow_factory=preparation_uow_factory,
+                    authorization=authorization,
+                    guard=rework_guard,
+                ),
+                submit_explanation=SubmitExplanationHandler(
+                    uow_factory=preparation_uow_factory,
+                    authorization=authorization,
+                    guard=rework_guard,
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
+                decide_explanation=DecideExplanationHandler(
+                    uow_factory=preparation_uow_factory,
+                    authorization=authorization,
+                    guard=rework_guard,
+                    clock=clock,
+                ),
+                void_rework_event=VoidReworkEventHandler(
+                    uow_factory=preparation_uow_factory,
+                    authorization=authorization,
+                    clock=clock,
+                ),
+                escalate_explanations=EscalateStaleExplanationsHandler(
+                    uow_factory=preparation_uow_factory,
+                    guard=rework_guard,
+                    clock=clock,
+                    id_generator=id_generator,
+                ),
             )
 
             # ---- Chat front office (conversation-first P1) ---------------
@@ -777,6 +989,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     store=conversation_store,
                     gateway=gateway,
                     create_case=preparation.create_case,
+                    rework_guard=rework_guard,
                     rules=procurement_rules,
                     clock=clock,
                     id_generator=id_generator,
@@ -789,7 +1002,10 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     pending_authority=SqlPendingAuthority(
                         uow_factory=uow_factory, session_factory=session_factory
                     ),
-                    knowledge=knowledge_gateway,
+                    # The router, not the raw corpus: a colleague asking "how
+                    # many days must we give bidders?" should get today's law,
+                    # the same as the drafting run does.
+                    knowledge=legal_gateway,
                     assess_readiness=preparation.assess_readiness,
                     amend_case=preparation.amend_case,
                     answer_clarifications=preparation.answer_clarifications,
@@ -824,6 +1040,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         tender=tender,
         preparation=preparation,
         knowledge_gateway=knowledge_gateway,
+        legal_gateway=legal_gateway,
+        model_gateway=model_gateway,
         ingest_job_store=ingest_job_store,
         object_storage=object_storage,
         memory_service=memory_service,

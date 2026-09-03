@@ -8,6 +8,8 @@ from dw_knowledge.adapters.composite_parser import CompositeParser
 from dw_knowledge.adapters.docling_parser import DoclingDocumentParser
 from dw_knowledge.adapters.text_parser import PlaintextParser
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.asyncio
 async def test_plaintext_parser_supports_and_parses() -> None:

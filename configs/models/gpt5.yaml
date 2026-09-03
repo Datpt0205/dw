@@ -1,0 +1,28 @@
+schema_version: "1.0"
+profile_id: gpt5
+routing_policy_version: "1.0.0"
+# OpenAI-compatible AI gateway (portal.dxrank.vn). Enable with:
+#   DW_MODEL_PROVIDER=openai_compatible
+#   OPENAI_BASE_URL=https://portal.dxrank.vn/ai-gateway/v1
+#   OPENAI_API_KEY=sk-...
+#   DW_API_OPENAI_STRUCTURED_MODE=json_schema   (native structured output)
+#   DW_API_MODEL_PROFILE=gpt5
+# The gateway serves three gpt-5.6 variants (luna/sol/terra); all three passed a
+# json_schema smoke call, so the choice below is a default, not a constraint.
+structured_extraction:
+  provider: openai_compatible
+  model: gpt-5.6-sol
+  timeout_seconds: 90
+reasoning:
+  provider: openai_compatible
+  model: gpt-5.6-sol
+  timeout_seconds: 180
+# Visible-thinking route: only used with route_kind=deep_reasoning
+# (dw_tender/workflows/preparation_v1/nodes.py) — falls back to `reasoning`.
+deep_reasoning:
+  provider: openai_compatible
+  model: gpt-5.6-sol
+  timeout_seconds: 300
+budgets:
+  max_input_tokens_per_run: 120000
+  max_cost_usd_per_run: 2.00

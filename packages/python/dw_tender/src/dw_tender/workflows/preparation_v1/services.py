@@ -10,6 +10,7 @@ from dw_kernel.ports import IdGenerator, UtcClock
 from dw_knowledge.ports import KnowledgeGatewayPort
 from dw_tender.application.ports import DocumentStoragePort
 from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
+from dw_tender.application.preparation.rework import ReworkSupportRules
 from dw_tender.application.preparation.rules import ProcurementRules
 
 
@@ -40,6 +41,9 @@ class PreparationServices:
     # a human; "autonomous_demo" lets the Review Agent auto-approve CP1 for
     # low-risk methods (min_suppliers == 1, i.e. direct purchase per rule pack).
     autonomy_profile: str = "governed_production"
-    prompt_bundle_version: str = "1.0.0"
+    # Rework-support thresholds. Optional: absent means the nodes record
+    # nothing when a checkpoint is turned down, and nothing else changes.
+    rework_rules: ReworkSupportRules | None = None
+    prompt_bundle_version: str = "1.1.0"
     schema_version: str = "1.0"
     exports_bucket_prefix: str = "exports"

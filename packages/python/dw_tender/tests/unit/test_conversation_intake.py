@@ -201,12 +201,44 @@ class FakeCreateCase:
         return uuid.uuid4()
 
 
+@dataclass
+class FakeReworkGuard:
+    """Stands in for the real gate — only ``assess`` is reachable from chat."""
+
+    level: Any = None
+    calls: int = 0
+
+    async def assess(self, context: Any) -> Any:
+        self.calls += 1
+        from dw_tender.application.preparation.rework import (
+            ReworkAssessment,
+        )
+
+        if self.level is None:
+            return ReworkAssessment.unavailable()
+        return ReworkAssessment(
+            available=True,
+            level=self.level,
+            nudge_count=3,
+            block_count=5,
+            nudge_window_days=7,
+            nudge_threshold=3,
+            block_window_days=30,
+            block_threshold=5,
+            policy_version="1.0.0",
+            top_reason_code="budget_mismatch",
+            top_reason_label="Ngân sách chưa khớp",
+            guidance="Đối chiếu lại dự toán với đề nghị mua sắm.",
+        )
+
+
 def make_service(
     store: FakeStore,
     turn: IntakeChatTurn,
     create_case: FakeCreateCase | None = None,
     thinking: str = "",
     gateway: FakeGateway | None = None,
+    rework_guard: Any | None = None,
 ) -> ConversationIntakeService:
     return ConversationIntakeService(
         store=store,
@@ -215,6 +247,7 @@ def make_service(
         rules=RULES,
         clock=FakeClock(),
         id_generator=FakeIdGen(),
+        rework_guard=rework_guard,
     )
 
 
@@ -768,3 +801,100 @@ async def test_cancel_resumes_parked_draft() -> None:
     )
     assert resumed.state == "collecting"  # parked draft is live again
     assert any("Quay lại hồ sơ" in r.text for r in outcome.replies)
+
+
+# ------------------------------------------------------- rework support ----
+# The gate has to fire on the FIRST sentence that reads as a new request. It
+# used to sit on the create handler, which chat only reaches after every slot
+# is filled — so a blocked person answered three rounds of questions and was
+# refused at the end. That is worse than refusing plainly, and it is the exact
+# shape of trap this feature is supposed to avoid.
+
+
+def _new_request_turn() -> IntakeChatTurn:
+    return IntakeChatTurn(
+        intent="create_request",
+        slots=IntakeSlots(item_summary="bàn ghế phòng họp", quantity=40),
+        reply_vi="Bạn cho mình danh sách nhà cung cấp nhé?",
+        reasoning_summary="Yêu cầu mua bàn ghế.",
+    )
+
+
+async def test_a_blocked_person_is_told_on_the_first_sentence() -> None:
+    from dw_tender.application.preparation.rework import SupportLevel
+
+    store = FakeStore()
+    create = FakeCreateCase()
+    guard = FakeReworkGuard(level=SupportLevel.BLOCK)
+    outcome = await make_service(
+        store, _new_request_turn(), create_case=create, rework_guard=guard
+    ).handle_message(
+        channel_key="slack:D1",
+        text="Cần mua 40 bộ bàn ghế cho phòng họp tầng 3, 900 triệu, trong 45 ngày",
+        context=CONTEXT,
+        display_name="An",
+    )
+    text = outcome.replies[0].text
+    # Not "give me your supplier list" — the answer arrives immediately.
+    assert "nhà cung cấp" not in text
+    assert "mô tả bối cảnh" in text
+    # And nothing was filed.
+    assert create.created == []
+
+
+async def test_the_refusal_says_work_in_progress_is_untouched() -> None:
+    from dw_tender.application.preparation.rework import SupportLevel
+
+    store = FakeStore()
+    outcome = await make_service(
+        store, _new_request_turn(), rework_guard=FakeReworkGuard(level=SupportLevel.BLOCK)
+    ).handle_message(
+        channel_key="slack:D1", text="Cần mua bàn ghế", context=CONTEXT, display_name="An"
+    )
+    assert "sửa" in outcome.replies[0].text
+
+
+async def test_the_refusal_never_accuses_anyone() -> None:
+    from dw_tender.application.preparation.rework import SupportLevel
+
+    store = FakeStore()
+    outcome = await make_service(
+        store, _new_request_turn(), rework_guard=FakeReworkGuard(level=SupportLevel.BLOCK)
+    ).handle_message(
+        channel_key="slack:D1", text="Cần mua bàn ghế", context=CONTEXT, display_name="An"
+    )
+    lowered = outcome.replies[0].text.lower()
+    for accusation in ("vi phạm", "sai phạm", "lách", "chia nhỏ"):
+        assert accusation not in lowered
+
+
+async def test_a_nudge_does_not_stop_anything() -> None:
+    """Soft means soft — collection continues exactly as before."""
+    from dw_tender.application.preparation.rework import SupportLevel
+
+    store = FakeStore()
+    outcome = await make_service(
+        store, _new_request_turn(), rework_guard=FakeReworkGuard(level=SupportLevel.NUDGE)
+    ).handle_message(
+        channel_key="slack:D1", text="Cần mua bàn ghế", context=CONTEXT, display_name="An"
+    )
+    assert "nhà cung cấp" in outcome.replies[0].text
+
+
+async def test_an_unavailable_tally_never_blocks() -> None:
+    """Fail open: an outage must not become a ban on working."""
+    store = FakeStore()
+    outcome = await make_service(
+        store, _new_request_turn(), rework_guard=FakeReworkGuard(level=None)
+    ).handle_message(
+        channel_key="slack:D1", text="Cần mua bàn ghế", context=CONTEXT, display_name="An"
+    )
+    assert "nhà cung cấp" in outcome.replies[0].text
+
+
+async def test_without_the_guard_wired_nothing_changes() -> None:
+    store = FakeStore()
+    outcome = await make_service(store, _new_request_turn()).handle_message(
+        channel_key="slack:D1", text="Cần mua bàn ghế", context=CONTEXT, display_name="An"
+    )
+    assert "nhà cung cấp" in outcome.replies[0].text

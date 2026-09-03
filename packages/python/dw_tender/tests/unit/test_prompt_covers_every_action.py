@@ -22,6 +22,8 @@ import yaml
 from dw_tender.application.conversation.actions import ACTIONS
 from dw_tender.application.conversation.service import ConversationIntakeService
 
+pytestmark = pytest.mark.unit
+
 PROMPTS = Path(__file__).resolve().parents[4].parent / "configs" / "prompts" / "conversation"
 
 # Recognised by the conversation flow rather than named to the model: the

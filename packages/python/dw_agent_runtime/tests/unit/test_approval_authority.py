@@ -22,6 +22,8 @@ from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.domain.approval import ApprovalRequest
 
+pytestmark = pytest.mark.unit
+
 TENANT = uuid.uuid4()
 WORKSPACE = uuid.uuid4()
 

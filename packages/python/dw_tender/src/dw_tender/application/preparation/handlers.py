@@ -26,6 +26,9 @@ from dw_tender.application.preparation.ports import (
     PreparationUnitOfWork,
     PreparationUnitOfWorkFactory,
 )
+from dw_tender.application.preparation.rework import ReworkSupportRules
+from dw_tender.application.preparation.rework_guard import ReworkGuard
+from dw_tender.application.preparation.rework_recording import record_rework_event
 from dw_tender.application.preparation.rules import ProcurementRules
 from dw_tender.domain.preparation.entities import (
     ArtifactStatus,
@@ -42,6 +45,7 @@ from dw_tender.domain.preparation.notifications import (
     IntakeNotificationJob,
     IntakeNotificationType,
 )
+from dw_tender.domain.preparation.rework import ReworkCheckpoint
 from dw_tender.domain.value_objects.ids import (
     ArtifactId,
     PreparationCaseId,
@@ -109,6 +113,7 @@ class CreatePreparationCaseHandler:
     id_generator: IdGenerator
     clock: UtcClock
     reminder_seconds: int = 5
+    rework_guard: ReworkGuard | None = None
 
     async def handle(
         self, command: CreatePreparationCaseCommand, context: AccessContext
@@ -117,6 +122,8 @@ class CreatePreparationCaseHandler:
             context=context, action="tender.write", resource_type="preparation_case"
         )
         await self.entitlement.require_feature(context, TENDER_FEATURE)
+        if self.rework_guard is not None:
+            await self.rework_guard.require_not_blocked(context)
 
         case = PreparationCase(
             id=PreparationCaseId(self.id_generator.new_uuid()),
@@ -336,6 +343,10 @@ class RejectPreparationIntakeHandler:
     authorization: ScopeAuthorizationService
     clock: UtcClock
     id_generator: IdGenerator
+    # Optional so the handler stays constructible in tests and in deployments
+    # where the support feature is not wired. Absent means: reject as before,
+    # record nothing.
+    rework_rules: ReworkSupportRules | None = None
 
     async def handle(
         self,
@@ -343,6 +354,7 @@ class RejectPreparationIntakeHandler:
         *,
         comment: str,
         context: AccessContext,
+        reason_code: str = "",
     ) -> None:
         await self.authorization.require(
             context=context,
@@ -359,6 +371,20 @@ class RejectPreparationIntakeHandler:
                 raise NotFoundError("preparation case not found")
             case.reject_intake(UserId(context.principal_id))
             now = self.clock.now().astimezone(UTC)
+            if self.rework_rules is not None:
+                # Same transaction as the state change on purpose: a case shown
+                # as returned with no record would undercount in silence.
+                await record_rework_event(
+                    uow,
+                    case=case,
+                    decided_by=UserId(context.principal_id),
+                    checkpoint=ReworkCheckpoint.INTAKE,
+                    reason_code=reason_code,
+                    reason_text=reason,
+                    rules=self.rework_rules,
+                    clock=self.clock,
+                    id_generator=self.id_generator,
+                )
             await uow.notifications.enqueue(
                 IntakeNotificationJob(
                     id=self.id_generator.new_uuid(),
@@ -1680,6 +1706,7 @@ class RunPreparationHandler:
     id_generator: IdGenerator
     worker_id: str = "preparation"
     worker_version: str = "1.0.0"
+    rework_guard: ReworkGuard | None = None
 
     async def handle(
         self, case_id: uuid.UUID, context: AccessContext, *, channel: str = "web"
@@ -1692,6 +1719,10 @@ class RunPreparationHandler:
             resource_type="preparation_case",
             resource_id=str(case_id),
         )
+        # Gated because a run is what puts a case in front of an approver.
+        # Editing and saving stay open — see ReworkGuard's docstring.
+        if self.rework_guard is not None:
+            await self.rework_guard.require_not_blocked(context)
         return await self._start(case_id, context, on_behalf_of_owner=False, channel=channel)
 
     async def handle_auto(self, case_id: uuid.UUID, context: AccessContext) -> uuid.UUID:

@@ -12,7 +12,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dw_kernel.errors import DomainError
 from dw_platform.application.access_context import AccessContext
-from dw_tender.application.preparation.dto import PreparationCaseView
+from dw_tender.application.preparation.dto import (
+    ExplanationView,
+    PreparationCaseView,
+    ReworkSupportView,
+)
 from dw_tender.application.preparation.handlers import (
     AnswerPreparationClarificationsHandler,
     AutoPublishPreparationHandler,
@@ -34,6 +38,9 @@ from dw_tender.application.preparation.handlers import (
     SubmitAddendumCommand,
     SubmitPreparationAddendumHandler,
     VerifyPreparationIntakeHandler,
+)
+from dw_tender.application.preparation.rework_handlers import (
+    SubmitExplanationCommand,
 )
 from dw_tender.domain.preparation.entities import BusinessDomain, ProcurementType
 
@@ -79,6 +86,38 @@ class RejectIntakeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     comment: str = Field(min_length=1, max_length=2000)
+    # Which of the rule pack's categories applies. Required here because this
+    # endpoint is ours to change; the checkpoint path keeps it optional (see
+    # design.md §7.1). An unrecognised value is refused downstream.
+    reason_code: str = Field(default="other", min_length=1, max_length=64)
+
+
+class SubmitExplanationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    context_text: str = Field(min_length=1, max_length=5000)
+    difficulty_text: str = Field(default="", max_length=5000)
+    support_request_text: str = Field(default="", max_length=5000)
+    case_id: uuid.UUID | None = None
+
+
+class ExplanationDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approve: bool
+    # Not optional. A decision that unblocks a colleague without saying
+    # anything back to them is what makes the whole mechanism feel punitive.
+    comment: str = Field(min_length=1, max_length=2000)
+
+
+class VoidReworkEventRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class SubmitExplanationResponse(BaseModel):
+    explanation_id: uuid.UUID
 
 
 class ClarificationAnswerRequest(BaseModel):
@@ -121,6 +160,11 @@ def build_preparation_router(
     decide_cp3: DecidePreparationCp3Handler,
     audit_recorder: PreparationAuditRecorder,
     access_context_dependency: Callable[..., Any],
+    assess_rework: Any | None = None,
+    list_pending_explanations: Any | None = None,
+    submit_explanation: Any | None = None,
+    decide_explanation: Any | None = None,
+    void_rework_event: Any | None = None,
     # Carrying the sealed package to evaluation must not depend on which
     # surface confirmed CP4. Optional so a router built without DW02 wiring
     # (tests, trimmed deployments) still serves every other route.
@@ -263,12 +307,17 @@ def build_preparation_router(
         body: RejectIntakeRequest,
         context: AccessContext = require_context,
     ) -> ActionResponse:
-        await reject_intake.handle(case_id, comment=body.comment, context=context)
+        await reject_intake.handle(
+            case_id,
+            comment=body.comment,
+            context=context,
+            reason_code=body.reason_code,
+        )
         await audit_recorder.record(
             context,
             action="preparation.intake.rejected",
             case_id=case_id,
-            details={"comment": body.comment.strip()},
+            details={"comment": body.comment.strip(), "reason_code": body.reason_code},
         )
         return ActionResponse()
 
@@ -475,6 +524,109 @@ def build_preparation_router(
             except Exception:
                 logger.exception("evaluation handoff failed for case %s", case_id)
         return ActionResponse()
+
+    # --- Rework support ----------------------------------------------------
+    # Registered only when the feature is wired, so a deployment without it
+    # has no such endpoints at all rather than endpoints that fail when called.
+
+    if assess_rework is not None:
+
+        @router.get("/rework/me", response_model=ReworkSupportView)
+        async def my_rework_support(
+            context: AccessContext = require_context,
+        ) -> ReworkSupportView:
+            """The caller's own figures.
+
+            No authorization gate: a person always sees their own, whatever
+            role they hold. Showing somebody else's would be a different
+            endpoint with a different gate — this one takes no user id, so it
+            cannot be pointed at anyone but the caller.
+            """
+            assessment = await assess_rework.handle(context)
+            return ReworkSupportView.from_assessment(
+                assessment, min_chars=assess_rework.guard.rules.explanation_min_chars
+            )
+
+    if list_pending_explanations is not None:
+
+        @router.get("/rework/explanations/pending", response_model=list[ExplanationView])
+        async def pending_explanations(
+            context: AccessContext = require_context,
+        ) -> list[ExplanationView]:
+            records = await list_pending_explanations.handle(context)
+            return [ExplanationView.from_domain(record) for record in records]
+
+    if submit_explanation is not None:
+
+        @router.post(
+            "/rework/explanations",
+            response_model=SubmitExplanationResponse,
+            status_code=201,
+        )
+        async def submit_rework_explanation(
+            body: SubmitExplanationRequest,
+            context: AccessContext = require_context,
+        ) -> SubmitExplanationResponse:
+            explanation_id = await submit_explanation.handle(
+                SubmitExplanationCommand(
+                    context_text=body.context_text,
+                    difficulty_text=body.difficulty_text,
+                    support_request_text=body.support_request_text,
+                    case_id=body.case_id,
+                ),
+                context,
+            )
+            if body.case_id is not None:
+                await audit_recorder.record(
+                    context,
+                    action="preparation.explanation.submitted",
+                    case_id=body.case_id,
+                    details={"explanation_id": str(explanation_id)},
+                )
+            return SubmitExplanationResponse(explanation_id=explanation_id)
+
+    if decide_explanation is not None:
+
+        @router.post(
+            "/rework/explanations/{explanation_id}/decision",
+            response_model=ActionResponse,
+        )
+        async def decide_rework_explanation(
+            explanation_id: uuid.UUID,
+            body: ExplanationDecisionRequest,
+            context: AccessContext = require_context,
+        ) -> ActionResponse:
+            await decide_explanation.handle(
+                explanation_id,
+                approve=body.approve,
+                comment=body.comment,
+                context=context,
+            )
+            await audit_recorder.record(
+                context,
+                action="preparation.explanation.decided",
+                case_id=explanation_id,
+                details={"approved": body.approve, "comment": body.comment.strip()},
+            )
+            return ActionResponse()
+
+    if void_rework_event is not None:
+
+        @router.post("/rework/events/{event_id}/void", response_model=ActionResponse)
+        async def void_rework(
+            event_id: uuid.UUID,
+            body: VoidReworkEventRequest,
+            context: AccessContext = require_context,
+        ) -> ActionResponse:
+            """Undo a mis-click. The row stays; it just leaves the tally."""
+            await void_rework_event.handle(event_id, reason=body.reason, context=context)
+            await audit_recorder.record(
+                context,
+                action="preparation.rework.voided",
+                case_id=event_id,
+                details={"reason": body.reason.strip()},
+            )
+            return ActionResponse()
 
     return router
 

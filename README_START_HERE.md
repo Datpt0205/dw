@@ -39,3 +39,5 @@ Do not create empty placeholder packages. Every deferred external dependency mus
 ## Cách dùng
 
 Copy toàn bộ nội dung pack vào root repository. Mở Claude Code tại root, gửi prompt trên, review plan rồi cho chạy từng phase. Không yêu cầu Claude Code dựng toàn bộ hệ thống trong một lần.
+
+Sau khi Phase 0 xong, vòng lặp làm việc hằng ngày (setup, checklist trước khi prompt, rule cứng, quality gate) nằm ở [`docs/development/DEV_WORKFLOW.md`](docs/development/DEV_WORKFLOW.md).
