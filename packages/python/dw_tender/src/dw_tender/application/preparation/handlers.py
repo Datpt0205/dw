@@ -22,6 +22,7 @@ from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.domain.audit import AuditEvent
 from dw_tender.application.ports import DocumentStoragePort, EmailPublisherPort
 from dw_tender.application.preparation.dto import PreparationCaseView
+from dw_tender.application.preparation.intake_quota_guard import IntakeQuotaGuard
 from dw_tender.application.preparation.ports import (
     PreparationUnitOfWork,
     PreparationUnitOfWorkFactory,
@@ -114,6 +115,7 @@ class CreatePreparationCaseHandler:
     clock: UtcClock
     reminder_seconds: int = 5
     rework_guard: ReworkGuard | None = None
+    intake_quota_guard: IntakeQuotaGuard | None = None
 
     async def handle(
         self, command: CreatePreparationCaseCommand, context: AccessContext
@@ -124,6 +126,10 @@ class CreatePreparationCaseHandler:
         await self.entitlement.require_feature(context, TENDER_FEATURE)
         if self.rework_guard is not None:
             await self.rework_guard.require_not_blocked(context)
+        # Quota is checked after rework on purpose: someone whose work keeps
+        # coming back should hear about support first, not about a count.
+        if self.intake_quota_guard is not None:
+            await self.intake_quota_guard.require_not_blocked(context)
 
         case = PreparationCase(
             id=PreparationCaseId(self.id_generator.new_uuid()),

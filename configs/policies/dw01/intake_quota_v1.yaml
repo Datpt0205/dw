@@ -1,0 +1,98 @@
+# =============================================================================
+# DW01 Intake Quota — v1
+#
+# Bao nhiêu yêu cầu mua sắm MỚI một người được mở trong một kỳ, và chuyện gì
+# xảy ra khi họ chạm ngưỡng: hệ thống hỏi lý do, chuyển bản giải trình cho
+# người có thẩm quyền, và chỉ mở khoá khi bản đó được duyệt.
+#
+# Tách khỏi rework_support_v1.yaml vì hai cơ chế đếm hai chuyện khác nhau và
+# bắt hai loại vấn đề khác nhau:
+#
+#   rework  — hồ sơ bị TRẢ LẠI nhiều lần  → chất lượng → HỖ TRỢ
+#   quota   — mở quá nhiều hồ sơ HỢP LỆ   → khối lượng → KIỂM SOÁT
+#
+# Trộn vào một file nghĩa là chỉnh ngưỡng bên này lại đổi hành vi bên kia.
+#
+# CHÚ Ý: đây là ngưỡng do QUY CHẾ CÔNG TY đặt ra, không phải heuristic hệ thống
+# tự nghĩ. Trước khi bật, chủ sở hữu quy trình phải xác nhận con số và ghi
+# nguồn vào `source` bên dưới.
+# =============================================================================
+schema_version: "1.0"
+policy_id: dw01_intake_quota
+policy_version: "1.0.0"
+
+# Điều khoản quy chế mà ngưỡng này thực thi. Để trống nghĩa là chưa ai xác
+# nhận — và một cơ chế CHẶN NGƯỜI mà không dẫn được về điều khoản nào thì
+# không nên bật.
+source: ""
+
+# Không hồi tố. Hồ sơ mở TRƯỚC mốc này không tính vào bất kỳ kỳ nào. Bật tính
+# năng mà tính cả lịch sử thì sẽ có người bị chặn ngay sáng đầu tiên vì những
+# hồ sơ họ mở từ hồi chưa ai biết cơ chế này tồn tại.
+enabled_from: "2026-09-09T00:00:00+07:00"
+
+# --- Kỳ tính -----------------------------------------------------------------
+# `calendar_month` chứ không phải cửa sổ trượt 30 ngày. Rework dùng trượt vì nó
+# đo một MẪU HÀNH VI do hệ thống tự định nghĩa. Quota thì thực thi một câu chữ
+# trong quy chế — nếu quy chế viết "mỗi tháng N đơn" mà hệ thống chạy trượt 30
+# ngày thì nó đang ép một luật khác với luật được viết ra.
+#
+# Và người dùng phải tự nhẩm được mình còn mấy suất. Tháng lịch thì ai cũng biết
+# reset ngày 1; trượt 30 ngày thì bị chặn mà không hiểu vì sao.
+#
+# `timezone` không được bỏ: hệ thống lưu UTC, nên hồ sơ mở lúc 01/10 00:30 giờ
+# VN là 30/09 17:30 UTC. Cắt kỳ theo UTC sẽ đẩy nó về tháng trước và người dùng
+# bị chặn oan ngay đêm đầu tháng.
+period: calendar_month
+timezone: Asia/Ho_Chi_Minh
+
+# Số hồ sơ mới một người được mở trong kỳ.
+#
+# ĐANG TẮT (0). Không con số nào đặt hộ mà đúng cho mọi công ty, và một cơ chế
+# chặn người thì mặc định sai còn tệ hơn không có. Đặt số thật ở đây sau khi
+# chốt với bên mua sắm, và điền `source` ở trên.
+threshold: 0
+
+# --- Chặn dồn (tuỳ chọn) -----------------------------------------------------
+# Quota tháng cho phép mở N đơn cuối tháng 9 rồi N đơn nữa đầu tháng 10 — đúng
+# quy chế, không phải lỗ hổng. Nếu vẫn muốn chặn dồn thì đặt thêm một trần ngắn
+# hạn ở đây; 0 là tắt.
+burst:
+  window_days: 7
+  threshold: 0
+
+# --- Đếm cái gì --------------------------------------------------------------
+# Hồ sơ bị NGƯỜI KHÁC đóng lại (intake_rejected, failed) không chiếm suất —
+# suất trả về cho người tạo. Ba lý do:
+#
+#   1. Rework support ĐÃ đếm chuyện bị trả lại rồi. Đếm lần nữa là phạt hai lần
+#      cùng một sự kiện: vừa bị hỏi "cần hỗ trợ gì" vừa bị trừ suất.
+#   2. Bị từ chối rồi sửa và nộp lại chính là hành vi cần khuyến khích.
+#   3. Không có đường lách: hệ thống không cho người tạo tự rút hồ sơ đã nộp,
+#      nên không thể tạo → huỷ → tạo lại để reset.
+#
+# Hệ quả có chủ ý: số đếm GIẢM ĐƯỢC. Người bị chặn hôm nay, mai một hồ sơ đang
+# chờ bị từ chối, thì suất trả về và họ mở khoá — không cần ai bấm gì. Quota đo
+# chỗ đang chiếm, không đo số lần đã gõ.
+#
+# Hồ sơ `draft` VẪN tính: nó đang nằm trong việc phải xử của người xác minh.
+# Nếu draft không tính thì một người nộp 20 hồ sơ mà quota vẫn báo 0.
+count_closed_unsuccessful: false
+
+# --- Giải trình --------------------------------------------------------------
+explanation:
+  # Đủ dài để nói được bối cảnh, đủ ngắn để không thành hình phạt.
+  min_chars: 80
+  # Vai nhận và duyệt bản giải trình. Người tạo luôn bị loại khỏi danh sách
+  # nhận — không ai tự duyệt bản của mình.
+  approver_role: procurement_head
+  # Treo quá lâu thì leo thang lên platform_admin. Người bị chặn mà chờ mãi
+  # không ai duyệt là tình huống tệ nhất của cả cơ chế.
+  escalate_after_hours: 48
+
+# Hiện trên thẻ khi ai đó chạm ngưỡng. Không bao giờ để trống: một cái chặn
+# không kèm lối ra là chỗ người ta bắt đầu tìm cách đi vòng.
+guidance: >-
+  Nếu các nhu cầu này thuộc cùng một đợt mua sắm, gộp lại thành một yêu cầu sẽ
+  nhanh hơn cho cả hai bên. Nếu thật sự là các đợt riêng biệt, viết ngắn gọn vì
+  sao đợt này không chờ được sang kỳ sau — bên mua sắm cần chừng đó để duyệt.

@@ -23,6 +23,7 @@ from dw_tender.adapters.preparation.rework_repositories import (
 from dw_tender.application.preparation.ports import (
     ExplanationRepositoryPort,
     IntakeNotificationRepositoryPort,
+    OpenedCaseRow,
     PreparationArtifactRepositoryPort,
     PreparationCaseRepositoryPort,
     PreparationDocumentRepositoryPort,
@@ -228,6 +229,31 @@ class SqlPreparationCaseRepository:
             )
         ).all()
         return [_case_from_row(row) for row in rows]
+
+    async def list_opened_by(self, creator_id: UserId, *, since: datetime) -> list[OpenedCaseRow]:
+        """Three columns, not whole aggregates — see the port's docstring."""
+        rows = (
+            await self.session.execute(
+                sa.select(
+                    tables.preparation_cases.c.id,
+                    tables.preparation_cases.c.created_at,
+                    tables.preparation_cases.c.state,
+                )
+                .where(
+                    tables.preparation_cases.c.created_by == creator_id.value,
+                    tables.preparation_cases.c.created_at >= since,
+                )
+                .order_by(tables.preparation_cases.c.created_at.asc())
+            )
+        ).all()
+        return [
+            OpenedCaseRow(
+                case_id=row.id,
+                opened_at=row.created_at,
+                state=CaseState(row.state),
+            )
+            for row in rows
+        ]
 
 
 @dataclass

@@ -72,6 +72,7 @@ from dw_platform.application.ports import (
 from dw_tender.adapters.conversation.store import SqlConversationStore
 from dw_tender.adapters.persistence.repositories import SqlTenderUnitOfWorkFactory
 from dw_tender.adapters.policy_loader import load_scoring_policy
+from dw_tender.adapters.preparation.intake_quota_rules_loader import load_intake_quota_rules
 from dw_tender.adapters.preparation.repositories import SqlPreparationUnitOfWorkFactory
 from dw_tender.adapters.preparation.rework_rules_loader import load_rework_support_rules
 from dw_tender.adapters.preparation.rules_loader import load_procurement_rules
@@ -102,6 +103,7 @@ from dw_tender.application.preparation.handlers import (
     VerifyPreparationIntakeHandler,
 )
 from dw_tender.application.preparation.handoff import HandoffToEvaluationHandler
+from dw_tender.application.preparation.intake_quota_guard import IntakeQuotaGuard
 from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
 from dw_tender.application.preparation.readiness import AssessTenderReadinessHandler
 from dw_tender.application.preparation.rework_guard import ReworkGuard
@@ -196,6 +198,7 @@ class PreparationHandlers:
     uow_factory: PreparationUnitOfWorkFactory
     rules: ProcurementRules
     rework_guard: ReworkGuard
+    intake_quota_guard: IntakeQuotaGuard
     assess_rework: AssessReworkSupportHandler
     list_pending_explanations: ListPendingExplanationsHandler
     submit_explanation: SubmitExplanationHandler
@@ -705,6 +708,13 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 rules=rework_rules,
                 clock=clock,
             )
+            intake_quota_guard = IntakeQuotaGuard(
+                uow_factory=preparation_uow_factory,
+                rules=load_intake_quota_rules(
+                    REPO_ROOT / "configs" / "policies" / "dw01" / "intake_quota_v1.yaml"
+                ),
+                clock=clock,
+            )
             preparation_services = PreparationServices(
                 uow_factory=preparation_uow_factory,
                 storage=storage,  # type: ignore[arg-type]
@@ -802,6 +812,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     clock=clock,
                     reminder_seconds=settings.approval_reminder_seconds,
                     rework_guard=rework_guard,
+                    intake_quota_guard=intake_quota_guard,
                 ),
                 get_case=GetPreparationCaseHandler(
                     uow_factory=preparation_uow_factory,
@@ -945,6 +956,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     model_profile=settings.model_profile,
                 ),
                 rework_guard=rework_guard,
+                intake_quota_guard=intake_quota_guard,
                 assess_rework=AssessReworkSupportHandler(guard=rework_guard),
                 list_pending_explanations=ListPendingExplanationsHandler(
                     uow_factory=preparation_uow_factory,
@@ -990,6 +1002,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     gateway=gateway,
                     create_case=preparation.create_case,
                     rework_guard=rework_guard,
+                    intake_quota_guard=intake_quota_guard,
                     rules=procurement_rules,
                     clock=clock,
                     id_generator=id_generator,

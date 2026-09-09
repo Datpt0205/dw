@@ -62,6 +62,9 @@ from dw_tender.application.preparation.handlers import (
     SubmitAddendumCommand,
     SubmitPreparationAddendumHandler,
 )
+from dw_tender.application.preparation.intake_quota import (
+    blocked_message as quota_blocked_message,
+)
 from dw_tender.application.preparation.rework_wording import blocked_message
 from dw_tender.application.preparation.rules import ProcurementRules
 from dw_tender.domain.preparation.entities import BusinessDomain, ProcurementType
@@ -272,6 +275,7 @@ class ConversationIntakeService:
     # conversation, and making somebody fill in the whole form before saying
     # "actually, let's talk first" wastes their time and reads as a bait.
     rework_guard: Any | None = None
+    intake_quota_guard: Any | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
     prompt_version: str = "1.12.0"
@@ -357,6 +361,20 @@ class ConversationIntakeService:
             if blocked.blocked:
                 return TurnOutcome(
                     replies=(ChatReply(text=blocked_message(blocked)),),
+                    thinking=model_thinking,
+                )
+
+        # Same gate, second reason. Checked after rework so that somebody whose
+        # work keeps coming back is offered help before being shown a count.
+        if (
+            turn.intent == "create_request"
+            and self.intake_quota_guard is not None
+            and conversation.state != "case_created"
+        ):
+            over_quota = await self.intake_quota_guard.assess(context)
+            if over_quota.blocked:
+                return TurnOutcome(
+                    replies=(ChatReply(text=quota_blocked_message(over_quota)),),
                     thinking=model_thinking,
                 )
 
