@@ -5,7 +5,11 @@ import {
   auditEventSchema,
   demoUserSchema,
   devSessionSchema,
+  channelLinkCodeSchema,
+  channelLinkStatusSchema,
   integrationSchema,
+  type ChannelLinkCode,
+  type ChannelLinkStatus,
   knowledgeDocumentSchema,
   ingestJobSchema,
   memoryItemSchema,
@@ -439,6 +443,32 @@ export class ApiClient {
       "GET",
       "/api/v1/integrations",
       z.array(integrationSchema),
+    );
+  }
+
+  // ---- chat account linking -----------------------------------------------
+
+  listChannelLinks(): Promise<ChannelLinkStatus[]> {
+    return this.request(
+      "GET",
+      "/api/v1/channel-link",
+      z.array(channelLinkStatusSchema),
+    );
+  }
+
+  createChannelLinkCode(channel = "zalo"): Promise<ChannelLinkCode> {
+    return this.request(
+      "POST",
+      `/api/v1/channel-link/code?channel=${encodeURIComponent(channel)}`,
+      channelLinkCodeSchema,
+    );
+  }
+
+  unlinkChannel(channel: string): Promise<ChannelLinkStatus> {
+    return this.request(
+      "DELETE",
+      `/api/v1/channel-link/${encodeURIComponent(channel)}`,
+      channelLinkStatusSchema,
     );
   }
 

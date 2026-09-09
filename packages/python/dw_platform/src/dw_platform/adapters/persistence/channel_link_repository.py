@@ -106,7 +106,24 @@ class SqlChannelLinkRepository:
             ).scalar_one_or_none()
 
     async def bind(self, *, user_id: UUID, issuer: str, subject: str) -> None:
+        """Attach this chat account, replacing whatever this person had here.
+
+        One person, one account per channel. Somebody who changes phone links
+        the new one and expects the old handset to go quiet; leaving both rows
+        would keep the old one speaking as them, and would leave two answers
+        where the settings page and the unlink button each expect one.
+
+        Only the caller's own chat rows are touched — never their SSO identity,
+        and never another person's.
+        """
         async with self.session_factory() as session, session.begin():
+            await session.execute(
+                sa.delete(tables.external_identities).where(
+                    tables.external_identities.c.user_id == user_id,
+                    tables.external_identities.c.issuer == issuer,
+                    tables.external_identities.c.provider == "chat",
+                )
+            )
             await session.execute(
                 sa.insert(tables.external_identities).values(
                     id=uuid.uuid4(),
@@ -118,7 +135,13 @@ class SqlChannelLinkRepository:
             )
 
     async def find_binding(self, *, issuer: str, subject: str) -> LinkedIdentity | None:
-        """The most recent redemption for this chat account.
+        """Where a linked chat account works — if it is still linked.
+
+        Joined against ``external_identities`` on purpose. That table is the
+        one thing that decides whether a chat account is linked at all, and
+        unlinking deletes from it; reading the redeemed code alone would keep
+        answering long after somebody disconnected. The code row contributes
+        only the tenant, which external_identities cannot hold.
 
         Most recent rather than only: relinking after a phone change writes a
         second row, and the newest one is the live answer.
@@ -130,6 +153,15 @@ class SqlChannelLinkRepository:
                         tables.channel_link_codes.c.user_id,
                         tables.channel_link_codes.c.tenant_id,
                         tables.channel_link_codes.c.workspace_id,
+                    )
+                    .join(
+                        tables.external_identities,
+                        sa.and_(
+                            tables.external_identities.c.user_id
+                            == tables.channel_link_codes.c.user_id,
+                            tables.external_identities.c.issuer == issuer,
+                            tables.external_identities.c.subject == subject,
+                        ),
                     )
                     .where(
                         tables.channel_link_codes.c.issuer == issuer,
@@ -145,3 +177,48 @@ class SqlChannelLinkRepository:
         return LinkedIdentity(
             user_id=row.user_id, tenant_id=row.tenant_id, workspace_id=row.workspace_id
         )
+
+    async def unbind(self, *, user_id: UUID, issuer: str) -> str:
+        """Disconnect this person's chat account on one channel.
+
+        Returns the account that was disconnected, or "" if there was none.
+        Scoped by user, never by subject alone: unlinking is something you do
+        to your own account, and taking a subject from the caller would let one
+        person disconnect another.
+
+        The spent code rows stay. They are the record of when the link was made
+        and by whom, and a disconnection should not erase that.
+        """
+        async with self.session_factory() as session, session.begin():
+            subject = (
+                await session.execute(
+                    sa.select(tables.external_identities.c.subject).where(
+                        tables.external_identities.c.user_id == user_id,
+                        tables.external_identities.c.issuer == issuer,
+                        tables.external_identities.c.provider == "chat",
+                    )
+                )
+            ).scalar_one_or_none()
+            if subject is None:
+                return ""
+            await session.execute(
+                sa.delete(tables.external_identities).where(
+                    tables.external_identities.c.user_id == user_id,
+                    tables.external_identities.c.issuer == issuer,
+                    tables.external_identities.c.provider == "chat",
+                )
+            )
+        return str(subject)
+
+    async def linked_subject(self, *, user_id: UUID, issuer: str) -> str | None:
+        """Which chat account this person has on one channel, if any."""
+        async with self.session_factory() as session:
+            return (
+                await session.execute(
+                    sa.select(tables.external_identities.c.subject).where(
+                        tables.external_identities.c.user_id == user_id,
+                        tables.external_identities.c.issuer == issuer,
+                        tables.external_identities.c.provider == "chat",
+                    )
+                )
+            ).scalar_one_or_none()

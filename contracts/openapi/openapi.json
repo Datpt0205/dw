@@ -657,6 +657,36 @@
         "title": "BusinessDomain",
         "type": "string"
       },
+      "ChannelLinkStatus": {
+        "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Định danh tài khoản chat đang liên kết, nếu có.",
+            "title": "Account"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "linked": {
+            "title": "Linked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel",
+          "linked"
+        ],
+        "title": "ChannelLinkStatus",
+        "type": "object"
+      },
       "ClarificationAnswerRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2968,6 +2998,31 @@
         ]
       }
     },
+    "/api/v1/channel-link": {
+      "get": {
+        "operationId": "list_links_api_v1_channel_link_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelLinkStatus"
+                  },
+                  "title": "Response List Links Api V1 Channel Link Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Links",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/api/v1/channel-link/code": {
       "post": {
         "operationId": "issue_link_code_api_v1_channel_link_code_post",
@@ -3006,6 +3061,49 @@
           }
         },
         "summary": "Issue Link Code",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/channel-link/{channel}": {
+      "delete": {
+        "description": "Disconnect your own chat account. Idempotent: unlinking nothing is fine.",
+        "operationId": "unlink_api_v1_channel_link__channel__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "title": "Channel",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelLinkStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unlink",
         "tags": [
           "identity"
         ]

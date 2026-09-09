@@ -9,6 +9,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -63,8 +64,10 @@ from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.channel_link import (
+    DescribeChannelLinksHandler,
     IssueChannelLinkCodeHandler,
     RedeemChannelLinkCodeHandler,
+    UnlinkChannelHandler,
 )
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory
@@ -258,6 +261,8 @@ class ApiContainer:
     channel_link_repository: SqlChannelLinkRepository | None = None
     issue_channel_link: IssueChannelLinkCodeHandler | None = None
     redeem_channel_link: RedeemChannelLinkCodeHandler | None = None
+    unlink_channel: UnlinkChannelHandler | None = None
+    describe_channel_links: DescribeChannelLinksHandler | None = None
 
     def run_context_for(self, context: AccessContext, run_id: uuid.UUID) -> RunContext:
         return RunContext(
@@ -556,6 +561,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
     channel_link_repository: SqlChannelLinkRepository | None = None
     issue_channel_link: IssueChannelLinkCodeHandler | None = None
     redeem_channel_link: RedeemChannelLinkCodeHandler | None = None
+    unlink_channel: UnlinkChannelHandler | None = None
+    describe_channel_links: DescribeChannelLinksHandler | None = None
 
     if settings.database_url:
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
@@ -565,11 +572,16 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         # person, the chat side quotes it back. Replaces the hand-kept id map.
         channel_link_repository = SqlChannelLinkRepository(session_factory)
         issue_channel_link = IssueChannelLinkCodeHandler(
-            repository=channel_link_repository, clock=clock, id_generator=id_generator
+            repository=channel_link_repository,
+            clock=clock,
+            id_generator=id_generator,
+            ttl=timedelta(minutes=settings.channel_link_ttl_minutes),
         )
         redeem_channel_link = RedeemChannelLinkCodeHandler(
             repository=channel_link_repository, clock=clock
         )
+        unlink_channel = UnlinkChannelHandler(repository=channel_link_repository)
+        describe_channel_links = DescribeChannelLinksHandler(repository=channel_link_repository)
         identity_bootstrap = SqlIdentityBootstrap(
             session_factory=session_factory,
             default_tenant_id=uuid.UUID(settings.default_tenant_id),
@@ -1071,6 +1083,8 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         channel_link_repository=channel_link_repository,
         issue_channel_link=issue_channel_link,
         redeem_channel_link=redeem_channel_link,
+        unlink_channel=unlink_channel,
+        describe_channel_links=describe_channel_links,
         settings=settings,
         engine=engine,
         health_service=HealthService(probes={"database": database_probe(engine)}),

@@ -13,6 +13,7 @@ import {
 } from "@dw/ui";
 import { EmptyState } from "../../components/empty-state";
 import { PageHeading } from "../../components/page-heading";
+import { ZaloLinkCard } from "../../components/zalo-link-card";
 import { apiClient } from "../../lib/session";
 
 export default function IntegrationsPage() {
@@ -36,6 +37,7 @@ export default function IntegrationsPage() {
         title="Tích hợp và connector"
         description="Danh mục capability được tool executor thực thi đúng theo policy, quyền và giới hạn của release hiện tại."
       />
+      <ZaloLinkCard />
       {error && <p className="text-sm text-red-600">{error}</p>}
       {integrations === null && !error && (
         <Skeleton className="h-56 rounded-2xl" />

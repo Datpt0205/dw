@@ -45,6 +45,7 @@ _CHANNEL_ISSUER = "zalo"
 logger = logging.getLogger("dw_api.channels.zalo")
 
 _PICK_RE = re.compile(r"^\s*chọn\s+(\d)\s*$", re.IGNORECASE)
+_STOP_RE = re.compile(r"^\s*/stop\s*$", re.IGNORECASE)
 _THINKING_MAX = 1200
 
 
@@ -217,6 +218,22 @@ class ZaloFrontOfficeService:
             return
         context, display_name = resolved
         channel_key = f"zalo:{chat_id}"
+
+        # 0) Disconnect. A slash command, not a phrase the model interprets:
+        # it is a protocol token this bot defines, and severing an identity
+        # binding should never hinge on a guess about what somebody meant.
+        if _STOP_RE.match(text):
+            if self.container.unlink_channel is None:
+                return
+            removed = await self.container.unlink_channel.handle(context, issuer=_CHANNEL_ISSUER)
+            await self._client.send_message(
+                chat_id,
+                "✅ Đã huỷ liên kết tài khoản Zalo này.\n"
+                "Muốn dùng lại: mở web DW → Kết nối Zalo → lấy mã mới."
+                if removed
+                else "Tài khoản này chưa liên kết nên không có gì để huỷ.",
+            )
+            return
 
         # 1) Case picker in words: "chọn 2".
         pick = _PICK_RE.match(text)

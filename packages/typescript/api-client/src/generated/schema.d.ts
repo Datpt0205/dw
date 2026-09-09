@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channel-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Links */
+        get: operations["list_links_api_v1_channel_link_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/channel-link/code": {
         parameters: {
             query?: never;
@@ -101,6 +118,26 @@ export interface paths {
         /** Issue Link Code */
         post: operations["issue_link_code_api_v1_channel_link_code_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/channel-link/{channel}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink
+         * @description Disconnect your own chat account. Idempotent: unlinking nothing is fine.
+         */
+        delete: operations["unlink_api_v1_channel_link__channel__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1030,6 +1067,18 @@ export interface components {
          * @enum {string}
          */
         BusinessDomain: "general" | "information_technology" | "real_estate" | "healthcare" | "infrastructure" | "operations" | "energy" | "education" | "other";
+        /** ChannelLinkStatus */
+        ChannelLinkStatus: {
+            /**
+             * Account
+             * @description Định danh tài khoản chat đang liên kết, nếu có.
+             */
+            account?: string | null;
+            /** Channel */
+            channel: string;
+            /** Linked */
+            linked: boolean;
+        };
         /** ClarificationAnswerRequest */
         ClarificationAnswerRequest: {
             /** Answer */
@@ -2068,6 +2117,26 @@ export interface operations {
             };
         };
     };
+    list_links_api_v1_channel_link_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelLinkStatus"][];
+                };
+            };
+        };
+    };
     issue_link_code_api_v1_channel_link_code_post: {
         parameters: {
             query?: {
@@ -2086,6 +2155,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LinkCodeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_api_v1_channel_link__channel__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelLinkStatus"];
                 };
             };
             /** @description Validation Error */

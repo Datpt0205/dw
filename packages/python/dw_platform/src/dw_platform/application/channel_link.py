@@ -46,6 +46,14 @@ class ChannelLinkRepositoryPort(Protocol):
         """Write the identity row the membership lookup reads."""
         ...
 
+    async def unbind(self, *, user_id: UUID, issuer: str) -> str:
+        """Disconnect one channel for one person; returns the account, or ""."""
+        ...
+
+    async def linked_subject(self, *, user_id: UUID, issuer: str) -> str | None:
+        """Which chat account this person has on one channel, if any."""
+        ...
+
     async def find_binding(self, *, issuer: str, subject: str) -> LinkedIdentity | None:
         """Where a linked chat account works.
 
@@ -139,10 +147,48 @@ class RedeemChannelLinkCodeHandler:
         )
 
 
+@dataclass
+class UnlinkChannelHandler:
+    """Disconnect a chat account from the person who owns it.
+
+    Needed for three ordinary things, none of them exotic: somebody leaves,
+    somebody linked the wrong account, somebody changes phone. Without it the
+    only way out is a DBA.
+
+    Always scoped to the caller's own identity. The chat account is looked up
+    from the user, never taken as a parameter — otherwise one person could
+    disconnect another by quoting their Zalo id.
+    """
+
+    repository: ChannelLinkRepositoryPort
+
+    async def handle(self, context: AccessContext, *, issuer: str = "zalo") -> str:
+        return await self.repository.unbind(user_id=context.principal_id, issuer=issuer)
+
+
+@dataclass
+class DescribeChannelLinksHandler:
+    """What this person currently has connected, for the settings page."""
+
+    repository: ChannelLinkRepositoryPort
+
+    async def handle(
+        self, context: AccessContext, *, channels: tuple[str, ...] = ("zalo",)
+    ) -> dict[str, str | None]:
+        return {
+            channel: await self.repository.linked_subject(
+                user_id=context.principal_id, issuer=channel
+            )
+            for channel in channels
+        }
+
+
 __all__ = [
     "ChannelLinkRepositoryPort",
+    "DescribeChannelLinksHandler",
     "IssueChannelLinkCodeHandler",
     "IssuedCode",
     "LinkedIdentity",
     "RedeemChannelLinkCodeHandler",
+    "UnlinkChannelHandler",
 ]
