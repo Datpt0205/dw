@@ -49,6 +49,10 @@ class IntakeNotificationType(StrEnum):
     # ignored is the worst state this mechanism can produce, so it gets loud.
     # Payload: {"explanation_id"}.
     REWORK_EXPLANATION_ESCALATED = "rework.explanation_escalated"
+    # Somebody at their intake quota has written why the next request cannot
+    # wait. Attached to a PERSON, like the rework cards: the case_id on the
+    # job is their most recent case and only records where it was raised.
+    QUOTA_JUSTIFICATION_SUBMITTED = "intake_quota.justification_submitted"
 
 
 class NotificationJobStatus(StrEnum):

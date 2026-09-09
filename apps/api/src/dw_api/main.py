@@ -17,6 +17,7 @@ from dw_api.middleware.request_id import RequestIdMiddleware
 from dw_api.routes.v1.approvals import router as approvals_router
 from dw_api.routes.v1.audit import router as audit_router
 from dw_api.routes.v1.auth import router as auth_router
+from dw_api.routes.v1.channel_link import router as channel_link_router
 from dw_api.routes.v1.health import build_health_router
 from dw_api.routes.v1.integrations import router as integrations_router
 from dw_api.routes.v1.knowledge import router as knowledge_router
@@ -159,6 +160,7 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
     register_exception_handlers(app)
     app.include_router(build_health_router(container.health_service), prefix="/api/v1")
     app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(channel_link_router, prefix="/api/v1")
     app.include_router(me_router, prefix="/api/v1")
     app.include_router(approvals_router, prefix="/api/v1")
     app.include_router(runs_router, prefix="/api/v1")

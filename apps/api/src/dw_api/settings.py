@@ -278,6 +278,18 @@ class ApiSettings(BaseSettings):
                 forward.update({str(k): str(v).strip() for k, v in raw.items()})
         return {zalo_id: subject for subject, zalo_id in forward.items() if zalo_id}
 
+    # How long a chat-link code stays usable. Short because it is a bearer
+    # credential sitting on a screen; long enough to walk from a laptop to a
+    # phone, since the code is meant to be typed rather than pasted.
+    channel_link_ttl_minutes: int = Field(
+        default=15,
+        ge=1,
+        le=1440,
+        validation_alias=AliasChoices(
+            "DW_API_CHANNEL_LINK_TTL_MINUTES", "DW_CHANNEL_LINK_TTL_MINUTES"
+        ),
+    )
+
     approval_reminder_seconds: int = Field(
         default=5,
         ge=1,

@@ -12,7 +12,6 @@
       "version": "1.0.0"
     }
   ],
-  "git_sha": "1884d64f163e53f759968f5fefe6be428c19af87",
   "knowledge_index_version": "2026-07-25.structure-1",
   "knowledge_sources": [
     {
@@ -102,7 +101,7 @@
       "version": "1.12.0"
     },
     {
-      "checksum": "6075248d85300c7168297452a97dc33df3dae0a2b8a829e4491a461c0ae2164e",
+      "checksum": "46a18be034345c87d59f6437b8dd01b5aa16390bf831468460f2c1e9d58e9a65",
       "prompt_id": "conversation.intake_chat",
       "version": "1.13.0"
     },

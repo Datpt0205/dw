@@ -172,6 +172,7 @@ preparation_explanations = sa.Table(
     sa.Column("nudge_count", sa.Integer, nullable=False, server_default="0"),
     sa.Column("block_count", sa.Integer, nullable=False, server_default="0"),
     sa.Column("top_reason_code", sa.Text, nullable=False, server_default=""),
+    sa.Column("kind", sa.Text, nullable=False, server_default="rework"),
     sa.Column("policy_version", sa.Text, nullable=False, server_default=""),
     sa.Column("status", sa.Text, nullable=False, server_default="pending"),
     sa.Column("decided_by", UUID(as_uuid=True), nullable=True),

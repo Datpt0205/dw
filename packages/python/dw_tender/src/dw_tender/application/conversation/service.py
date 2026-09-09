@@ -62,6 +62,9 @@ from dw_tender.application.preparation.handlers import (
     SubmitAddendumCommand,
     SubmitPreparationAddendumHandler,
 )
+from dw_tender.application.preparation.intake_quota import (
+    blocked_message as quota_blocked_message,
+)
 from dw_tender.application.preparation.rework_wording import blocked_message
 from dw_tender.application.preparation.rules import ProcurementRules
 from dw_tender.domain.preparation.entities import BusinessDomain, ProcurementType
@@ -272,9 +275,11 @@ class ConversationIntakeService:
     # conversation, and making somebody fill in the whole form before saying
     # "actually, let's talk first" wastes their time and reads as a bait.
     rework_guard: Any | None = None
+    intake_quota_guard: Any | None = None
+    submit_quota_justification: Any | None = None
     model_profile: str = "balanced"
     web_base_url: str = "http://localhost:3000"
-    prompt_version: str = "1.12.0"
+    prompt_version: str = "1.13.0"
     worker_id: str = "dw01.chat_intake"
     worker_version: str = "1.0.0"
 
@@ -357,6 +362,26 @@ class ConversationIntakeService:
             if blocked.blocked:
                 return TurnOutcome(
                     replies=(ChatReply(text=blocked_message(blocked)),),
+                    thinking=model_thinking,
+                )
+
+        # The answer to a quota block. Handled before the gate below, because
+        # the person writing it is by definition still blocked — running them
+        # through the gate first would refuse the very message that lifts it.
+        if turn.intent == "provide_justification" and self.submit_quota_justification is not None:
+            return await self._record_justification(text, context, model_thinking)
+
+        # Same gate, second reason. Checked after rework so that somebody whose
+        # work keeps coming back is offered help before being shown a count.
+        if (
+            turn.intent == "create_request"
+            and self.intake_quota_guard is not None
+            and conversation.state != "case_created"
+        ):
+            over_quota = await self.intake_quota_guard.assess(context)
+            if over_quota.blocked:
+                return TurnOutcome(
+                    replies=(ChatReply(text=quota_blocked_message(over_quota)),),
                     thinking=model_thinking,
                 )
 
@@ -894,6 +919,40 @@ class ConversationIntakeService:
             )
         return await self._act_with_receipt(
             turn, conversation, chosen.case_id, text, context, display_name, model_thinking
+        )
+
+    async def _record_justification(
+        self, text: str, context: AccessContext, model_thinking: str
+    ) -> TurnOutcome:
+        """Store what they wrote and hand it to whoever decides.
+
+        The reply says only what happened. Whether the next request goes
+        through is not this turn's to promise — somebody has to read it first.
+        """
+        from dw_tender.application.preparation.intake_quota_handlers import (
+            SubmitQuotaJustificationCommand,
+        )
+
+        assert self.submit_quota_justification is not None
+        try:
+            await self.submit_quota_justification.handle(
+                SubmitQuotaJustificationCommand(reason_text=text), context
+            )
+        except DomainError as exc:
+            return TurnOutcome(
+                replies=(ChatReply(text=f"Mình chưa gửi được: {exc}"),),
+                thinking=model_thinking,
+            )
+        return TurnOutcome(
+            replies=(
+                ChatReply(
+                    text=(
+                        "✅ Đã gửi giải trình sang bộ phận mua sắm. "
+                        "Duyệt xong mình sẽ báo bạn và mở lại phần tạo yêu cầu."
+                    )
+                ),
+            ),
+            thinking=model_thinking,
         )
 
     def _ask_which(

@@ -70,6 +70,13 @@ ACTIONS: dict[str, ActionSpec] = {
     "ask_knowledge": _spec("ask_knowledge", "tra kho tài liệu"),
     "check_readiness": _spec("check_readiness", "rà soát bộ hồ sơ"),
     "other": _spec("other", "trả lời"),
+    "provide_justification": _spec(
+        "provide_justification",
+        "ghi nhận giải trình",
+        mutates=True,
+        risk="draft",
+        handler="SubmitQuotaJustificationHandler",
+    ),
     # --- the ones that change something ------------------------------------
     "confirm_request": _spec(
         "confirm_request",

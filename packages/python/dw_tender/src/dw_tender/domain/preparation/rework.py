@@ -45,6 +45,18 @@ class ExplanationStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class ExplanationKind(StrEnum):
+    """Which mechanism asked for this explanation.
+
+    The same record shape serves two of them, and they must not clear each
+    other: an approved quota justification says nothing about whether someone's
+    work keeps coming back.
+    """
+
+    REWORK = "rework"
+    INTAKE_QUOTA = "intake_quota"
+
+
 @dataclass(frozen=True, slots=True)
 class ReworkEvent:
     """One case handed back to its author.
@@ -112,6 +124,7 @@ class ExplanationRecord:
     nudge_count: int = 0
     block_count: int = 0
     top_reason_code: str = ""
+    kind: ExplanationKind = ExplanationKind.REWORK
     status: ExplanationStatus = ExplanationStatus.PENDING
     decided_by: UserId | None = None
     decided_at: datetime | None = None

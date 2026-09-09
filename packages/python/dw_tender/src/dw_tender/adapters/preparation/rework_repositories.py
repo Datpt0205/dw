@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_tender.adapters.preparation import tables
 from dw_tender.domain.preparation.rework import (
+    ExplanationKind,
     ExplanationRecord,
     ExplanationStatus,
     ReworkCheckpoint,
@@ -62,6 +63,7 @@ def _explanation_from_row(row: sa.Row[Any]) -> ExplanationRecord:
         nudge_count=row.nudge_count,
         block_count=row.block_count,
         top_reason_code=row.top_reason_code,
+        kind=ExplanationKind(row.kind),
         policy_version=row.policy_version,
         status=ExplanationStatus(row.status),
         decided_by=UserId(row.decided_by) if row.decided_by is not None else None,
@@ -148,6 +150,7 @@ class SqlExplanationRepository:
                 workspace_id=record.workspace_id.value,
                 case_id=record.case_id.value if record.case_id is not None else None,
                 creator_user_id=record.creator_user_id.value,
+                kind=record.kind.value,
                 context_text=record.context_text,
                 difficulty_text=record.difficulty_text,
                 support_request_text=record.support_request_text,
@@ -191,12 +194,15 @@ class SqlExplanationRepository:
             )
         )
 
-    async def latest_pending_for_creator(self, creator_id: UserId) -> ExplanationRecord | None:
+    async def latest_pending_for_creator(
+        self, creator_id: UserId, *, kind: str = "rework"
+    ) -> ExplanationRecord | None:
         result = await self.session.execute(
             sa.select(tables.preparation_explanations)
             .where(
                 tables.preparation_explanations.c.creator_user_id == creator_id.value,
                 tables.preparation_explanations.c.status == ExplanationStatus.PENDING.value,
+                tables.preparation_explanations.c.kind == kind,
             )
             .order_by(tables.preparation_explanations.c.submitted_at.desc())
             .limit(1)
@@ -204,13 +210,16 @@ class SqlExplanationRepository:
         row = result.first()
         return _explanation_from_row(row) if row is not None else None
 
-    async def has_approved_since(self, creator_id: UserId, *, since: datetime) -> bool:
+    async def has_approved_since(
+        self, creator_id: UserId, *, since: datetime, kind: str = "rework"
+    ) -> bool:
         result = await self.session.execute(
             sa.select(sa.literal(1))
             .select_from(tables.preparation_explanations)
             .where(
                 tables.preparation_explanations.c.creator_user_id == creator_id.value,
                 tables.preparation_explanations.c.status == ExplanationStatus.APPROVED.value,
+                tables.preparation_explanations.c.kind == kind,
                 tables.preparation_explanations.c.decided_at >= since,
             )
             .limit(1)

@@ -61,6 +61,32 @@ class CaseState(StrEnum):
         """
         return self in _AMENDABLE
 
+    @property
+    def is_closed_unsuccessfully(self) -> bool:
+        """Did this case end without ever producing a package?
+
+        A domain fact, not a policy one: these are the states from which
+        nothing further happens and nothing was delivered. Who cares about
+        that — the intake quota, which frees a slot when someone else closes
+        your case — decides separately whether to act on it.
+
+        Deliberately not "is finished": ``completed`` is finished too, and it
+        is the opposite of this. The distinction is whether the requester got
+        what they asked for.
+        """
+        return self in _CLOSED_UNSUCCESSFULLY
+
+
+# Ended, and ended empty-handed. Everything else is either still moving or
+# arrived: a case sitting at ``cp2_rejected`` can be amended and resubmitted,
+# so it is not closed at all.
+_CLOSED_UNSUCCESSFULLY: frozenset[CaseState] = frozenset(
+    {
+        CaseState.INTAKE_REJECTED,
+        CaseState.FAILED,
+    }
+)
+
 
 _AMENDABLE: frozenset[CaseState] = frozenset(
     {

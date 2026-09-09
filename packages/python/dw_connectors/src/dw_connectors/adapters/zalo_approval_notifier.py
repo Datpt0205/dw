@@ -45,6 +45,10 @@ def _reply_hint(message: SlackApprovalMessage) -> str:
         return "👉 Cần hỗ trợ thì mở hồ sơ và mô tả giúp phần đang vướng nhé."
     if event == "rework.support_required":
         return "👉 Mở hồ sơ để xem phần mô tả bối cảnh và trao đổi giúp."
+    if event == "intake_quota.justification_submitted":
+        # The decision is a person's, so the verb has to be theirs. Approving
+        # lets the next request through; nothing happens on its own.
+        return "👉 Trả lời: «duyệt giải trình» hoặc «từ chối giải trình»."
     if event == "rework.explanation_escalated":
         return "👉 Nhờ bạn phân công người xem giúp phần mô tả này."
     return ""

@@ -72,6 +72,7 @@ def test_every_intent_has_exactly_one_spec() -> None:
 def test_the_mutating_set_is_derived_not_restated() -> None:
     assert mutating_intents() == {
         "confirm_request",
+        "provide_justification",
         "amend_request",
         "request_addendum",
         "record_submission",

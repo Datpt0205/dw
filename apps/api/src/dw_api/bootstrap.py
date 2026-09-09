@@ -9,6 +9,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -56,11 +57,18 @@ from dw_memory.service import MemoryService
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.adapters.identity.keycloak import KeycloakTokenVerifier
+from dw_platform.adapters.persistence.channel_link_repository import SqlChannelLinkRepository
 from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBootstrap
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
+from dw_platform.application.channel_link import (
+    DescribeChannelLinksHandler,
+    IssueChannelLinkCodeHandler,
+    RedeemChannelLinkCodeHandler,
+    UnlinkChannelHandler,
+)
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory
 from dw_platform.application.identity_bootstrap import IdentityBootstrapPort
@@ -72,6 +80,7 @@ from dw_platform.application.ports import (
 from dw_tender.adapters.conversation.store import SqlConversationStore
 from dw_tender.adapters.persistence.repositories import SqlTenderUnitOfWorkFactory
 from dw_tender.adapters.policy_loader import load_scoring_policy
+from dw_tender.adapters.preparation.intake_quota_rules_loader import load_intake_quota_rules
 from dw_tender.adapters.preparation.repositories import SqlPreparationUnitOfWorkFactory
 from dw_tender.adapters.preparation.rework_rules_loader import load_rework_support_rules
 from dw_tender.adapters.preparation.rules_loader import load_procurement_rules
@@ -102,6 +111,10 @@ from dw_tender.application.preparation.handlers import (
     VerifyPreparationIntakeHandler,
 )
 from dw_tender.application.preparation.handoff import HandoffToEvaluationHandler
+from dw_tender.application.preparation.intake_quota_guard import IntakeQuotaGuard
+from dw_tender.application.preparation.intake_quota_handlers import (
+    SubmitQuotaJustificationHandler,
+)
 from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
 from dw_tender.application.preparation.readiness import AssessTenderReadinessHandler
 from dw_tender.application.preparation.rework_guard import ReworkGuard
@@ -196,6 +209,7 @@ class PreparationHandlers:
     uow_factory: PreparationUnitOfWorkFactory
     rules: ProcurementRules
     rework_guard: ReworkGuard
+    intake_quota_guard: IntakeQuotaGuard
     assess_rework: AssessReworkSupportHandler
     list_pending_explanations: ListPendingExplanationsHandler
     submit_explanation: SubmitExplanationHandler
@@ -244,6 +258,11 @@ class ApiContainer:
     # Channel-agnostic chat core — shared by Slack (buttons) and Zalo (words).
     conversation_store: SqlConversationStore | None = None
     conversation_service: ConversationIntakeService | None = None
+    channel_link_repository: SqlChannelLinkRepository | None = None
+    issue_channel_link: IssueChannelLinkCodeHandler | None = None
+    redeem_channel_link: RedeemChannelLinkCodeHandler | None = None
+    unlink_channel: UnlinkChannelHandler | None = None
+    describe_channel_links: DescribeChannelLinksHandler | None = None
 
     def run_context_for(self, context: AccessContext, run_id: uuid.UUID) -> RunContext:
         return RunContext(
@@ -539,11 +558,30 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
     chat: ChatFrontOffice | None = None
     conversation_store: SqlConversationStore | None = None
     conversation_service: ConversationIntakeService | None = None
+    channel_link_repository: SqlChannelLinkRepository | None = None
+    issue_channel_link: IssueChannelLinkCodeHandler | None = None
+    redeem_channel_link: RedeemChannelLinkCodeHandler | None = None
+    unlink_channel: UnlinkChannelHandler | None = None
+    describe_channel_links: DescribeChannelLinksHandler | None = None
 
     if settings.database_url:
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         access_context_factory = DbAccessContextFactory(SqlMembershipLookup(session_factory))
+        # Self-service chat linking: the web side mints a code for a signed-in
+        # person, the chat side quotes it back. Replaces the hand-kept id map.
+        channel_link_repository = SqlChannelLinkRepository(session_factory)
+        issue_channel_link = IssueChannelLinkCodeHandler(
+            repository=channel_link_repository,
+            clock=clock,
+            id_generator=id_generator,
+            ttl=timedelta(minutes=settings.channel_link_ttl_minutes),
+        )
+        redeem_channel_link = RedeemChannelLinkCodeHandler(
+            repository=channel_link_repository, clock=clock
+        )
+        unlink_channel = UnlinkChannelHandler(repository=channel_link_repository)
+        describe_channel_links = DescribeChannelLinksHandler(repository=channel_link_repository)
         identity_bootstrap = SqlIdentityBootstrap(
             session_factory=session_factory,
             default_tenant_id=uuid.UUID(settings.default_tenant_id),
@@ -705,6 +743,13 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                 rules=rework_rules,
                 clock=clock,
             )
+            intake_quota_guard = IntakeQuotaGuard(
+                uow_factory=preparation_uow_factory,
+                rules=load_intake_quota_rules(
+                    REPO_ROOT / "configs" / "policies" / "dw01" / "intake_quota_v1.yaml"
+                ),
+                clock=clock,
+            )
             preparation_services = PreparationServices(
                 uow_factory=preparation_uow_factory,
                 storage=storage,  # type: ignore[arg-type]
@@ -802,6 +847,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     clock=clock,
                     reminder_seconds=settings.approval_reminder_seconds,
                     rework_guard=rework_guard,
+                    intake_quota_guard=intake_quota_guard,
                 ),
                 get_case=GetPreparationCaseHandler(
                     uow_factory=preparation_uow_factory,
@@ -945,6 +991,7 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     model_profile=settings.model_profile,
                 ),
                 rework_guard=rework_guard,
+                intake_quota_guard=intake_quota_guard,
                 assess_rework=AssessReworkSupportHandler(guard=rework_guard),
                 list_pending_explanations=ListPendingExplanationsHandler(
                     uow_factory=preparation_uow_factory,
@@ -990,6 +1037,14 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     gateway=gateway,
                     create_case=preparation.create_case,
                     rework_guard=rework_guard,
+                    intake_quota_guard=intake_quota_guard,
+                    submit_quota_justification=SubmitQuotaJustificationHandler(
+                        uow_factory=preparation_uow_factory,
+                        authorization=authorization,
+                        guard=intake_quota_guard,
+                        clock=clock,
+                        id_generator=id_generator,
+                    ),
                     rules=procurement_rules,
                     clock=clock,
                     id_generator=id_generator,
@@ -1025,6 +1080,11 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         settings.require_database_url()
 
     return ApiContainer(
+        channel_link_repository=channel_link_repository,
+        issue_channel_link=issue_channel_link,
+        redeem_channel_link=redeem_channel_link,
+        unlink_channel=unlink_channel,
+        describe_channel_links=describe_channel_links,
         settings=settings,
         engine=engine,
         health_service=HealthService(probes={"database": database_probe(engine)}),

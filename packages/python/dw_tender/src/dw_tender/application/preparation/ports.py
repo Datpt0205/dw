@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from types import TracebackType
 from typing import Protocol
@@ -10,6 +11,7 @@ from typing import Protocol
 from dw_kernel.ids import TenantId, UserId
 from dw_tender.domain.preparation.entities import (
     ArtifactType,
+    CaseState,
     PreparationArtifact,
     PreparationCase,
     PreparationDocument,
@@ -17,6 +19,15 @@ from dw_tender.domain.preparation.entities import (
 from dw_tender.domain.preparation.notifications import IntakeNotificationJob
 from dw_tender.domain.preparation.rework import ExplanationRecord, ReworkEvent
 from dw_tender.domain.value_objects.ids import ArtifactId, PreparationCaseId
+
+
+@dataclass(frozen=True, slots=True)
+class OpenedCaseRow:
+    """One case someone opened, reduced to what the intake quota counts."""
+
+    case_id: uuid.UUID
+    opened_at: datetime
+    state: CaseState
 
 
 class PreparationCaseRepositoryPort(Protocol):
@@ -41,6 +52,15 @@ class PreparationCaseRepositoryPort(Protocol):
         ...
 
     async def list_recent(self, limit: int = 50) -> list[PreparationCase]: ...
+
+    async def list_opened_by(self, creator_id: UserId, *, since: datetime) -> list[OpenedCaseRow]:
+        """Cases this person opened since ``since``, for the intake quota.
+
+        A narrow projection rather than whole aggregates: counting needs when
+        it was opened and whether it is still holding a slot, and loading the
+        full case for each would read documents and artifacts nobody looks at.
+        """
+        ...
 
 
 class PreparationDocumentRepositoryPort(Protocol):
@@ -110,9 +130,13 @@ class ExplanationRepositoryPort(Protocol):
         """Persist a decision. Only the decision columns are writable."""
         ...
 
-    async def latest_pending_for_creator(self, creator_id: UserId) -> ExplanationRecord | None: ...
+    async def latest_pending_for_creator(
+        self, creator_id: UserId, *, kind: str = "rework"
+    ) -> ExplanationRecord | None: ...
 
-    async def has_approved_since(self, creator_id: UserId, *, since: datetime) -> bool:
+    async def has_approved_since(
+        self, creator_id: UserId, *, since: datetime, kind: str = "rework"
+    ) -> bool:
         """Has this person been unblocked since ``since``?
 
         What lifts a block: the tally alone never does, because old events

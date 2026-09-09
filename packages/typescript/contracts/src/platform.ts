@@ -53,3 +53,19 @@ export const integrationSchema = z.object({
   required_scopes: z.array(z.string()),
 });
 export type Integration = z.infer<typeof integrationSchema>;
+
+// Chat accounts a person has connected. `account` is the chat-side id — shown
+// so somebody can tell which of their accounts is linked, nothing more.
+export const channelLinkStatusSchema = z.object({
+  channel: z.string(),
+  linked: z.boolean(),
+  account: z.string().nullable().optional(),
+});
+export type ChannelLinkStatus = z.infer<typeof channelLinkStatusSchema>;
+
+export const channelLinkCodeSchema = z.object({
+  code: z.string(),
+  expires_at: z.string(),
+  channel: z.string(),
+});
+export type ChannelLinkCode = z.infer<typeof channelLinkCodeSchema>;
