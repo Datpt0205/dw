@@ -56,11 +56,16 @@ from dw_memory.service import MemoryService
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.adapters.identity.keycloak import KeycloakTokenVerifier
+from dw_platform.adapters.persistence.channel_link_repository import SqlChannelLinkRepository
 from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBootstrap
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
+from dw_platform.application.channel_link import (
+    IssueChannelLinkCodeHandler,
+    RedeemChannelLinkCodeHandler,
+)
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory
 from dw_platform.application.identity_bootstrap import IdentityBootstrapPort
@@ -250,6 +255,9 @@ class ApiContainer:
     # Channel-agnostic chat core — shared by Slack (buttons) and Zalo (words).
     conversation_store: SqlConversationStore | None = None
     conversation_service: ConversationIntakeService | None = None
+    channel_link_repository: SqlChannelLinkRepository | None = None
+    issue_channel_link: IssueChannelLinkCodeHandler | None = None
+    redeem_channel_link: RedeemChannelLinkCodeHandler | None = None
 
     def run_context_for(self, context: AccessContext, run_id: uuid.UUID) -> RunContext:
         return RunContext(
@@ -545,11 +553,23 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
     chat: ChatFrontOffice | None = None
     conversation_store: SqlConversationStore | None = None
     conversation_service: ConversationIntakeService | None = None
+    channel_link_repository: SqlChannelLinkRepository | None = None
+    issue_channel_link: IssueChannelLinkCodeHandler | None = None
+    redeem_channel_link: RedeemChannelLinkCodeHandler | None = None
 
     if settings.database_url:
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
         session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         access_context_factory = DbAccessContextFactory(SqlMembershipLookup(session_factory))
+        # Self-service chat linking: the web side mints a code for a signed-in
+        # person, the chat side quotes it back. Replaces the hand-kept id map.
+        channel_link_repository = SqlChannelLinkRepository(session_factory)
+        issue_channel_link = IssueChannelLinkCodeHandler(
+            repository=channel_link_repository, clock=clock, id_generator=id_generator
+        )
+        redeem_channel_link = RedeemChannelLinkCodeHandler(
+            repository=channel_link_repository, clock=clock
+        )
         identity_bootstrap = SqlIdentityBootstrap(
             session_factory=session_factory,
             default_tenant_id=uuid.UUID(settings.default_tenant_id),
@@ -1048,6 +1068,9 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
         settings.require_database_url()
 
     return ApiContainer(
+        channel_link_repository=channel_link_repository,
+        issue_channel_link=issue_channel_link,
+        redeem_channel_link=redeem_channel_link,
         settings=settings,
         engine=engine,
         health_service=HealthService(probes={"database": database_probe(engine)}),

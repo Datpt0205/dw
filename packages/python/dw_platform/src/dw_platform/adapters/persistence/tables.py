@@ -74,6 +74,26 @@ external_identities = sa.Table(
     sa.UniqueConstraint("issuer", "subject", name="uq_external_identities_issuer_subject"),
 )
 
+# No RLS, like ``users`` and ``external_identities`` above: a chat message
+# arrives carrying no tenant, so the row that says which tenant it belongs to
+# has to be readable before any tenant context exists.
+channel_link_codes = sa.Table(
+    "channel_link_codes",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=False),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("issuer", sa.Text, nullable=False),
+    sa.Column("code_hash", sa.Text, nullable=False),
+    sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("redeemed_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.Column("redeemed_subject", sa.Text, nullable=False, server_default=""),
+    sa.Column(
+        "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
+)
+
 plans = sa.Table(
     "plans",
     metadata,

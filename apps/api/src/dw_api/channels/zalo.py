@@ -27,8 +27,10 @@ import yaml
 
 from dw_api.channels.decisions import DecisionEngine
 from dw_connectors.adapters.zalo_bot import ZaloBotClient
+from dw_kernel.errors import ConflictError, NotFoundError
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.identity import VerifiedClaims
+from dw_platform.domain.channel_link import looks_like_a_code
 
 if TYPE_CHECKING:
     from dw_api.bootstrap import ApiContainer
@@ -37,6 +39,8 @@ if TYPE_CHECKING:
         ConversationIntakeService,
         TurnOutcome,
     )
+
+_CHANNEL_ISSUER = "zalo"
 
 logger = logging.getLogger("dw_api.channels.zalo")
 
@@ -126,6 +130,67 @@ class ZaloFrontOfficeService:
                 return dict(user)
         return None
 
+    async def _identify(
+        self, from_id: str, chat_id: str, text: str
+    ) -> tuple[AccessContext, str] | None:
+        """Who is this Zalo account, or how they say so.
+
+        Three paths in order. A linked account goes straight through. An
+        unlinked one quoting something shaped like a code gets one redemption
+        attempt — the shape is a format this server minted, so trying costs a
+        single lookup and never guesses at meaning. Anything else is told how
+        to link.
+
+        The demo roster is still consulted, last, so a seeded machine keeps
+        working. A real deployment simply has no entries in it.
+        """
+        linked = await self._linked_context(from_id)
+        if linked is not None:
+            return linked
+
+        redeem = self.container.redeem_channel_link
+        if redeem is not None and looks_like_a_code(text):
+            try:
+                await redeem.handle(code=text, issuer=_CHANNEL_ISSUER, external_subject=from_id)
+            except (ConflictError, NotFoundError) as exc:
+                await self._client.send_message(chat_id, f"⚠️ {exc}")
+                return None
+            linked = await self._linked_context(from_id)
+            if linked is not None:
+                await self._client.send_message(
+                    chat_id,
+                    "✅ Đã liên kết tài khoản.\nTừ giờ bạn nhắn thẳng ở đây, mình biết bạn là ai.",
+                )
+                return linked
+
+        subject = self._resolve_subject(from_id)
+        if subject is not None:
+            return await self._access_context(subject)
+
+        await self._client.send_message(
+            chat_id,
+            "👋 Tài khoản Zalo này chưa liên kết với người dùng nào.\n\n"
+            "Mở web DW → đăng nhập → Liên kết Zalo để lấy mã, rồi nhắn mã đó "
+            "vào đây. Mã có hiệu lực 10 phút.",
+        )
+        return None
+
+    async def _linked_context(self, from_id: str) -> tuple[AccessContext, str] | None:
+        """The context of an account that has already been linked."""
+        repo = self.container.channel_link_repository
+        factory = self.container.access_context_factory
+        if repo is None or factory is None:
+            return None
+        binding = await repo.find_binding(issuer=_CHANNEL_ISSUER, subject=from_id)
+        if binding is None:
+            return None
+        context = await factory.build(
+            VerifiedClaims(subject=from_id, email=None, issuer=_CHANNEL_ISSUER),
+            binding.tenant_id,
+            binding.workspace_id,
+        )
+        return context, from_id
+
     async def _access_context(self, subject: str) -> tuple[AccessContext, str] | None:
         entry = self._roster_entry(subject)
         factory = self.container.access_context_factory
@@ -147,19 +212,8 @@ class ZaloFrontOfficeService:
         if not chat_id or not from_id or not text:
             return
 
-        subject = self._resolve_subject(from_id)
-        if subject is None:
-            await self._client.send_message(
-                chat_id,
-                f"👋 Chào bạn! Zalo ID của bạn là {from_id} — chưa được gán với "
-                "người dùng DW.\nNhờ quản trị viên thêm vào .env "
-                "(ZALO_USER_*_ID) hoặc configs/demo/channel_identities.yaml "
-                f'(mục zalo:)\n  "{from_id}": dev|an.nguyen',
-            )
-            return
-        resolved = await self._access_context(subject)
+        resolved = await self._identify(from_id, chat_id, text)
         if resolved is None:
-            logger.warning("zalo subject %s not in roster/membership", subject)
             return
         context, display_name = resolved
         channel_key = f"zalo:{chat_id}"

@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channel-link/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue Link Code */
+        post: operations["issue_link_code_api_v1_channel_link_code_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dev/demo-users": {
         parameters: {
             query?: never;
@@ -1440,6 +1457,21 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** LinkCodeResponse */
+        LinkCodeResponse: {
+            /** Channel */
+            channel: string;
+            /**
+             * Code
+             * @description Nhắn nguyên mã này cho bot để liên kết.
+             */
+            code: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
         /** MeResponse */
         MeResponse: {
             /** Clearance */
@@ -2032,6 +2064,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BootstrapResponse"];
+                };
+            };
+        };
+    };
+    issue_link_code_api_v1_channel_link_code_post: {
+        parameters: {
+            query?: {
+                channel?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkCodeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

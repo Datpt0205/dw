@@ -1632,6 +1632,31 @@
         "title": "KnowledgeDocumentView",
         "type": "object"
       },
+      "LinkCodeResponse": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "code": {
+            "description": "Nhắn nguyên mã này cho bot để liên kết.",
+            "title": "Code",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "expires_at",
+          "channel"
+        ],
+        "title": "LinkCodeResponse",
+        "type": "object"
+      },
       "MeResponse": {
         "properties": {
           "clearance": {
@@ -2938,6 +2963,49 @@
           }
         },
         "summary": "Bootstrap",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/channel-link/code": {
+      "post": {
+        "operationId": "issue_link_code_api_v1_channel_link_code_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "channel",
+            "required": false,
+            "schema": {
+              "default": "zalo",
+              "title": "Channel",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkCodeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Issue Link Code",
         "tags": [
           "identity"
         ]
