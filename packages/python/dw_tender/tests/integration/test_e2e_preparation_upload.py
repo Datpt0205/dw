@@ -235,9 +235,23 @@ async def test_dw01_upload_only_cp1_to_cp4(
     )
     assert publication.status_code == 200, publication.text
 
-    addendum = await preparation_client.post(
+    # An addendum changes a package suppliers have already been sent, so it
+    # takes the same authority CP3 takes to approve it — not the authority to
+    # draft. The requester is refused here even though the case is theirs.
+    refused = await preparation_client.post(
         f"/api/v1/procurement/preparation/cases/{case_id}/addendum",
         headers=member,
+        data={
+            "change_summary": "Gia hạn hai ngày",
+            "impact_summary": "Không đổi tiêu chí; áp dụng cho mọi nhà cung cấp",
+        },
+        files={"file": ("addendum.md", b"# addendum", "text/markdown")},
+    )
+    assert refused.status_code == 403, refused.text
+
+    addendum = await preparation_client.post(
+        f"/api/v1/procurement/preparation/cases/{case_id}/addendum",
+        headers=approver,
         data={
             "change_summary": "Gia hạn hai ngày",
             "impact_summary": "Không đổi tiêu chí; áp dụng cho mọi nhà cung cấp",
