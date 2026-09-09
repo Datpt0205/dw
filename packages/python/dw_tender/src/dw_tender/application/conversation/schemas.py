@@ -101,6 +101,8 @@ ChatIntent = Literal[
     "request_addendum",
     "record_submission",
     "open_bids",
+    # Answering a block, not opening anything.
+    "provide_justification",
 ]
 
 

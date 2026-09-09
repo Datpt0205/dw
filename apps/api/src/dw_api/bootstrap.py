@@ -104,6 +104,9 @@ from dw_tender.application.preparation.handlers import (
 )
 from dw_tender.application.preparation.handoff import HandoffToEvaluationHandler
 from dw_tender.application.preparation.intake_quota_guard import IntakeQuotaGuard
+from dw_tender.application.preparation.intake_quota_handlers import (
+    SubmitQuotaJustificationHandler,
+)
 from dw_tender.application.preparation.ports import PreparationUnitOfWorkFactory
 from dw_tender.application.preparation.readiness import AssessTenderReadinessHandler
 from dw_tender.application.preparation.rework_guard import ReworkGuard
@@ -1003,6 +1006,13 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
                     create_case=preparation.create_case,
                     rework_guard=rework_guard,
                     intake_quota_guard=intake_quota_guard,
+                    submit_quota_justification=SubmitQuotaJustificationHandler(
+                        uow_factory=preparation_uow_factory,
+                        authorization=authorization,
+                        guard=intake_quota_guard,
+                        clock=clock,
+                        id_generator=id_generator,
+                    ),
                     rules=procurement_rules,
                     clock=clock,
                     id_generator=id_generator,
