@@ -68,7 +68,15 @@ def looks_like_a_code(text: str) -> bool:
     A format check on something the server minted, not a guess at what somebody
     meant — the alphabet and length are ours. It only decides whether redeeming
     is worth attempting; a wrong guess costs one failed lookup.
+
+    A code is one word. That is not cosmetic: "duyet cp2" — the commonest
+    command in the system, typed the way Vietnamese is typed in chat, without
+    diacritics — is eight characters from this very alphabet once spaces are
+    stripped. Someone not yet linked would have been told their code was wrong
+    instead of being told how to link.
     """
+    if len(text.split()) != 1:
+        return False
     candidate = normalise(text)
     return len(candidate) == _LENGTH and all(ch in _ALPHABET for ch in candidate)
 

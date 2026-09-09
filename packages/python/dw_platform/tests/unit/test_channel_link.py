@@ -87,6 +87,14 @@ def test_ordinary_messages_are_not_mistaken_for_codes() -> None:
         assert not looks_like_a_code(text), text
 
 
+def test_the_commonest_command_typed_without_diacritics_is_not_a_code() -> None:
+    """Vietnamese in chat is usually typed flat, and "duyet cp2" is eight
+    characters of this exact alphabet once spaces come out. Somebody not yet
+    linked would have been told their code was wrong instead of how to link."""
+    for text in ("duyet cp2", "duyet cp1", "xac minh", "chot so", "chao ban"):
+        assert not looks_like_a_code(text), text
+
+
 # --------------------------------------------------------------- single use --
 def test_redeeming_spends_the_code() -> None:
     code = _code()
